@@ -10,6 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
+  const APP_VERSION = "v12";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -581,6 +582,9 @@
     $('introGap').textContent=INTRO.gap;
     $('introTips').textContent=INTRO.tips;
     $('introPromise').textContent=INTRO.promise;
+    $('ver').textContent='Stone Room '+APP_VERSION;
+    $('verEnd').textContent=APP_VERSION;
+    try{ console.log('%cStone Room '+APP_VERSION, 'color:#D9A24B;font-weight:600'); }catch(e){}
   }
 
   // ---- wiring ----
