@@ -42,12 +42,18 @@
     <div class="introlinks">
       <button class="linkbtn" id="aboutToggle" aria-expanded="false">What is this?</button>
       <span class="sep">·</span>
+      <button class="linkbtn" id="demoToggle" aria-expanded="false">What you’ll get</button>
+      <span class="sep" id="cmpsep" style="display:none">·</span>
       <button class="linkbtn" id="gocompare" style="display:none">Compare pairs</button>
     </div>
     <div class="about" id="introAbout" hidden>
       <p id="introWhat"></p>
       <p id="introGap"></p>
       <p class="about-tips" id="introTips"></p>
+    </div>
+    <div class="demo" id="introDemo" hidden>
+      <div class="fpbox" id="fpDemo"></div>
+      <p class="demo-cap">A sample reading. Yours is measured from your own answers — every mark on it is a real number from your run.</p>
     </div>
     <p class="promise" id="introPromise"></p>
   </section>
@@ -168,7 +174,11 @@
     <div class="rank" id="rank">—</div>
     <p class="verdict" id="verdict"></p>
     <div class="saved" id="saved"></div>
+    <div class="fpwrap" id="fpwrap" style="display:none">
+      <div class="fpbox" id="fpcard"></div>
+    </div>
     <div class="seltools">
+      <button id="savecard">Save card</button>
       <button id="copyres">Copy results</button>
       <button id="sharelink">Share</button>
     </div>
@@ -213,6 +223,7 @@
 
 <script src="content.js"></script>
 <script src="adaptive.js"></script>
+<script src="fingerprint.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

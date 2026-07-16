@@ -492,7 +492,7 @@
 
   // ---------- state ----------
   let order=[], oi=0, score=0, voices=[], target=null, guessLocked=false, replayFn=()=>{};
-  let chScore={}, chPct={}, roomThr={};          // per-room 0..100 and measured readout
+  let chScore={}, chPct={}, roomThr={}, roomVal={};   // per-room score, readout text, numeric measurement
   let choiceTimers=[], orbitInt=null;
   let selected = CH.map(()=>true);
   let device='';
@@ -554,6 +554,14 @@
       if(opening){ a.removeAttribute('hidden'); t.setAttribute('aria-expanded','true'); t.textContent='Less'; }
       else { a.setAttribute('hidden',''); t.setAttribute('aria-expanded','false'); t.textContent='What is this?'; }
     });
+    $('demoToggle').addEventListener('click',()=>{
+      const d=$('introDemo'), t=$('demoToggle'), opening=d.hasAttribute('hidden');
+      if(opening){
+        d.removeAttribute('hidden'); t.setAttribute('aria-expanded','true'); t.textContent='Hide';
+        if(!d.dataset.built){ window.SR_FP.render($('fpDemo'), window.SR_FP.SAMPLE); d.dataset.built='1'; }
+      } else { d.setAttribute('hidden',''); t.setAttribute('aria-expanded','false'); t.textContent='What you’ll get'; }
+    });
+    $('savecard').addEventListener('click',saveCard);
     $('calreplay').addEventListener('click',runCal);
     $('calgo').addEventListener('click',()=>{buildSelect(); show('select');});
     $('selstart').addEventListener('click',()=>{buildDevice(); show('device');});
@@ -646,7 +654,7 @@
     initAudio(); ctx.resume();
     order = CH.map((_,i)=>i).filter(i=>selected[i]);
     if(!order.length) order=CH.map((_,i)=>i);
-    score=0; oi=0; chScore={}; chPct={}; roomThr={};
+    score=0; oi=0; chScore={}; chPct={}; roomThr={}; roomVal={};
     order.forEach(i=>{chScore[i]=0;});
     $('score').textContent='0'; $('devlabel').textContent=device;
     show('game'); loadChapter();
@@ -679,15 +687,16 @@
 
   // ---- checkpoint: pause and let the listener lock in or keep going for a sharper reading ----
   let pendingContinue=null;
-  function showCheckpoint(readout, conf, continueFn){
+  function showCheckpoint(readout, conf, continueFn, remain){
     guessLocked=true; clearTimers(); setReplay(false);
     setPrecision(conf, readout);
-    $('status').innerHTML=`Reading: <span class="pts">${readout}</span> · ${Math.round(conf*100)}% confident.<br><span style="color:var(--muted)">Lock it in, or keep going for a sharper number?</span>`;
+    $('status').innerHTML=`Reading: <span class="pts">${readout}</span> · ${Math.round(conf*100)}% confident.<br><span style="color:var(--muted)">Lock it in, or sharpen the number?</span>`;
     pendingContinue=continueFn;
     $('lockbtn').classList.add('on');
+    $('contbtn').textContent = remain ? `Sharpen (≤${remain} more)` : 'Keep going →';
     $('contbtn').classList.toggle('on', !!continueFn);
   }
-  function hideCheckpointBtns(){ $('lockbtn').classList.remove('on'); $('contbtn').classList.remove('on'); pendingContinue=null; }
+  function hideCheckpointBtns(){ $('lockbtn').classList.remove('on'); $('contbtn').classList.remove('on'); $('contbtn').textContent='Keep going →'; pendingContinue=null; }
 
   function startChapter(){
     guessLocked=false; st=null; sp=null; cnt=null; stopVoices();
@@ -734,8 +743,7 @@
     const play=()=>{
       choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
       setChoicesEnabled(false); setReplay(false);
-      const stt=st.eng.z.stats();
-      $('status').innerHTML=`Trial ${st.trial+1} · <span class="pts">honing in…</span>`;
+      $('status').innerHTML=`Trial ${st.trial+1} <span style="color:var(--muted)">of ≤${st.eng.nMax}</span> · <span class="pts">honing in…</span>`;
       const t=ctx.currentTime+.25;
       for(let i=0;i<2;i++){
         const flag=(i===st.side);
@@ -767,7 +775,7 @@
       $('status').innerHTML=`${hit?'✓':'○'} ${micro}`;
       choiceTimers.push(setTimeout(()=>{ clearMarks();
         const s2=st.eng.z.stats();
-        showCheckpoint(A.fmt(st.eng.levelOf(s2.mean)), s2.conf, ()=>{ st.sharpen=true; stairTrial(); });
+        showCheckpoint(A.fmt(st.eng.levelOf(s2.mean)), s2.conf, ()=>{ st.sharpen=true; stairTrial(); }, st.eng.nMax-st.trial);
       }, 520));
       return;
     }
@@ -781,8 +789,9 @@
     const thr=st.eng.levelOf(stt.mean);
     const pct=pctFromThreshold(A,thr);
     // 95% band in display units
-    const loT=st.eng.levelOf(stt.mean-1.96*stt.sd), hiT=st.eng.levelOf(stt.mean+1.96*stt.sd);
-    recordRoom(pct, A.fmt(thr), stt);
+    const b1=st.eng.levelOf(stt.mean-1.96*stt.sd), b2=st.eng.levelOf(stt.mean+1.96*stt.sd);
+    const loT=Math.min(b1,b2), hiT=Math.max(b1,b2);
+    recordRoom(pct, A.fmt(thr), {val:thr, lo:loT, hi:hiT});
     const tier=tierLine(st.tag,pct);
     const conf=Math.round(stt.conf*100);
     $('status').innerHTML=`Your reading: <span class="pts">${A.fmt(thr)}</span> · +${pct} <span style="color:var(--muted)">· ${conf}% confident</span>`;
@@ -845,7 +854,7 @@
     if(cnt.done) return; cnt.done=true; guessLocked=true; clearTimers(); hideCheckpointBtns();
     // map best countable (3..7) to pct
     const pct=Math.round(clamp((cnt.best-3)/(7-3),0,1)*100);
-    recordRoom(pct, cnt.best+' voices', {conf:clamp(cnt.trial/cnt.maxR,0,1)});
+    recordRoom(pct, cnt.best+' voices', {val:cnt.best});
     $('status').innerHTML=`You held <span class="pts">${cnt.best} voices</span> apart · +${pct}`;
     setPrecision(1, cnt.best+' voices');
     showLearn(); appendTier(tierLine('Crowd',pct)); advanceUI();
@@ -1003,7 +1012,7 @@
     if(sp.round>=sp.maxR){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
     if(sp.sharpen && enough){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
     if(!sp.sharpen && enough){
-      choiceTimers.push(setTimeout(()=>showCheckpoint(`${Math.round(a.med)}° acuity`, a.conf, ()=>{ sp.sharpen=true; spatialRound(); }), 700));
+      choiceTimers.push(setTimeout(()=>showCheckpoint(`${Math.round(a.med)}° acuity`, a.conf, ()=>{ sp.sharpen=true; spatialRound(); }, sp.maxR-sp.round), 700));
       return;
     }
     choiceTimers.push(setTimeout(()=>spatialRound(), 820));
@@ -1015,16 +1024,17 @@
     // map median error (deg) between ref (100%) and weak (0%) in log space
     const lw=Math.log(S.weak), lb=Math.log(S.ref), lt=Math.log(clamp(a.med,S.ref,S.weak));
     const pct=Math.round(clamp((lw-lt)/(lw-lb),0,1)*100);
-    recordRoom(pct, `${Math.round(a.med)}° acuity`, {conf:a.conf});
+    recordRoom(pct, `${Math.round(a.med)}° acuity`, {val:a.med, lo:Math.max(1,a.med-1.96*a.se), hi:a.med+1.96*a.se});
     $('status').innerHTML=`Your acuity: <span class="pts">${Math.round(a.med)}°</span> · +${pct} <span style="color:var(--muted)">· ${Math.round(a.conf*100)}% confident</span>`;
     setPrecision(a.conf, `${Math.round(a.med)}° · ${sp.round} rounds`);
     showLearn(); appendTier(tierLine(sp.c.tag,pct)); advanceUI();
   }
 
   // ---------- shared result plumbing ----------
-  function recordRoom(pct, readout, stt){
-    const i=order[oi];
-    chScore[i]=pct; chPct[i]=pct; roomThr[CH[i].tag]=readout;
+  function recordRoom(pct, readout, extra){
+    const i=order[oi], tag=CH[i].tag;
+    chScore[i]=pct; chPct[i]=pct; roomThr[tag]=readout;
+    if(extra && extra.val!=null) roomVal[tag]={val:extra.val, lo:extra.lo, hi:extra.hi};
     score+=pct; $('score').textContent=score;
   }
   function tierLine(tag,pct){
@@ -1089,8 +1099,11 @@
     else{rank='First listen'; verdict='All of this lives in the sound — it takes a few laps to hear it. Pick one group and drill it.';}
     $('rank').textContent=rank; $('verdict').textContent=verdict;
     const dev = db.devices[device] || {rooms:{}};
-    order.forEach(i=>{ const tag=CH[i].tag; dev.rooms[tag] = {pct:chPct[i], thr:roomThr[tag]}; });
+    order.forEach(i=>{ const tag=CH[i].tag;
+      dev.rooms[tag] = Object.assign({pct:chPct[i], thr:roomThr[tag]}, roomVal[tag]||{});
+    });
     dev.date=new Date().toISOString(); db.devices[device]=dev; await saveDB();
+    renderCard(dev);
     $('saved').textContent = storageOK ? `saved · ${device}` + (deviceNames().length>1 ? ' · compare available' : '')
       : 'storage unavailable — results kept for this session only';
     const bd=$('breakdown'); bd.innerHTML='';
@@ -1106,6 +1119,29 @@
         requestAnimationFrame(()=>requestAnimationFrame(()=>{row.querySelector('.bfill').style.width=p+'%';}));
       });
     });
+  }
+
+  // ---------- fingerprint card ----------
+  function renderCard(dev){
+    // full picture of THIS pair: this run merged with anything measured before
+    const rooms={};
+    Object.keys(dev.rooms||{}).forEach(tag=>{ const r=dev.rooms[tag]; if(r && r.val!=null) rooms[tag]={val:r.val, lo:r.lo, hi:r.hi}; });
+    const wrap=$('fpwrap');
+    if(!Object.keys(rooms).length){ wrap.style.display='none'; return; }
+    wrap.style.display='block';
+    window.SR_FP.render($('fpcard'), { device, date:new Date().toLocaleDateString(), rooms });
+  }
+  async function saveCard(){
+    const svg=$('fpcard').querySelector('svg'); if(!svg) return;
+    try{
+      const blob=await window.SR_FP.toPNG(svg,3);
+      const file=new File([blob], `stone-room-${device.replace(/[^\w-]+/g,'_')}.png`, {type:'image/png'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:CONFIG.SHARE_TITLE}); }
+      else{
+        const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name;
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+    }catch(e){ flashSaved('could not save card'); }
   }
 
   // ---------- comparison ----------
@@ -1152,6 +1188,6 @@
 
   // ---------- boot ----------
   buildIntro(); applyCoffeeLinks(); wire();
-  (async()=>{ await loadDB(); if(deviceNames().length) $('gocompare').style.display='inline'; })();
+  (async()=>{ await loadDB(); if(deviceNames().length){ $('gocompare').style.display='inline'; $('cmpsep').style.display='inline'; } })();
   if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
 })();

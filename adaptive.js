@@ -96,7 +96,7 @@
     };
     const z = makeZest(cfg);
     return {
-      z, dir, span,
+      z, dir, span, nMax: cfg.nMax, nMin: cfg.nMin,
       levelOf(x) { return Math.max(P.floor, Math.min(P.ceil, inv(dir * x))); }
     };
   }

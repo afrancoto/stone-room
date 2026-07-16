@@ -70,6 +70,11 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 .about p:last-child{margin-bottom:0}
 .about .about-tips{color:var(--gold); font-size:12px; line-height:1.55}
 .promise{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); text-align:center; margin-top:22px; opacity:.7}
+.demo{max-width:min(92vw,380px); margin:18px auto 0; animation:fade .35s ease both}
+.demo[hidden]{display:none}
+.demo-cap{font-size:11.5px; line-height:1.5; color:var(--muted); margin:8px auto 0; max-width:32ch; text-align:center}
+.fpbox svg{width:100%; height:auto; display:block; border-radius:14px}
+.fpwrap{width:min(92vw,380px); margin:14px auto 0}
 
 .warnbox{margin:14px auto 0; max-width:36ch; border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:12px; color:var(--muted); line-height:1.55; text-align:left}
 .warnbox b{color:var(--gold); font-weight:600}
