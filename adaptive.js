@@ -13,57 +13,63 @@
   function makePsi(cfg){
     const nA = cfg.nA || 50;
     const gamma = 0.5;                              // 2AFC guess rate
-    const xLo = cfg.xLo, xHi = cfg.xHi, span = xHi - xLo;
-    const ALPHA = linspace(xLo, xHi, nA);          // threshold candidates == stimulus candidates
-    // slope β in units of 1/x. A wider psychometric = smaller β. Cover ±½ decade.
-    const bMid = (cfg.slope || 6) / span;
+    const span0 = cfg.xHi - cfg.xLo;               // initial span — anchors conf/slope so widening is stable
+    const priorSDabs = cfg.priorSD || span0*0.5;
+    // slope β in units of 1/x, fixed (absolute) so the psychometric shape survives widening.
+    const bMid = (cfg.slope || 6) / span0;
     const BETA = [bMid*0.4, bMid*0.7, bMid, bMid*1.5, bMid*2.2];
     const LAM = [0.0, 0.01, 0.02, 0.04, 0.06];     // lapse grid (Wichmann & Hill rectangular, capped)
     const nB = BETA.length, nL = LAM.length, nC = nA*nB*nL;
 
     function psi(x,a,b,lam){ return gamma + (1-gamma-lam)/(1+Math.exp(-b*(x-a))); }
-
-    // precompute likelihood of a CORRECT response for every (candidate x, cell)
-    // LIK[xi] is a Float64Array over cells; index = ai*(nB*nL)+bi*nL+li
-    const LIK = new Array(nA);
-    for(let xi=0; xi<nA; xi++){
-      const arr = new Float64Array(nC); const x = ALPHA[xi];
-      let c=0;
-      for(let ai=0; ai<nA; ai++) for(let bi=0; bi<nB; bi++) for(let li=0; li<nL; li++){
-        arr[c++] = psi(x, ALPHA[ai], BETA[bi], LAM[li]);
-      }
-      LIK[xi] = arr;
-    }
-
-    // prior: broad Gaussian on α centred on cfg.priorMean, mild on β, gentle taper on λ
-    const P = new Float64Array(nC);
-    { let c=0;
-      for(let ai=0; ai<nA; ai++){
-        const za=(ALPHA[ai]-cfg.priorMean)/(cfg.priorSD||span*0.5);
-        const pa=Math.exp(-0.5*za*za)+1e-4;
-        for(let bi=0; bi<nB; bi++){
-          const pb = bi===2?1.2 : 1.0;                        // slight favour to the middle slope
-          for(let li=0; li<nL; li++){
-            const pl = 1.0 - LAM[li];                          // gentle preference for low lapse
-            P[c++] = pa*pb*pl;
-          }
-        }
-      }
-    }
-    normalize(P);
-
     function normalize(p){ let s=0; for(let i=0;i<p.length;i++) s+=p[i]; if(s>0) for(let i=0;i<p.length;i++) p[i]/=s; }
+
+    // mutable grid + posterior — rebuilt when the listener runs off the hard/easy edge
+    let xLo, xHi, span, ALPHA, LIK, P;
+    function build(lo,hi){
+      xLo=lo; xHi=hi; span=hi-lo;
+      ALPHA=linspace(lo,hi,nA);
+      LIK=new Array(nA);
+      for(let xi=0; xi<nA; xi++){
+        const arr=new Float64Array(nC); const x=ALPHA[xi]; let c=0;
+        for(let ai=0; ai<nA; ai++) for(let bi=0; bi<nB; bi++) for(let li=0; li<nL; li++) arr[c++]=psi(x,ALPHA[ai],BETA[bi],LAM[li]);
+        LIK[xi]=arr;
+      }
+      P=new Float64Array(nC); let c=0;
+      for(let ai=0; ai<nA; ai++){
+        const za=(ALPHA[ai]-cfg.priorMean)/priorSDabs, pa=Math.exp(-0.5*za*za)+1e-4;
+        for(let bi=0; bi<nB; bi++){ const pb=bi===2?1.2:1.0; for(let li=0; li<nL; li++) P[c++]=pa*pb*(1-LAM[li]); }
+      }
+      normalize(P);
+    }
+    build(cfg.xLo, cfg.xHi);
+
     function marginalAlpha(p){
       const m=new Float64Array(nA); let c=0;
       for(let ai=0; ai<nA; ai++){ let s=0; for(let k=0;k<nB*nL;k++) s+=p[c++]; m[ai]=s; }
       return m;
     }
     function entropy(m){ let h=0; for(let i=0;i<m.length;i++){ const v=m[i]; if(v>1e-12) h-=v*Math.log(v);} return h; }
+    function meanX(){ const m=marginalAlpha(P); let mn=0; for(let i=0;i<nA;i++) mn+=ALPHA[i]*m[i]; return mn; }
+    function applyLik(x,r){
+      let xi=0,best=Infinity; for(let i=0;i<nA;i++){ const d=Math.abs(ALPHA[i]-x); if(d<best){best=d;xi=i;} }
+      const lik=LIK[xi]; for(let c=0;c<nC;c++) P[c]*= r?lik[c]:(1-lik[c]); normalize(P);
+    }
 
-    let t=0, lastXi=0;
-    const prior0 = marginalAlpha(P);
-    const priorH = entropy(prior0);
-    let prevExpH = priorH, dryRuns = 0;
+    let t=0, lastXi=0, prevExpH=0, dryRuns=0, widenLo=0, widenHi=0, hardStreak=0, easyStreak=0;
+    const history=[];
+    const priorH = entropy(marginalAlpha(P));
+    prevExpH = priorH;
+
+    // if the placer keeps landing at the hardest cell and the listener still passes (or the
+    // easiest cell and they still fail), the true threshold is off the grid — extend that side
+    // and replay history, so a listener better than the starting range gets a real threshold.
+    function maybeWiden(){
+      if(t<3) return;
+      const mn=meanX(), nearLo = mn < xLo + span*0.12, nearHi = mn > xHi - span*0.12;
+      if(widenLo<2 && (hardStreak>=2 || nearLo)){ build(xLo - span0*0.5, xHi); for(const h of history) applyLik(h.x,h.r); widenLo++; hardStreak=0; }
+      else if(widenHi<2 && (easyStreak>=2 || nearHi)){ build(xLo, xHi + span0*0.5); for(const h of history) applyLik(h.x,h.r); widenHi++; easyStreak=0; }
+    }
 
     // choose next stimulus: argmin expected marginal-α entropy. First 2 trials deliberately easy.
     function next(){
@@ -90,16 +96,15 @@
     }
 
     function record(x, correct){
-      // locate the grid index for x (x came from ALPHA, so exact-ish)
-      let xi=lastXi, best=Infinity;
-      for(let i=0;i<nA;i++){ const d=Math.abs(ALPHA[i]-x); if(d<best){best=d;xi=i;} }
-      const lik=LIK[xi];
-      for(let c=0;c<nC;c++){ P[c] *= correct ? lik[c] : (1-lik[c]); }
-      normalize(P);
+      history.push({x, r: correct?1:0});
+      // edge-placement streaks (uses the placement index from next(), before applyLik remaps)
+      if(lastXi<=1 && correct) hardStreak++; else hardStreak=0;
+      if(lastXi>=nA-2 && !correct) easyStreak++; else easyStreak=0;
+      applyLik(x, correct?1:0);
       t++;
-      // diminishing-returns tracker: how much did this trial actually reduce marginal entropy?
       const hNow = entropy(marginalAlpha(P));
       if(priorH - hNow > 0 && (prevExpH - hNow) < 0.015) dryRuns++; else dryRuns=0;
+      maybeWiden();
     }
 
     function stats(){
@@ -107,21 +112,19 @@
       let mean=0; for(let i=0;i<nA;i++) mean+=ALPHA[i]*m[i];
       let varr=0; for(let i=0;i<nA;i++) varr+=m[i]*(ALPHA[i]-mean)*(ALPHA[i]-mean);
       const sd=Math.sqrt(Math.max(varr,0));
-      // 95% CI from the marginal CDF
       let cum=0, lo=ALPHA[0], hi=ALPHA[nA-1], gotLo=false;
       for(let i=0;i<nA;i++){ cum+=m[i]; if(!gotLo && cum>=0.025){ lo=ALPHA[i]; gotLo=true; } if(cum>=0.975){ hi=ALPHA[i]; break; } }
       const ciW=Math.abs(hi-lo);
-      const conf=Math.max(0,Math.min(1, 1 - ciW/(span*0.5)));
+      const conf=Math.max(0,Math.min(1, 1 - ciW/(span0*0.5)));   // conf vs the ORIGINAL span
       return {
-        mean, sd, ci:[lo,hi], ciW, conf, trial:t,
+        mean, sd, ci:[lo,hi], ciW, conf, trial:t, widened:widenLo+widenHi,
         usable: t>=cfg.nMin && (ciW<=cfg.ciUsable || dryRuns>=3),
         solid:  t>=cfg.nMin && ciW<=cfg.ciSolid,
-        precise: t>=cfg.nMin && ciW<=cfg.ciSolid,   // alias
-        forceStop: t>=cfg.nMax,
-        edge: (lastXi<=1 || lastXi>=nA-2)          // sitting at a grid edge → possible ceiling/floor
+        precise: t>=cfg.nMin && ciW<=cfg.ciSolid,
+        forceStop: t >= cfg.nMax + (widenLo+widenHi)*4    // extra trials to localise a widened grid
       };
     }
-    return { next, record, stats, _ALPHA:ALPHA };
+    return { next, record, stats, bounds:()=>({lo:xLo, hi:xHi}) };
   }
 
   // Build a Ψ-marginal estimator from a room's staircase params (ADAPT entry).
@@ -142,9 +145,12 @@
       ciUsable: span*0.28, ciSolid: span*0.16
     };
     const eng = makePsi(cfg);
+    // clamp only to a generous absolute range (4× past each anchor) so an auto-widened grid
+    // can report a threshold beyond the original floor/ceil — that's the whole point.
+    const loB = Math.min(P.floor, P.ceil)/4, hiB = Math.max(P.floor, P.ceil)*4;
     return {
       z: eng, dir, span, nMin: cfg.nMin, nMax: cfg.nMax,
-      levelOf(x){ return Math.max(P.floor, Math.min(P.ceil, inv(dir*x))); }
+      levelOf(x){ return Math.max(loB, Math.min(hiB, inv(dir*x))); }
     };
   }
 
