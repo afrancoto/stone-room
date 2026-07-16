@@ -475,7 +475,7 @@
     // newly-adaptive 2AFC rooms
     Flyby:{type:'X', q:'Which passed closer?', answerAltered:true, start:2.2, floor:1.06, ceil:6, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[3.2,1.2], fmt:v=>v.toFixed(1)+'× gap', dur:2.6,
       play:(lv,t,alt)=>{const far=5.5; flyby(t, Math.random()<.5?1:-1, alt?far/lv:far, 2.4);}},
-    Halls:{type:'X', q:'Which room was bigger?', answerAltered:true, start:.55, floor:.12, ceil:1.1, hard:.9, easy:1.4, log:true, betterHigh:true, anchors:[.3,.9], fmt:v=>Math.round(v*100)+'% larger', dur:2.7,
+    Halls:{type:'X', q:'Which room was bigger?', answerAltered:true, start:.55, floor:.12, ceil:1.1, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[.9,.3], fmt:v=>Math.round(v*100)+'% larger', dur:2.7,
       play:(lv,t,alt)=>hallPluckSec(t, alt?1.1*(1+lv):1.1)},
   };
 
@@ -501,6 +501,7 @@
   let st=null;                                    // active stair state
   let sp=null;                                    // active spatial state
   let cnt=null;                                   // active count state
+  let kbAz=0, kbRad=110, kbActive=false;          // keyboard guess cursor (spatial rooms)
 
   const $=id=>document.getElementById(id);
   const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare')};
@@ -536,8 +537,22 @@
     catch(e){ storageOK=false; }
     if(!db || typeof db!=='object' || !db.devices) db={devices:{}};
   }
-  async function saveDB(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(db)); storageOK=true; }catch(e){ storageOK=false; } }
+  // read-modify-write so a second tab (or an 'again' run on a stale cache) can't clobber
+  // devices saved elsewhere: reload the stored map, overlay ours, persist.
+  async function saveDB(){
+    try{
+      let stored={devices:{}};
+      try{ const r=localStorage.getItem(STORE_KEY); if(r){ const p=JSON.parse(r); if(p&&p.devices) stored=p; } }catch(e){}
+      Object.keys(db.devices).forEach(k=>{ stored.devices[k]=db.devices[k]; });
+      db=stored;
+      localStorage.setItem(STORE_KEY, JSON.stringify(db)); storageOK=true;
+    }catch(e){ storageOK=false; }
+  }
   function deviceNames(){ return Object.keys(db.devices).sort((a,b)=>(db.devices[b].date||'').localeCompare(db.devices[a].date||'')); }
+  const hasDevice=n=>Object.prototype.hasOwnProperty.call(db.devices,n);
+  // a name that never collides with Object.prototype keys, and a fresh unique default
+  function safeName(n){ return /^(__proto__|prototype|constructor)$/i.test(n) ? n+' ' : n; }
+  function suggestName(){ const names=deviceNames(); let i=1; while(names.includes('Headphones '+i)) i++; return 'Headphones '+i; }
 
   // ---- deep link: #<room tag> jumps straight to that single room ----
   const deepRoom=(()=>{
@@ -581,7 +596,7 @@
     $('calreplay').addEventListener('click',runCal);
     $('calgo').addEventListener('click',()=>{buildSelect(); show('select');});
     $('selstart').addEventListener('click',()=>{buildDevice(); show('device');});
-    $('devgo').addEventListener('click',()=>{ device=($('devinput').value.trim())||'My headphones'; startGame(); });
+    $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName()); startGame(); });
     $('again').addEventListener('click',startGame);
     $('reselect').addEventListener('click',()=>{buildSelect(); show('select');});
     $('endcompare').addEventListener('click',()=>{buildCompare(); show('compare');});
@@ -592,6 +607,7 @@
     $('contbtn').addEventListener('click',()=>{ const fn=pendingContinue; hideCheckpointBtns(); guessLocked=false; if(fn) fn(); });
     $('field').addEventListener('pointerdown',e=>onTap(e,false));
     $('fieldO').addEventListener('pointerdown',e=>onTap(e,true));
+    document.addEventListener('keydown',onKeydown);
     $('replay').addEventListener('click',()=>{ if(!guessLocked && !$('replay').disabled) replayFn(); });
     $('selall').addEventListener('click',()=>{selected=CH.map(()=>true); paintChips();});
     $('selnone').addEventListener('click',()=>{selected=CH.map(()=>false); paintChips();});
@@ -625,7 +641,7 @@
   }
 
   function buildDevice(){
-    $('devinput').value=device;
+    $('devinput').value = device || suggestName();
     const box=$('devchips'); box.innerHTML='';
     deviceNames().slice(0,4).forEach(n=>{
       const b=document.createElement('button'); b.className='devchip'; b.textContent=n;
@@ -834,15 +850,17 @@
 
   // ---------- adaptive count (Crowd) ----------
   function setupCount(c){
-    cnt={n:3, best:2, trial:0, minR:4, maxR:8, wrong:0, done:false, history:[]};
+    cnt={n:3, best:3, trial:0, minR:4, maxR:8, wrong:0, done:false, history:[]};
     showPrecisionUI();
     countTrial();
   }
   function countTrial(){
     const n=cnt.n;
-    const labels=[]; for(let k=n-1;k<=n+1;k++) labels.push(String(k));
-    const btns=buildChoices(labels,['voices','voices','voices'],countPick);
-    cnt.answerIdx=1;                              // middle label == true count
+    // shuffle the three options so the true count isn't always the middle button (a positional tell)
+    const vals=[n-1,n,n+1];
+    for(let i=vals.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [vals[i],vals[j]]=[vals[j],vals[i]];}
+    const btns=buildChoices(vals.map(String),['voices','voices','voices'],countPick);
+    cnt.answerIdx=vals.indexOf(n);
     const keys=[...T_KEYS].sort(()=>Math.random()-.5);
     const chosen=[]; for(let k=0;k<n;k++) chosen.push(keys[k%keys.length]);
     const span=160, step=n>1?span/(n-1):0;
@@ -875,17 +893,18 @@
     choiceTimers.push(setTimeout(()=>{ [...$('choices').children].forEach(b=>b.classList.remove('correct','wrong')); countTrial(); }, 640));
   }
   function finishCount(){
-    if(cnt.done) return; cnt.done=true; guessLocked=true; clearTimers(); hideCheckpointBtns();
-    // map best countable (3..7) to pct
-    const pct=Math.round(clamp((cnt.best-3)/(7-3),0,1)*100);
-    recordRoom(pct, cnt.best+' voices', {val:cnt.best});
-    $('status').innerHTML=`You held <span class="pts">${cnt.best} voices</span> apart · +${pct}`;
-    setPrecision(1, cnt.best+' voices');
+    if(cnt.done) return; cnt.done=true; guessLocked=true; stopVoices(); hideCheckpointBtns();
+    const best=Math.max(cnt.best,3);             // 3 is the smallest ensemble ever presented
+    const pct=Math.round(clamp((best-3)/(7-3),0,1)*100);
+    recordRoom(pct, best+' voices', {val:best});
+    $('status').innerHTML=`You held <span class="pts">${best} voices</span> apart · +${pct}`;
+    setPrecision(1, best+' voices');
     showLearn(); appendTier(tierLine('Crowd',pct)); advanceUI();
   }
   // ---------- adaptive spatial ----------
-  function listen(){$('fieldwrap').classList.remove('listening'); void $('field').offsetWidth; $('fieldwrap').classList.add('listening');}
-  function listenO(){$('fieldwrapO').classList.remove('listening'); void $('fieldO').offsetWidth; $('fieldwrapO').classList.add('listening');}
+  // force reflow on the wrapping HTML div (offsetWidth is undefined on <svg> in Firefox)
+  function listen(){$('fieldwrap').classList.remove('listening'); void $('fieldwrap').offsetWidth; $('fieldwrap').classList.add('listening');}
+  function listenO(){$('fieldwrapO').classList.remove('listening'); void $('fieldwrapO').offsetWidth; $('fieldwrapO').classList.add('listening');}
 
   function setupSpatial(c){
     const S=SPATIAL[c.tag];
@@ -897,26 +916,27 @@
     guessLocked=false; sp.locked=false;
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
     setReplay(true);
+    kbActive=false; kbAz=0; kbRad = sp.mode==='orbit'?112 : sp.mode==='depth'?90 : 110;
     const c=sp.c, S=sp.S, r=sp.round;
     if(c.mode==='locate'){
       const ecc=S.ecc[Math.min(r,S.ecc.length-1)];
       const az=(Math.random()<.5?-1:1)*jit(ecc,6), key=rndTimbre();
       sp.target={az:clamp(az,-88,88),dist:1.6,mode:'locate'};
-      const build=()=>{stopVoices(); const v=makeVoice(key,sp.target.az,1.6,0.55); voices=[v]; setTimeout(()=>voices[0]&&voices[0].loop(),200);};
+      const build=()=>{stopVoices(); const v=makeVoice(key,sp.target.az,1.6,0.55); voices=[v]; choiceTimers.push(setTimeout(()=>voices[0]&&voices[0].loop(),200));};
       replayFn=()=>{listen(); build();}; $('status').textContent='Where is it?'; listen(); build();
     } else if(c.mode==='sweep'){
       const spd=S.spd[Math.min(r,S.spd.length-1)];
       const from=jit((Math.random()<.5?-1:1)*80,6), to=jit((Math.random()<.5?-1:1)*55,10), key=rndTimbre();
       sp.target={az:to,dist:1.6,mode:'sweep'};
       const build=()=>{stopVoices(); const v=makeVoice(key,from,1.6,0.55); voices=[v];
-        setTimeout(()=>{ if(!voices[0])return; v.loop(); v.glide(from,to,spd); },200);};
+        choiceTimers.push(setTimeout(()=>{ if(!voices[0])return; v.loop(); v.glide(from,to,spd); },200));};
       replayFn=()=>{listen(); build();}; $('status').textContent='It moves…'; listen(); build();
     } else if(c.mode==='depth'){
       const near=Math.random()<.5; const az=jit((Math.random()<.5?-1:1)*(30+r*6),6);
       const d=near?jit(1.3,.2):jit(6+r,1);
       sp.target={az:clamp(az,-80,80),dist:d,mode:'depth'};
       const key=rndTimbre();
-      const build=()=>{stopVoices(); const v=makeVoice(key,sp.target.az,sp.target.dist,0.55); voices=[v]; setTimeout(()=>voices[0]&&voices[0].loop(),200);};
+      const build=()=>{stopVoices(); const v=makeVoice(key,sp.target.az,sp.target.dist,0.55); voices=[v]; choiceTimers.push(setTimeout(()=>voices[0]&&voices[0].loop(),200));};
       replayFn=()=>{listen(); build();}; $('status').textContent='Near or far — and where?'; listen(); build();
     } else if(c.mode==='separate'){
       const spread=S.spread[Math.min(r,S.spread.length-1)];
@@ -969,6 +989,29 @@
   }
   function confirmNote(key,az,dist){ choiceTimers.push(setTimeout(()=>{ const tv=makeVoice(key,az,dist,0.6); tv.playOnce(ctx.currentTime+.05); },200)); }
 
+  // keyboard guess cursor for spatial rooms (accessibility): arrows move, Enter locks
+  function showKbCursor(){
+    if(sp.mode==='orbit'){
+      const gx=Math.sin(kbAz*Math.PI/180)*kbRad, gy=-Math.cos(kbAz*Math.PI/180)*kbRad;
+      $('guessO').setAttribute('cx',gx); $('guessO').setAttribute('cy',gy); $('guessO').classList.add('on');
+    } else {
+      const gx=Math.sin(kbAz*Math.PI/180)*kbRad, gy=LY-Math.cos(kbAz*Math.PI/180)*kbRad;
+      $('guess').setAttribute('cx',gx); $('guess').setAttribute('cy',gy); $('guess').classList.add('on');
+    }
+  }
+  function onKeydown(e){
+    if(!sp || guessLocked || sp._finished || orbitInt) return;
+    const isOrbit=sp.mode==='orbit', step=4;
+    if(e.key==='ArrowLeft') kbAz = isOrbit ? (kbAz-step+360)%360 : clamp(kbAz-step,-90,90);
+    else if(e.key==='ArrowRight') kbAz = isOrbit ? (kbAz+step)%360 : clamp(kbAz+step,-90,90);
+    else if(e.key==='ArrowUp') kbRad = clamp(kbRad+8,20,150);
+    else if(e.key==='ArrowDown') kbRad = clamp(kbRad-8,20,150);
+    else if(e.key==='Enter'||e.key===' '){ if(!kbActive){ kbActive=true; showKbCursor(); e.preventDefault(); return; }
+      e.preventDefault(); if(isOrbit) lockOrbit(kbAz,kbRad); else lockField(kbAz,kbRad); return; }
+    else return;
+    kbActive=true; e.preventDefault(); showKbCursor();
+  }
+
   function lockField(az,rad){
     guessLocked=true; $('fieldwrap').classList.remove('listening'); $('replay').disabled=true;
     const c=sp.c, mode=c.mode;
@@ -990,9 +1033,13 @@
       const hit=bestKey===sp.target.key&&best<50; effErr=hit?err:90;
       msg=hit?pick(contentOf('Separation').hit):'That was another voice.';
     } else if(mode==='depth'){
-      const dErr=Math.abs(rad-truthRad); const aOk=err<24; const dOk=dErr<40;
+      // credit near vs far by which side of the mid-radius the tap fell — this matches the
+      // drawn inner (r74, near) and outer (r150, far) arcs, so following the instruction scores.
+      const boundary=112, near=sp.target.dist<3;
+      const dOk = near ? rad<boundary : rad>=boundary;
+      const aOk = err<24;
       effErr = err + (dOk?0:35);
-      msg = (aOk&&dOk)? pick(contentOf('Depth').hit) : (dOk?'Right distance, off bearing.':'Bearing ok — wrong row.');
+      msg = aOk&&dOk ? pick(contentOf('Depth').hit) : dOk ? 'Right distance, off bearing.' : aOk ? 'Right bearing — wrong row.' : 'Missed bearing and row.';
     } else {
       msg = err<12?pick(contentOf(sp.c.tag).hit):err<32?'Close.':pick(contentOf(sp.c.tag).miss);
     }
@@ -1021,7 +1068,7 @@
   function acuityStats(){
     // robust central error and a confidence from spread & count
     const e=sp.errs.slice().sort((a,b)=>a-b);
-    const med=e[Math.floor(e.length/2)];
+    const med = e.length%2 ? e[(e.length-1)/2] : (e[e.length/2-1]+e[e.length/2])/2;
     const mean=e.reduce((a,b)=>a+b,0)/e.length;
     const varr=e.reduce((a,b)=>a+(b-mean)*(b-mean),0)/e.length;
     const se=Math.sqrt(varr/e.length);
@@ -1122,7 +1169,7 @@
     else if(pct>=.35){rank='Warming up'; verdict='Critical listening is a learned skill. Another lap and the claims start proving themselves.';}
     else{rank='First listen'; verdict='All of this lives in the sound — it takes a few laps to hear it. Pick one group and drill it.';}
     $('rank').textContent=rank; $('verdict').textContent=verdict;
-    const dev = db.devices[device] || {rooms:{}};
+    const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
     order.forEach(i=>{ const tag=CH[i].tag;
       dev.rooms[tag] = Object.assign({pct:chPct[i], thr:roomThr[tag]}, roomVal[tag]||{});
     });

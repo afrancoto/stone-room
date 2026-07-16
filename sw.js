@@ -1,6 +1,6 @@
 /* Stone Room service worker — offline app shell + runtime caching.
    Bump CACHE on any release so clients pull fresh assets. */
-const CACHE = 'stone-room-v8';
+const CACHE = 'stone-room-v9';
 const SHELL = [
   './',
   './index.html',
@@ -15,6 +15,7 @@ const SHELL = [
   './icons/icon-maskable-192.png',
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
+  './icons/favicon-32.png',
 ];
 
 self.addEventListener('install', e => {
@@ -35,13 +36,17 @@ self.addEventListener('fetch', e => {
   const sameOrigin = url.origin === self.location.origin;
 
   if (sameOrigin) {
-    // cache-first for our own shell, fall back to network then update cache
+    // cache-first for our own assets; only cache *successful* responses so a captive-portal
+    // interstitial or a deploy-blip error body can't poison the cache. The index.html fallback
+    // is for navigations only — an offline asset request should 404, not return the HTML doc.
     e.respondWith(
       caches.match(req).then(hit => hit || fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        if (res && res.ok && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        }
         return res;
-      }).catch(() => caches.match('./index.html')))
+      }).catch(() => req.mode === 'navigate' ? caches.match('./index.html') : Response.error()))
     );
   } else {
     // runtime cache for cross-origin (fonts): stale-while-revalidate

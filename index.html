@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Stone Room — a listening lab</title>
 <meta name="description" content="A free listening lab: test your headphones and train your ears. 23 short rooms that measure your pair's fade points in real Hz and dB — and teach you what the reviews mean." />
 <meta name="theme-color" content="#17130F" />
@@ -115,10 +115,10 @@
     </div>
 
     <div class="g-mid">
-      <div class="field-wrap" id="fieldwrap">
+      <div class="field-wrap" id="fieldwrap" tabindex="0" role="application" aria-label="Listening field — tap where you hear the sound, or use arrow keys to aim and Enter to place your guess">
         <svg class="field" id="field" viewBox="-168 -78 336 208" aria-label="frontal listening stage">
           <path class="arcfaint" d="M -150 95 A 150 150 0 0 1 150 95"/>
-          <path class="arc" d="M -110 41 A 110 110 0 0 1 110 41"/>
+          <path class="arc" d="M -74 95 A 74 74 0 0 1 74 95"/>
           <text class="lbl" x="-150" y="112" text-anchor="middle">left</text>
           <text class="lbl" x="0" y="-64" text-anchor="middle">front</text>
           <text class="lbl" x="150" y="112" text-anchor="middle">right</text>
@@ -130,7 +130,7 @@
         </svg>
       </div>
 
-      <div class="field-wrap circle hidden" id="fieldwrapO">
+      <div class="field-wrap circle hidden" id="fieldwrapO" tabindex="0" role="application" aria-label="Full-circle listening field — tap where you hear the sound, or use arrow keys to aim and Enter to place your guess">
         <svg class="field" id="fieldO" viewBox="-160 -160 320 320" aria-label="full-circle listening field">
           <circle class="arcfaint" cx="0" cy="0" r="150"/>
           <circle class="arc" cx="0" cy="0" r="112"/>

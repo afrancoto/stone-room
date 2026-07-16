@@ -27,6 +27,8 @@
     Snap:      { group:'time',  conv:v=>v*1000, txt:v=>`Snap ${Math.round(v)} ms` },
     Pulse:     { group:'time',  conv:v=>v,      txt:v=>`Pulse ${Math.round(v)} ms` },
     Echo:      { group:'time',  conv:v=>v*1000, txt:v=>`Echo ${Math.round(v)} ms` },
+    Flyby:     { group:'space', conv:v=>v,      txt:v=>`Flyby ${v.toFixed(1)}× gap` },
+    Halls:     { group:'texture', conv:v=>v*100, txt:v=>`Halls ${Math.round(v)}% room` },
     Shade:     { group:'level', conv:v=>v,                        txt:v=>`Shade ${v.toFixed(2)} dB` },
     Whisper:   { group:'level', conv:v=>20*Math.log10(.2/v),      txt:v=>`Detail ${Math.round(v)} dB under` },
     Silence:   { group:'level', conv:v=>20*Math.log10(v/.45),     txt:v=>`Hiss ${Math.round(v)} dB` },
@@ -174,11 +176,26 @@ ${head}${g}${spaceSvg}${rowsSvg}${mark}
     return el.firstChild;
   }
 
-  // rasterize the card to a PNG blob (2x) for sharing/saving
-  function toPNG(svgEl, scale){
+  // lazily load the embedded card font (only when someone actually exports)
+  function loadCardFont(){
+    if(window.SR_CARD_FONT) return Promise.resolve(window.SR_CARD_FONT);
+    return new Promise(res=>{
+      const s=document.createElement('script'); s.src='card-font.js';
+      s.onload=()=>res(window.SR_CARD_FONT||null); s.onerror=()=>res(null);
+      document.head.appendChild(s);
+    });
+  }
+  // rasterize the card to a PNG blob for sharing/saving. The exported SVG is rendered in an
+  // isolated image context that can't reach the page's web font, so embed it as @font-face.
+  async function toPNG(svgEl, scale){
+    const s=scale||3;
+    const font=await loadCardFont().catch(()=>null);
+    let xml=new XMLSerializer().serializeToString(svgEl);
+    if(font){
+      const style=`<style>@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:400 700;src:url('${font}') format('woff2');}</style>`;
+      xml=xml.replace(/(<svg[^>]*>)/, '$1'+style);
+    }
     return new Promise((resolve,reject)=>{
-      const s=scale||3;
-      const xml=new XMLSerializer().serializeToString(svgEl);
       const url=URL.createObjectURL(new Blob([xml],{type:'image/svg+xml;charset=utf-8'}));
       const img=new Image();
       img.onload=()=>{
