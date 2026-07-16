@@ -442,35 +442,35 @@
   // type D: one interval holds the stimulus (pick it). type X: both play; one is altered.
   // play(level, t, flag): D → flag=stimulus present; X → flag=this interval is the altered one.
   const ADAPT={
-    Foundation:{type:'D', q:'Which held a tone?', start:55, floor:24, ceil:95, hard:.90, easy:1.15, log:true, betterHigh:false, anchors:[70,26], fmt:v=>Math.round(v)+' Hz',
+    Foundation:{type:'D', q:'Which held a tone?', dur:1.4, start:55, floor:24, ceil:95, hard:.90, easy:1.15, log:true, betterHigh:false, anchors:[70,26], fmt:v=>Math.round(v)+' Hz',
       play:(lv,t,on)=>{marker(t); if(on) subTone(lv, t+.12, 1.15, lv<45?.85:.7);}},
-    Air:{type:'D', q:'Which held a shimmer?', start:8500, floor:6000, ceil:16000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[8000,14500], fmt:v=>(v/1000).toFixed(1)+' kHz',
+    Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:8500, floor:6000, ceil:16000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[8000,14500], fmt:v=>(v/1000).toFixed(1)+' kHz',
       play:(lv,t,on)=>{marker(t); if(on) shimmerBurst(lv, t+.15, .8, .16);}},
-    Whisper:{type:'D', q:'Which pad hid a tick?', start:.12, floor:.01, ceil:.3, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.14,.015], fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
+    Whisper:{type:'D', q:'Which pad hid a tick?', dur:1.7, start:.12, floor:.01, ceil:.3, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.14,.015], fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
       play:(lv,t,on)=>{pad(t,1.6,.2); if(on) tick(t+.5+Math.random()*.7, lv);}},
-    Silence:{type:'X', q:'Which hid a hiss?', answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.05,.006], fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
+    Silence:{type:'X', q:'Which hid a hiss?', dur:2.4, answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.05,.006], fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
       play:(lv,t,alt)=>silenceTail(t, alt?lv:0)},
-    Grain:{type:'X', q:'Which was pure?', answerAltered:false, start:.16, floor:.015, ceil:.35, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.18,.025], fmt:v=>'partial '+Math.round(v*100)+'%',
+    Grain:{type:'X', q:'Which was pure?', dur:1.15, answerAltered:false, start:.16, floor:.015, ceil:.35, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.18,.025], fmt:v=>'partial '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>grainNote(t, alt, lv)},
-    Composure:{type:'X', q:'Which stayed clean?', answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], fmt:v=>'drive '+v.toFixed(1),
+    Composure:{type:'X', q:'Which stayed clean?', dur:1.8, answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], fmt:v=>'drive '+v.toFixed(1),
       play:(lv,t,alt)=>composureChord(t, alt?lv:0)},
-    Grip:{type:'X', q:'Which was tighter?', answerAltered:false, start:.4, floor:.05, ceil:.8, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.45,.08], fmt:v=>'bloom '+Math.round(v*100)+'%',
+    Grip:{type:'X', q:'Which was tighter?', dur:1.7, answerAltered:false, start:.4, floor:.05, ceil:.8, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.45,.08], fmt:v=>'bloom '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>bassNote(t, alt, lv)},
-    Presence:{type:'X', q:'Which was in the room?', answerAltered:false, start:9, floor:1, ceil:16, hard:.75, easy:1.4, log:false, betterHigh:false, anchors:[10,1.5], fmt:v=>v.toFixed(1)+' dB scoop',
+    Presence:{type:'X', q:'Which was in the room?', dur:1.7, answerAltered:false, start:9, floor:1, ceil:16, hard:.75, easy:1.4, log:false, betterHigh:false, anchors:[10,1.5], fmt:v=>v.toFixed(1)+' dB scoop',
       play:(lv,t,alt)=>presenceVoice(t, alt?-lv:0)},
-    Silk:{type:'X', q:'Which "s" stabbed?', answerAltered:true, start:.18, floor:.015, ceil:.5, hard:.72, easy:1.55, log:true, betterHigh:false, anchors:[.2,.03], fmt:v=>'+'+Math.round(20*Math.log10((0.05+v)/0.05))+' dB sib',
+    Silk:{type:'X', q:'Which "s" stabbed?', dur:1.5, answerAltered:true, start:.18, floor:.015, ceil:.5, hard:.72, easy:1.55, log:true, betterHigh:false, anchors:[.2,.03], fmt:v=>'+'+Math.round(20*Math.log10((0.05+v)/0.05))+' dB sib',
       play:(lv,t,alt)=>silkPhrase(t, .05+(alt?lv:0))},
-    Snap:{type:'X', q:'Which truly hit?', answerAltered:false, start:.035, floor:.004, ceil:.08, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.04,.006], fmt:v=>Math.round(v*1000)+' ms attack',
+    Snap:{type:'X', q:'Which truly hit?', dur:.9, answerAltered:false, start:.035, floor:.004, ceil:.08, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.04,.006], fmt:v=>Math.round(v*1000)+' ms attack',
       play:(lv,t,alt)=>snapHit(t, alt?lv:.001)},
-    Pulse:{type:'X', q:'Which groove was tight?', answerAltered:false, start:40, floor:5, ceil:80, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[45,8], fmt:v=>Math.round(v)+' ms',
+    Pulse:{type:'X', q:'Which groove was tight?', dur:2.15, answerAltered:false, start:40, floor:5, ceil:80, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[45,8], fmt:v=>Math.round(v)+' ms',
       play:(lv,t,alt)=>pulsePattern(t, 3, alt?lv:0)},
-    Shade:{type:'X', q:'Which was louder?', answerAltered:true, start:3, floor:.25, ceil:6, hard:.75, easy:1.55, log:true, betterHigh:false, anchors:[3.5,.5], fmt:v=>v.toFixed(2)+' dB',
+    Shade:{type:'X', q:'Which was louder?', dur:.95, answerAltered:true, start:3, floor:.25, ceil:6, hard:.75, easy:1.55, log:true, betterHigh:false, anchors:[3.5,.5], fmt:v=>v.toFixed(2)+' dB',
       play:(lv,t,alt)=>dynNote(t, alt?lv:0)},
-    Centre:{type:'X', q:'Which sat dead centre?', answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], fmt:v=>Math.round(v*100)+'% off',
+    Centre:{type:'X', q:'Which sat dead centre?', dur:1.5, answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], fmt:v=>Math.round(v*100)+'% off',
       play:(lv,t,alt)=>centreNote(t, alt?(Math.random()<.5?1:-1)*lv:0)},
-    Duet:{type:'X', q:'Which felt wider?', answerAltered:true, start:.8, floor:.1, ceil:1, hard:.72, easy:1.5, log:true, betterHigh:false, anchors:[.9,.15], fmt:v=>'width '+Math.round(v*100)+'%',
+    Duet:{type:'X', q:'Which felt wider?', dur:2.0, answerAltered:true, start:.8, floor:.1, ceil:1, hard:.72, easy:1.5, log:true, betterHigh:false, anchors:[.9,.15], fmt:v=>'width '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>duetChord(t, alt, 12*lv, .9*lv)},
-    Echo:{type:'X', q:'Which wall was further?', answerAltered:true, start:.1, floor:.012, ceil:.3, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.12,.02], fmt:v=>'+'+Math.round(v*1000)+' ms',
+    Echo:{type:'X', q:'Which wall was further?', dur:.85, answerAltered:true, start:.1, floor:.012, ceil:.3, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.12,.02], fmt:v=>'+'+Math.round(v*1000)+' ms',
       play:(lv,t,alt)=>clickEcho(t, .12+(alt?lv:0))},
     // newly-adaptive 2AFC rooms
     Flyby:{type:'X', q:'Which passed closer?', answerAltered:true, start:2.2, floor:1.06, ceil:6, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[3.2,1.2], fmt:v=>v.toFixed(1)+'× gap', dur:2.6,
@@ -512,6 +512,22 @@
   const setReplay=(on)=>{$('replay').disabled=!on||guessLocked;};
   const pick=a=>a[Math.floor(Math.random()*a.length)];
   const contentOf=tag=>RC[tag]||{};
+
+  // ---- duration estimates, derived from the real trial parameters ----
+  // q = typical run locking at the first checkpoint; f = running to full precision.
+  function estRoom(c){
+    if(c.mode==='stair'){
+      const A=ADAPT[c.tag], d=A.dur||1.5;
+      const t=0.25+2*d+0.3+1.7;                 // both intervals + answer + feedback pause
+      return {q:14*t, f:28*t};
+    }
+    if(c.mode==='count') return {q:5*7.5, f:8*7.5};
+    const per={locate:7,sweep:8.5,depth:7.5,separate:10,orbit:11}[c.mode]||8;
+    const S=SPATIAL[c.tag]||{minR:4,maxR:8};
+    return {q:(S.minR+1)*per, f:S.maxR*per};
+  }
+  const fmtMin=s=>String(Math.max(1,Math.round(s/60)));
+  const fmtRange=e=>{const a=fmtMin(e.q), b=fmtMin(e.f); return a===b?`~${a} min`:`~${a}–${b} min`;};
 
   // ---- persistent storage (per-device results, localStorage) ----
   const STORE_KEY='stoneroom_results_v2';
@@ -591,7 +607,8 @@
     if(deepRoom>=0){
       selected=CH.map((_,i)=>i===deepRoom);
       const c=CH[deepRoom], note=$('deepnote');
-      note.style.display='block'; note.textContent=`Direct entry · ${c.tag} — ${c.title}. You'll go straight to this room.`;
+      note.style.display='block';
+      note.textContent=`Direct entry · ${c.tag} — ${c.title}. You'll go straight to this room (${fmtRange(estRoom(c))}).`;
     }
   }
 
@@ -624,7 +641,8 @@
       const sec=document.createElement('div'); sec.className='ggroup';
       const head=document.createElement('div'); head.className='ghead';
       const idxs=CH.map((c,i)=>c.group===gk?i:-1).filter(i=>i>=0);
-      head.innerHTML=`<span><span class="gname">${g.name}</span><span class="gsub">${g.sub}</span></span>`;
+      const gEst=idxs.reduce((a,i)=>{const e=estRoom(CH[i]); a.q+=e.q; a.f+=e.f; return a;},{q:0,f:0});
+      head.innerHTML=`<span><span class="gname">${g.name}</span><span class="gsub">${g.sub} · ${fmtRange(gEst)}</span></span>`;
       const tog=document.createElement('button');
       tog.addEventListener('click',()=>{ const allOn=idxs.every(i=>selected[i]); idxs.forEach(i=>selected[i]=!allOn); paintChips(); });
       head.appendChild(tog); sec.appendChild(head);
@@ -632,7 +650,7 @@
       idxs.forEach(i=>{
         const c=CH[i];
         const b=document.createElement('button'); b.className='chip'; b.dataset.idx=i;
-        b.innerHTML=`<div class="cname">${c.tag}</div><div class="cq">${c.tests}</div><div class="cclaim">${c.claim}</div>`;
+        b.innerHTML=`<div class="cname">${c.tag}<span class="ctime">${fmtRange(estRoom(c))}</span></div><div class="cq">${c.tests}</div><div class="cclaim">${c.claim}</div>`;
         b.addEventListener('click',()=>{selected[i]=!selected[i]; paintChips();});
         grid.appendChild(b);
       });
@@ -648,6 +666,10 @@
       sec.querySelector('.ghead button').textContent = idxs.every(i=>selected[i]) ? 'skip group' : 'take group';
     });
     $('selstart').disabled = !selected.some(Boolean);
+    const est=CH.reduce((a,c,i)=>{ if(selected[i]){const e=estRoom(c); a.n++; a.q+=e.q; a.f+=e.f;} return a; },{n:0,q:0,f:0});
+    $('seltime').innerHTML = est.n
+      ? `${est.n} room${est.n>1?'s':''} · <b>≈${fmtMin(est.q)} min</b> locking readings early · ≈${fmtMin(est.f)} min at full precision`
+      : 'No rooms selected';
   }
 
   function startGame(){
@@ -662,6 +684,8 @@
 
   function loadChapter(){
     const c=chap();
+    const remQ=order.slice(oi).reduce((a,ci)=>a+estRoom(CH[ci]).q,0);
+    $('timeleft').textContent = order.length>1 ? ` · ~${fmtMin(remQ)} min left` : '';
     $('chapno').textContent=ROMANS[oi]; $('chaptag').textContent=c.tag; $('chaptitle').textContent=c.title;
     $('claim').textContent=c.claim; $('notice').innerHTML=c.notice;
     const cd=$('chapdots'); cd.innerHTML=''; order.forEach((_,i)=>{const d=document.createElement('div');d.className='cdot'+(i<oi?' done':i===oi?' now':'');cd.appendChild(d);});
