@@ -13,14 +13,12 @@
   };
 
   const INTRO = {
-    what: "Stone Room is two things at once: a test bench for the headphones you just bought, and a gym for your ears. Each room plays a sound, asks one simple question, then tells you — in real Hz and dB — where your gear and your hearing actually land.",
-    gap: "Most free tools do half the job: they train your ears with no number attached to your device, or they publish lab measurements of a reference unit that isn't the one on your head. Stone Room measures your headphones through your own ears, in real Hz and dB, saves the result, and lets you set one pair against another.",
-    howto: [
-      "Find a quiet room and keep the volume moderate — loud enough for detail, not so loud it tires you.",
-      "Turn off any phone spatializer, Dolby Atmos, and EQ so you're hearing the headphones raw.",
-      "When comparing two pairs, match their loudness first — the louder one always seems ‘better.’"
-    ],
-    promise: "It's free, nothing leaves your phone, and every result is saved right here on your device."
+    hook: "Test your headphones. Train your ears.",
+    line: "Twenty-three rooms. Each proves one thing the reviews claim — then measures it on your pair, in real Hz and dB.",
+    what: "Each room plays a sound and asks one simple question. Answer, and it hunts your exact limit — telling you, in real numbers, where your headphones and your hearing actually land. You learn what the words mean by hearing them.",
+    gap: "Other free tools do half the job: they train your ears with no number for your gear, or they publish lab readings of a unit that isn't on your head. This one measures your pair, through your ears, and saves it — so you can set one headphone against another.",
+    tips: "Best in a quiet room, at a moderate volume, with any phone spatializer, Dolby Atmos and EQ switched off.",
+    promise: "Free. Nothing leaves your phone."
   };
 
   // Per-room content keyed by tag. hit/miss = per-trial micro-feedback pools;

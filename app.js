@@ -533,9 +533,11 @@
 
   // ---- intro rendering ----
   function buildIntro(){
+    $('introHook').textContent=INTRO.hook;
+    $('introLine').textContent=INTRO.line;
     $('introWhat').textContent=INTRO.what;
     $('introGap').textContent=INTRO.gap;
-    const ul=$('introHowto'); ul.innerHTML=''; INTRO.howto.forEach(s=>{const li=document.createElement('li'); li.textContent=s; ul.appendChild(li);});
+    $('introTips').textContent=INTRO.tips;
     $('introPromise').textContent=INTRO.promise;
   }
 
@@ -547,6 +549,11 @@
       else { show('cal'); runCal(); }
     });
     $('gocompare').addEventListener('click',async()=>{await loadDB(); buildCompare(); show('compare');});
+    $('aboutToggle').addEventListener('click',()=>{
+      const a=$('introAbout'), t=$('aboutToggle'), opening=a.hasAttribute('hidden');
+      if(opening){ a.removeAttribute('hidden'); t.setAttribute('aria-expanded','true'); t.textContent='Less'; }
+      else { a.setAttribute('hidden',''); t.setAttribute('aria-expanded','false'); t.textContent='What is this?'; }
+    });
     $('calreplay').addEventListener('click',runCal);
     $('calgo').addEventListener('click',()=>{buildSelect(); show('select');});
     $('selstart').addEventListener('click',()=>{buildDevice(); show('device');});

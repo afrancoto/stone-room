@@ -51,20 +51,25 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 .minor{background:none;border:none;color:var(--muted);font-family:var(--ui);font-size:12px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .linkbtn{background:none;border:none;color:var(--sage);font-family:var(--ui);font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 
-/* ---- intro / start ---- */
-#start .cans{font-size:34px; margin:2px 0}
-#start .btn{margin-top:22px}
-#start .minor{margin-top:14px}
-.introcard{margin:16px auto 0; max-width:38ch; text-align:left; display:flex; flex-direction:column; gap:12px}
-.ic{border:1px solid var(--line); border-radius:14px; padding:13px 15px; background:rgba(42,35,28,.5)}
-.ic h3{font-family:var(--disp); font-weight:500; font-size:15px; margin:0 0 4px; color:var(--stone)}
-.ic h3 .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; vertical-align:middle}
-.ic p{margin:0; font-size:13px; line-height:1.5; color:var(--muted)}
-.ic.gapcard{border-color:var(--gold); background:rgba(217,162,75,.07)}
-.ic.gapcard h3{color:var(--gold)}
-.howto{margin:0; padding-left:18px; font-size:12.5px; line-height:1.55; color:var(--muted)}
-.howto li{margin:3px 0}
-.promise{font-size:11.5px; letter-spacing:.04em; color:var(--sage); text-align:center; margin-top:2px}
+/* ---- intro / landing ---- */
+/* the landing sits high-and-quiet: one signature motif, one hook, lots of air */
+#intro.on{justify-content:center}
+.hero{display:flex; flex-direction:column; align-items:center}
+.herofield{width:min(58vw,220px); height:auto; overflow:visible; margin-bottom:6px}
+.heroDot{fill:var(--ember); filter:drop-shadow(0 0 10px rgba(226,122,69,.55)); transform-box:fill-box; transform-origin:center; animation:heroSettle 1.3s cubic-bezier(.2,.9,.25,1) both}
+@keyframes heroSettle{0%{transform:translate(30px,10px) scale(.4); opacity:0} 60%{opacity:1} 100%{transform:none; opacity:1}}
+#intro h1{margin:.12em 0 .3em}
+.hook{font-family:var(--disp); font-style:italic; font-size:clamp(17px,5.2vw,21px); color:var(--stone); line-height:1.25; margin:0 auto; max-width:20ch}
+.subline{color:var(--muted); font-size:13.5px; line-height:1.55; margin:16px auto 0; max-width:30ch}
+#intro .btn{margin-top:24px}
+.introlinks{display:flex; align-items:center; gap:12px; justify-content:center; margin-top:16px}
+.introlinks .sep{color:var(--line)}
+.about{max-width:34ch; margin:18px auto 0; text-align:left; animation:fade .35s ease both}
+.about[hidden]{display:none}
+.about p{margin:0 0 10px; font-size:13px; line-height:1.6; color:var(--muted)}
+.about p:last-child{margin-bottom:0}
+.about .about-tips{color:var(--gold); font-size:12px; line-height:1.55}
+.promise{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); text-align:center; margin-top:22px; opacity:.7}
 
 .warnbox{margin:14px auto 0; max-width:36ch; border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:12px; color:var(--muted); line-height:1.55; text-align:left}
 .warnbox b{color:var(--gold); font-weight:600}

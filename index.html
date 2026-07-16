@@ -25,18 +25,31 @@
 
   <!-- landing / explainer -->
   <section id="intro" class="screen on">
-    <div class="cans">◗ ◖</div>
-    <div class="eyebrow">A listening lab</div>
-    <h1>Stone Room</h1>
+    <div class="hero">
+      <svg class="herofield" viewBox="-120 -66 240 150" aria-hidden="true">
+        <path class="arcfaint" d="M -100 60 A 100 100 0 0 1 100 60"/>
+        <path class="arc" d="M -68 26 A 68 68 0 0 1 68 26"/>
+        <circle class="headdot" cx="0" cy="60" r="4"/>
+        <circle class="heroDot" id="heroDot" cx="-42" cy="-4" r="7"/>
+      </svg>
+      <div class="eyebrow">A listening lab</div>
+      <h1>Stone Room</h1>
+      <p class="hook" id="introHook"></p>
+    </div>
+    <p class="subline" id="introLine"></p>
     <p class="lede deepnote" id="deepnote"></p>
-    <div class="introcard">
-      <div class="ic"><h3><span class="dot" style="background:var(--sage)"></span>What this is</h3><p id="introWhat"></p></div>
-      <div class="ic gapcard"><h3><span class="dot" style="background:var(--gold)"></span>Why it's different</h3><p id="introGap"></p></div>
-      <div class="ic"><h3><span class="dot" style="background:var(--ember)"></span>For a clean read</h3><ul class="howto" id="introHowto"></ul></div>
+    <button class="btn" id="begin">Tune in</button>
+    <div class="introlinks">
+      <button class="linkbtn" id="aboutToggle" aria-expanded="false">What is this?</button>
+      <span class="sep">·</span>
+      <button class="linkbtn" id="gocompare" style="display:none">Compare pairs</button>
+    </div>
+    <div class="about" id="introAbout" hidden>
+      <p id="introWhat"></p>
+      <p id="introGap"></p>
+      <p class="about-tips" id="introTips"></p>
     </div>
     <p class="promise" id="introPromise"></p>
-    <button class="btn" id="begin" style="margin-top:16px">Tune in</button><br>
-    <button class="minor" id="gocompare" style="display:none">View headphone comparison</button>
   </section>
 
   <!-- calibration -->
