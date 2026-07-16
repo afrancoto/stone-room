@@ -1,0 +1,1530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Stone Room — a listening lab</title>
+<meta name="description" content="A free listening lab for new headphones: 23 short rooms that test soundstage, detail, bass, treble and timing — and measure your pair's fade points in real Hz and dB." />
+<meta property="og:title" content="Stone Room — a listening lab" />
+<meta property="og:description" content="Put audiophile claims to the test on your own headphones. Play the rooms, learn the vocabulary, and walk out with measurements you can compare pair to pair." />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#17130F" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='54' r='40' fill='%232A231C' stroke='%23D9A24B' stroke-width='6'/%3E%3Ccircle cx='50' cy='54' r='12' fill='%23E27A45'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#17130F; --surface:#2A231C; --line:#3C332A;
+    --stone:#EDE4D6; --muted:#A2937F;
+    --ember:#E27A45; --sage:#7BA79C; --gold:#D9A24B;
+    --disp:"Fraunces",Georgia,serif;
+    --ui:"Space Grotesk",system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(120% 90% at 50% -10%, #241D16 0%, var(--bg) 60%);
+    color:var(--stone); font-family:var(--ui);
+    display:flex; align-items:flex-start; justify-content:center;
+    min-height:100dvh; overflow-x:hidden; overflow-y:auto; user-select:none;
+    -webkit-user-select:none; touch-action:manipulation;
+  }
+  .app{width:min(94vw,436px); padding:18px 20px 24px; text-align:center; position:relative; margin:auto}
+  .eyebrow{font-size:11px; letter-spacing:.28em; text-transform:uppercase; color:var(--muted); font-weight:500;}
+  h1{font-family:var(--disp); font-weight:400; font-size:clamp(30px,9vw,42px); line-height:1.02; margin:.35em 0 .25em; letter-spacing:-.01em;}
+  h2{font-family:var(--disp); font-weight:400; font-size:24px; margin:.2em 0 .4em}
+  .lede{color:var(--muted); font-size:14.5px; line-height:1.5; margin:0 auto; max-width:32ch;}
+  .btn{font-family:var(--ui); font-weight:500; font-size:15px; color:var(--bg); background:var(--stone); border:none; border-radius:100px; padding:14px 26px; cursor:pointer; transition:transform .12s ease, opacity .2s ease;}
+  .btn:active{transform:scale(.97)}
+  .btn:disabled{opacity:.35; cursor:default}
+  .btn:focus-visible,.choice:focus-visible,.replay:focus-visible,.chip:focus-visible,.devchip:focus-visible{outline:2px solid var(--sage); outline-offset:3px}
+  .btn.ghost{background:transparent;color:var(--stone);border:1px solid var(--line)}
+
+  .screen{display:none; animation:fade .5s ease both}
+  .screen.on{display:block}
+  @keyframes fade{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
+
+  #start .cans{font-size:34px; margin:6px 0 2px}
+  #start .btn{margin-top:22px}
+  #start .minor{margin-top:12px}
+  .minor{background:none;border:none;color:var(--muted);font-family:var(--ui);font-size:12px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .warnbox{margin:14px auto 0; max-width:34ch; border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:12px; color:var(--muted); line-height:1.55; text-align:left}
+  .warnbox b{color:var(--gold); font-weight:600}
+
+  #cal .lede{margin-bottom:16px}
+  .calbar{display:flex; justify-content:space-between; align-items:center; width:min(80vw,300px); margin:8px auto 4px; height:56px; position:relative}
+  .calbar .end{font-size:11px; letter-spacing:.24em; text-transform:uppercase; color:var(--muted); width:52px}
+  .caltrack{flex:1; height:2px; background:var(--line); margin:0 8px; position:relative; border-radius:2px}
+  .caldot{position:absolute; top:50%; width:14px; height:14px; border-radius:50%; background:var(--ember); transform:translate(-50%,-50%); left:50%; opacity:0; transition:left .5s ease}
+  .calbar.play .caldot{opacity:1; box-shadow:0 0 14px var(--ember)}
+  .row{display:flex; gap:10px; justify-content:center; margin-top:20px; flex-wrap:wrap}
+
+  .selscroll{max-height:50dvh; overflow-y:auto; margin:12px -4px 0; padding:0 4px}
+  .ggroup{margin:14px 0 6px; text-align:left}
+  .ghead{display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:0 2px 8px; border-bottom:1px solid var(--line); margin-bottom:10px}
+  .ghead .gname{font-family:var(--disp); font-size:17px; color:var(--stone)}
+  .ghead .gsub{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin-left:8px}
+  .ghead button{background:none;border:none;color:var(--sage);font-family:var(--ui);font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+  .chipgrid{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .chip{border:1px solid var(--line); background:var(--surface); border-radius:14px; padding:11px 12px 10px; text-align:left; cursor:pointer; color:var(--stone); font-family:var(--ui); transition:border-color .15s, background .15s, opacity .15s; opacity:.5; position:relative}
+  .chip.on{opacity:1; border-color:var(--sage); background:rgba(123,167,156,.08)}
+  .chip.on::after{content:'✓'; position:absolute; top:9px; right:11px; color:var(--sage); font-size:12px}
+  .chip .cname{font-size:14.5px; font-weight:500; margin:0 0 2px}
+  .chip .cq{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--gold); margin-bottom:4px}
+  .chip .cclaim{font-family:var(--disp); font-style:italic; font-size:11.5px; line-height:1.35; color:var(--muted)}
+  .seltools{display:flex; gap:16px; justify-content:center; margin-top:12px}
+  .seltools button{background:none;border:none;color:var(--muted);font-family:var(--ui);font-size:12px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  #select .row{margin-top:14px}
+
+  /* device screen */
+  #device input{
+    width:min(80vw,300px); background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    color:var(--stone); font-family:var(--ui); font-size:16px; padding:13px 16px; text-align:center; margin-top:14px;
+  }
+  #device input:focus{outline:2px solid var(--sage); outline-offset:2px}
+  .devchips{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:12px}
+  .devchip{border:1px solid var(--line); background:var(--surface); color:var(--stone); border-radius:100px; padding:8px 14px; font-family:var(--ui); font-size:13px; cursor:pointer}
+  .devchip:active{transform:scale(.96)}
+
+  .chapline{display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:2px}
+  .chapno{font-family:var(--disp); font-size:13px; color:var(--gold)}
+  .chaptag{font-size:10.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--muted)}
+  .chaptitle{font-family:var(--disp); font-weight:400; font-size:25px; margin:.08em 0 .12em}
+  .claim{font-family:var(--disp); font-style:italic; font-size:13.5px; line-height:1.4; color:var(--gold); max-width:32ch; margin:0 auto 6px}
+  .claim::before{content:'“'} .claim::after{content:'”'}
+  .notice{color:var(--muted); font-size:12.5px; line-height:1.42; min-height:32px; max-width:34ch; margin:0 auto}
+
+  .field-wrap{position:relative; width:min(92vw,390px); aspect-ratio:1.75; margin:12px auto 2px}
+  .field-wrap.circle{width:min(72vw,290px); aspect-ratio:1}
+  .field-wrap.hidden{display:none}
+  svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-action:none}
+  .arc{fill:none; stroke:var(--line); stroke-width:1.5}
+  .arcfaint{fill:none; stroke:var(--line); stroke-width:1; opacity:.4}
+  .headdot{fill:var(--muted)}
+  .lbl{fill:var(--muted); font-family:var(--ui); font-size:10px; letter-spacing:.18em; text-transform:uppercase}
+  .guess{fill:var(--sage); opacity:0; transition:opacity .15s}
+  .guess.on{opacity:1}
+  .truth{fill:var(--ember); opacity:0}
+  .truthg.on .truth{opacity:1; animation:pop .45s cubic-bezier(.2,1.3,.4,1) both}
+  @keyframes pop{from{transform:scale(.2)}to{transform:scale(1)}}
+  .truthg{transform-box:fill-box; transform-origin:center}
+  .link{stroke:var(--sage); stroke-width:1.5; stroke-dasharray:3 4; opacity:0; transition:opacity .3s}
+  .link.on{opacity:.7}
+  .ripple{fill:none; stroke:var(--ember); stroke-width:1.5; opacity:0}
+  .listening .ripple{animation:rip 1.9s ease-out infinite}
+  @keyframes rip{0%{r:10px;opacity:.5}100%{r:120px;opacity:0}}
+  .comet{fill:var(--gold); opacity:0}
+  .comet.on{opacity:.9}
+
+  .choices{display:none; gap:12px; justify-content:center; margin:22px auto 10px; flex-wrap:wrap}
+  .choices.on{display:flex}
+  .choice{min-width:86px; padding:20px 18px; border-radius:16px; border:1px solid var(--line); background:var(--surface); color:var(--stone); font-family:var(--disp); font-size:22px; cursor:pointer; transition:transform .1s ease, border-color .2s, background .2s;}
+  .choice small{display:block; font-family:var(--ui); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-top:6px}
+  .choice:active{transform:scale(.96)}
+  .choice:disabled{opacity:.5; cursor:default}
+  .choice.correct{border-color:var(--sage); background:rgba(123,167,156,.12)}
+  .choice.wrong{border-color:var(--ember); background:rgba(226,122,69,.10)}
+  .choice.playing{border-color:var(--gold)}
+
+  .status{min-height:22px; font-size:13.5px; color:var(--stone); margin:4px 0 2px; font-weight:500}
+  .status .pts{color:var(--gold)}
+  .learn{display:none; margin:8px auto 0; max-width:34ch; border-left:2px solid var(--sage); padding:6px 0 6px 12px; text-align:left; font-size:12px; line-height:1.5; color:var(--muted)}
+  .learn.on{display:block; animation:fade .4s ease both}
+  .learn b{color:var(--sage); font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:10px; display:block; margin-bottom:2px}
+  .controls{display:flex; gap:10px; justify-content:center; align-items:center; margin-top:8px}
+  .replay{display:inline-flex; align-items:center; gap:8px; background:transparent; border:1px solid var(--line); color:var(--stone); border-radius:100px; padding:11px 20px; font-family:var(--ui); font-size:14px; cursor:pointer}
+  .replay:active{transform:scale(.97)}
+  .replay:disabled{opacity:.35}
+  .next{opacity:0; pointer-events:none; transition:opacity .25s}
+  .next.on{opacity:1; pointer-events:auto}
+
+  .progress{display:flex; gap:6px; justify-content:center; margin-top:14px}
+  .pip{width:7px; height:7px; border-radius:50%; background:var(--line)}
+  .pip.done{background:var(--sage)}
+  .pip.now{background:var(--stone); box-shadow:0 0 0 3px rgba(237,228,214,.12)}
+  .chapdots{display:flex; gap:4px; justify-content:center; margin-top:8px; flex-wrap:wrap}
+  .cdot{width:4px;height:4px;border-radius:50%;background:var(--line)}
+  .cdot.done{background:var(--gold)} .cdot.now{background:var(--stone)}
+
+  .scorebar{position:absolute; top:0; right:16px; font-size:11px; letter-spacing:.14em; color:var(--muted)}
+  .scorebar b{color:var(--gold); font-weight:600}
+  #game{padding-top:24px}
+  .devlabel{position:absolute; top:0; left:16px; font-size:11px; letter-spacing:.14em; color:var(--muted); max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left}
+
+  #end .num{font-family:var(--disp); font-size:56px; line-height:1; color:var(--gold); margin:.1em 0}
+  #end .rank{font-size:12px; letter-spacing:.24em; text-transform:uppercase; color:var(--muted)}
+  #end .verdict{margin:12px auto 6px; max-width:30ch; color:var(--stone); font-size:14px; line-height:1.5}
+  #end .saved{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--sage); min-height:16px}
+  .breakdown{width:min(84vw,310px); margin:12px auto 0; text-align:left; max-height:30dvh; overflow-y:auto}
+  .bghead{font-family:var(--disp); font-size:13px; color:var(--stone); margin:10px 0 2px; border-bottom:1px solid var(--line); padding-bottom:4px}
+  .brow{display:flex; align-items:center; gap:10px; margin:7px 0}
+  .brow .bname{width:96px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+  .btrack{flex:1; height:6px; background:var(--line); border-radius:3px; overflow:hidden}
+  .bfill{height:100%; background:var(--sage); border-radius:3px; width:0; transition:width .8s cubic-bezier(.2,.8,.2,1)}
+  .brow .bpct{width:58px; font-size:10.5px; color:var(--stone); text-align:right}
+  #end .row{margin-top:18px}
+
+  /* compare screen */
+  .legend{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:12px 0 4px}
+  .legchip{display:inline-flex; align-items:center; gap:7px; border:1px solid var(--line); background:var(--surface); color:var(--stone); border-radius:100px; padding:7px 13px; font-family:var(--ui); font-size:12.5px; cursor:pointer; opacity:.45}
+  .legchip.on{opacity:1; border-color:var(--stone)}
+  .legchip .dot{width:9px;height:9px;border-radius:50%}
+  .cmpscroll{max-height:52dvh; overflow-y:auto; margin:10px -4px 0; padding:0 4px; text-align:left}
+  .cmprow{margin:8px 0 10px}
+  .cmprow .rname{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:4px}
+  .cmpbar{display:flex; align-items:center; gap:8px; margin:3px 0}
+  .cmpbar .track{flex:1; height:5px; background:var(--line); border-radius:3px; overflow:hidden}
+  .cmpbar .fill{height:100%; border-radius:3px}
+  .cmpbar .pct{width:60px; font-size:10px; color:var(--stone); text-align:right}
+  .cmpempty{color:var(--muted); font-size:13.5px; margin-top:20px; line-height:1.6}
+  #compare .row{margin-top:16px}
+
+  @media (prefers-reduced-motion: reduce){ *{animation-duration:.001s !important; transition-duration:.001s !important} .listening .ripple{opacity:.3} }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <section id="start" class="screen on">
+    <div class="cans">◗ ◖</div>
+    <div class="eyebrow">A listening lab</div>
+    <h1>Stone Room</h1>
+    <p class="lede">Twenty-three rooms. In the lab rooms, the difference shrinks trial by trial until it fades — the fade point is your measurement, in Hz and dB, saved per headphone so pairs can be compared.</p>
+    <p class="lede" id="deepnote" style="display:none; margin-top:10px; color:var(--gold)"></p>
+    <div class="warnbox"><b>Before you start:</b> switch OFF Dolby Atmos (Settings → Sounds and vibration → Sound quality and effects) and any EQ. Phone spatializers fight this game's own 3D rendering and smear the positions.</div>
+    <button class="btn" id="begin">Tune in</button><br>
+    <button class="minor" id="gocompare" style="display:none">View headphone comparison</button>
+  </section>
+
+  <section id="cal" class="screen">
+    <div class="eyebrow">First, a quick check</div>
+    <h2>Left. Centre. Right.</h2>
+    <p class="lede">Three notes travel across the stage. If they clearly move ear to ear, you're set. If they don't — or left and right feel smeared — turn off <em>Dolby Atmos</em> and check <em>Mono audio</em> is off.</p>
+    <div class="calbar" id="calbar">
+      <span class="end" style="text-align:left">◀ Left</span>
+      <div class="caltrack"><div class="caldot" id="caldot"></div></div>
+      <span class="end" style="text-align:right">Right ▶</span>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="calreplay">↺ Again</button>
+      <button class="btn" id="calgo">It moves — continue</button>
+    </div>
+  </section>
+
+  <section id="select" class="screen">
+    <div class="eyebrow">Build your tour</div>
+    <h2>What do you want to prove?</h2>
+    <p class="lede">Each room tests one audiophile claim. Tap rooms in or out; use a group's toggle for the whole set.</p>
+    <div class="selscroll" id="selscroll"></div>
+    <div class="seltools">
+      <button id="selall">Everything</button>
+      <button id="selnone">Clear</button>
+    </div>
+    <div class="row"><button class="btn" id="selstart">Continue</button></div>
+  </section>
+
+  <section id="device" class="screen">
+    <div class="eyebrow">One more thing</div>
+    <h2>Which headphones are on?</h2>
+    <p class="lede">Results are saved per pair, so you can run the same rooms on different headphones and compare them.</p>
+    <div class="warnbox"><b>Comparing pairs?</b> Match loudness first: replay the calibration notes on each pair and set the phone volume until they sound equally loud. Keep ANC in the same mode, and check both use their best Bluetooth codec (Developer options → Bluetooth audio codec).</div>
+    <input id="devinput" maxlength="24" placeholder="e.g. Px8 S2" />
+    <div class="devchips" id="devchips"></div>
+    <div class="row"><button class="btn" id="devgo">Start the tour</button></div>
+  </section>
+
+  <section id="game" class="screen">
+    <div class="devlabel" id="devlabel"></div>
+    <div class="scorebar">SCORE <b id="score">0</b></div>
+    <div class="chapline"><span class="chapno" id="chapno">I</span><span class="chaptag" id="chaptag"></span></div>
+    <div class="chaptitle" id="chaptitle"></div>
+    <div class="claim" id="claim"></div>
+    <div class="notice" id="notice"></div>
+
+    <div class="field-wrap" id="fieldwrap">
+      <svg class="field" id="field" viewBox="-168 -78 336 208" aria-label="frontal listening stage">
+        <path class="arcfaint" d="M -150 95 A 150 150 0 0 1 150 95"/>
+        <path class="arc" d="M -110 41 A 110 110 0 0 1 110 41"/>
+        <text class="lbl" x="-150" y="112" text-anchor="middle">left</text>
+        <text class="lbl" x="0" y="-64" text-anchor="middle">front</text>
+        <text class="lbl" x="150" y="112" text-anchor="middle">right</text>
+        <circle class="ripple" id="ripple" cx="0" cy="95" r="10"/>
+        <circle class="headdot" cx="0" cy="95" r="5"/>
+        <line class="link" id="link" x1="0" y1="95" x2="0" y2="95"/>
+        <circle class="guess" id="guess" cx="0" cy="0" r="7"/>
+        <g class="truthg" id="truthg"><circle class="truth" id="truth" cx="0" cy="0" r="8"/></g>
+      </svg>
+    </div>
+
+    <div class="field-wrap circle hidden" id="fieldwrapO">
+      <svg class="field" id="fieldO" viewBox="-160 -160 320 320" aria-label="full-circle listening field">
+        <circle class="arcfaint" cx="0" cy="0" r="150"/>
+        <circle class="arc" cx="0" cy="0" r="112"/>
+        <text class="lbl" x="0" y="-138" text-anchor="middle">front</text>
+        <text class="lbl" x="0" y="146" text-anchor="middle">back</text>
+        <text class="lbl" x="-141" y="4" text-anchor="middle">L</text>
+        <text class="lbl" x="141" y="4" text-anchor="middle">R</text>
+        <circle class="ripple" id="rippleO" cx="0" cy="0" r="10"/>
+        <circle class="headdot" cx="0" cy="0" r="5"/>
+        <circle class="comet" id="comet" cx="0" cy="0" r="5"/>
+        <line class="link" id="linkO" x1="0" y1="0" x2="0" y2="0"/>
+        <circle class="guess" id="guessO" cx="0" cy="0" r="7"/>
+        <g class="truthg" id="truthgO"><circle class="truth" id="truthO" cx="0" cy="0" r="8"/></g>
+      </svg>
+    </div>
+
+    <div class="choices" id="choices"></div>
+
+    <div class="status" id="status">Listen…</div>
+    <div class="learn" id="learn"></div>
+    <div class="controls">
+      <button class="replay" id="replay"><span>↺</span> Replay</button>
+      <button class="btn next" id="next">Next</button>
+    </div>
+    <div class="progress" id="progress"></div>
+    <div class="chapdots" id="chapdots"></div>
+  </section>
+
+  <section id="end" class="screen">
+    <div class="eyebrow">Tour complete</div>
+    <div class="num" id="finalnum">0</div>
+    <div class="rank" id="rank">—</div>
+    <p class="verdict" id="verdict"></p>
+    <div class="saved" id="saved"></div>
+    <div class="seltools">
+      <button id="copyres">Copy results</button>
+      <button id="sharelink">Share link</button>
+    </div>
+    <div class="breakdown" id="breakdown"></div>
+    <div class="row">
+      <button class="btn ghost" id="reselect">Rooms</button>
+      <button class="btn ghost" id="endcompare">Compare</button>
+      <button class="btn" id="again">Again</button>
+    </div>
+  </section>
+
+  <section id="compare" class="screen">
+    <div class="eyebrow">The lab bench</div>
+    <h2>Headphone vs headphone</h2>
+    <p class="lede">Same rooms, different pairs. Tap names to show or hide them.</p>
+    <div class="legend" id="legend"></div>
+    <div class="cmpscroll" id="cmpscroll"></div>
+    <div class="row">
+      <button class="btn ghost" id="cmpback">Back</button>
+      <button class="btn" id="cmpnew">New tour</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const LY = 95, RAD = 150;
+  let ctx, master, reverb, hallSmall, hallMed, hallLarge, _noise;
+
+  function initAudio(){
+    if(ctx) return;
+    ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const comp = ctx.createDynamicsCompressor();
+    // limiter-style safety only: anything below ~-8 dBFS passes linearly, so the
+    // level differences the lab rooms measure (Shade, Silk, Silence…) reach the ears intact
+    comp.threshold.value=-6; comp.knee.value=4; comp.ratio.value=12; comp.attack.value=.003; comp.release.value=.25;
+    master = ctx.createGain(); master.gain.value = 0.85;
+    master.connect(comp); comp.connect(ctx.destination);
+    reverb   = makeVerb(2.2, 2.6);
+    hallSmall= makeVerb(0.45, 3.4);
+    hallMed  = makeVerb(1.3, 2.6);
+    hallLarge= makeVerb(3.6, 2.0);
+  }
+  function makeVerb(sec, decay){
+    const cv=ctx.createConvolver();
+    const len=Math.max(1,ctx.sampleRate*sec)|0, buf=ctx.createBuffer(2,len,ctx.sampleRate);
+    for(let c=0;c<2;c++){const d=buf.getChannelData(c);
+      for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);}
+    cv.buffer=buf;
+    const inG=ctx.createGain(), outG=ctx.createGain(); outG.gain.value=0.9;
+    inG.connect(cv); cv.connect(outG); outG.connect(master);
+    return {in:inG};
+  }
+  function noiseBuf(sec){
+    if(_noise && _noise.duration>=sec) return _noise;
+    const len=(ctx.sampleRate*Math.max(sec,3))|0, b=ctx.createBuffer(1,len,ctx.sampleRate), d=b.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    _noise=b; return b;
+  }
+  function pos(az,dist){const a=az*Math.PI/180; return {x:Math.sin(a)*dist, z:-Math.cos(a)*dist};}
+  function makePanner(az,dist){
+    const p=ctx.createPanner();
+    p.panningModel='HRTF'; p.distanceModel='inverse'; p.refDistance=1; p.maxDistance=40; p.rolloffFactor=1.0;
+    const {x,z}=pos(az,dist); p.positionX.value=x; p.positionY.value=0; p.positionZ.value=z;
+    return p;
+  }
+  const TIMBRES={
+    marimba:{wave:'sine',base:392,motif:[0,7,4,0],len:.26,rel:.28,ov:2,ovg:.25},
+    bell:   {wave:'sine',base:523,motif:[0,4,7,12],len:.5,rel:.9,ov:2.7,ovg:.4},
+    pluck:  {wave:'triangle',base:330,motif:[0,5,3,7],len:.22,rel:.2,ov:3,ovg:.15},
+    wood:   {wave:'square',base:196,motif:[0,0,7,5],len:.16,rel:.12,ov:1,ovg:0,filt:700},
+    chime:  {wave:'sine',base:1046,motif:[0,12,7],len:.3,rel:.7,ov:2.4,ovg:.3},
+  };
+  const T_KEYS=Object.keys(TIMBRES);
+  const rndTimbre=()=>T_KEYS[Math.floor(Math.random()*T_KEYS.length)];
+  const semis=(b,n)=>b*Math.pow(2,n/12);
+
+  function makeVoice(key,az,dist,gain){
+    const T=TIMBRES[key], panner=makePanner(az,dist);
+    const dry=ctx.createGain(); dry.gain.value=gain; panner.connect(dry); dry.connect(master);
+    const send=ctx.createGain(); send.gain.value=Math.min(.6,.1+dist*0.05); panner.connect(send); send.connect(reverb.in);
+    let timer=null, stopped=true;
+    function note(freq,t){
+      const g=ctx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(1,t+.008);
+      g.gain.exponentialRampToValueAtTime(.0008,t+T.len+T.rel);
+      let node=g;
+      if(T.filt){const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=T.filt; g.connect(lp); node=lp;}
+      node.connect(panner);
+      const o=ctx.createOscillator(); o.type=T.wave; o.frequency.value=freq; o.connect(g); o.start(t); o.stop(t+T.len+T.rel+.05);
+      if(T.ovg>0){const g2=ctx.createGain(); g2.gain.setValueAtTime(0,t); g2.gain.linearRampToValueAtTime(T.ovg,t+.008);
+        g2.gain.exponentialRampToValueAtTime(.0006,t+T.len*.6+T.rel); g2.connect(panner);
+        const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=freq*T.ov; o2.connect(g2); o2.start(t); o2.stop(t+T.len+T.rel+.05);}
+    }
+    function playOnce(start){let t=start; T.motif.forEach(s=>{note(semis(T.base,s),t); t+=T.len*1.02;}); return t;}
+    function loop(){stopped=false; const step=()=>{if(stopped)return; const end=playOnce(ctx.currentTime+.02); timer=setTimeout(step,(end-ctx.currentTime+.32)*1000);}; step();}
+    function stop(){stopped=true; if(timer){clearTimeout(timer);timer=null;}}
+    function setAz(az2){const {x,z}=pos(az2,dist); panner.positionX.value=x; panner.positionZ.value=z;}
+    function glide(fromAz,toAz,dur){
+      const t=ctx.currentTime, a=pos(fromAz,dist), b=pos(toAz,dist);
+      panner.positionX.setValueAtTime(a.x,t); panner.positionZ.setValueAtTime(a.z,t);
+      panner.positionX.linearRampToValueAtTime(b.x,t+dur); panner.positionZ.linearRampToValueAtTime(b.z,t+dur);
+    }
+    return {loop,stop,playOnce,glide,setAz,timbre:key,az,dist};
+  }
+
+  // ---- primitives ----
+  function subTone(freq, when, dur, gain){
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.15);
+    g.gain.setValueAtTime(gain,when+dur-.2); g.gain.linearRampToValueAtTime(0,when+dur);
+    g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=freq;
+    o.connect(g); o.start(when); o.stop(when+dur+.05);
+  }
+  function pad(when,dur,gain){
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420; lp.Q.value=.6;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when);
+    g.gain.linearRampToValueAtTime(gain,when+.4);
+    g.gain.setValueAtTime(gain,when+dur-.5); g.gain.linearRampToValueAtTime(0,when+dur);
+    lp.connect(g); g.connect(master);
+    [110,110.7,165.3].forEach(f=>{const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f; o.connect(lp); o.start(when); o.stop(when+dur+.05);});
+  }
+  function tick(when,gain){
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=2200;
+    const g=ctx.createGain(); g.gain.setValueAtTime(gain,when); g.gain.exponentialRampToValueAtTime(.0005,when+.05);
+    hp.connect(g); g.connect(master);
+    const o=ctx.createOscillator(); o.type='square'; o.frequency.value=3000; o.connect(hp); o.start(when); o.stop(when+.07);
+  }
+  function grainNote(when,dirty,partialGain){
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.5,when+.01);
+    g.gain.exponentialRampToValueAtTime(.0008,when+.9); g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=330; o.connect(g); o.start(when); o.stop(when+1);
+    const g2=ctx.createGain(); g2.gain.setValueAtTime(0,when); g2.gain.linearRampToValueAtTime(.18,when+.01);
+    g2.gain.exponentialRampToValueAtTime(.0006,when+.7); g2.connect(master);
+    const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=660; o2.connect(g2); o2.start(when); o2.stop(when+1);
+    if(dirty){
+      const g3=ctx.createGain(); g3.gain.setValueAtTime(0,when); g3.gain.linearRampToValueAtTime(partialGain,when+.01);
+      g3.gain.exponentialRampToValueAtTime(.0005,when+.6); g3.connect(master);
+      const o3=ctx.createOscillator(); o3.type='sine'; o3.frequency.value=330*2.76; o3.connect(g3); o3.start(when); o3.stop(when+1);
+    }
+  }
+  function hallPluck(when,hall,wet){
+    const dry=ctx.createGain(); dry.gain.value=.26; dry.connect(master);
+    const send=ctx.createGain(); send.gain.value=wet; send.connect(hall.in);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(1,when+.006);
+    g.gain.exponentialRampToValueAtTime(.0008,when+.35);
+    g.connect(dry); g.connect(send);
+    const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=440; o.connect(g); o.start(when); o.stop(when+.5);
+  }
+  function airChord(when,cutHz,cutDb){
+    const shelf=ctx.createBiquadFilter(); shelf.type='highshelf'; shelf.frequency.value=cutHz; shelf.gain.value=cutDb;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.28,when+.06);
+    g.gain.setValueAtTime(.28,when+1.4); g.gain.linearRampToValueAtTime(0,when+1.9);
+    shelf.connect(g); g.connect(master);
+    [440,660,880,1320,1980,2970,4455,6680].forEach((f,i)=>{
+      const og=ctx.createGain(); og.gain.value=1/(i*0.9+1.2); og.connect(shelf);
+      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f; o.connect(og); o.start(when); o.stop(when+2);});
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(2);
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000;
+    const ng=ctx.createGain(); ng.gain.setValueAtTime(0,when); ng.gain.linearRampToValueAtTime(.05,when+.3); ng.gain.linearRampToValueAtTime(0,when+1.9);
+    nb.connect(hp); hp.connect(ng); ng.connect(shelf); nb.start(when); nb.stop(when+2);
+  }
+  function snapHit(when,attack){
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.8,when+attack);
+    g.gain.exponentialRampToValueAtTime(.001,when+attack+.35); g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine';
+    o.frequency.setValueAtTime(180,when); o.frequency.exponentialRampToValueAtTime(60,when+.25);
+    o.connect(g); o.start(when); o.stop(when+.7);
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(0.3);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=3000; bp.Q.value=.7;
+    const ng=ctx.createGain(); ng.gain.setValueAtTime(0,when); ng.gain.linearRampToValueAtTime(.45,when+attack); ng.gain.exponentialRampToValueAtTime(.0008,when+attack+.07);
+    nb.connect(bp); bp.connect(ng); ng.connect(master); nb.start(when); nb.stop(when+.25);
+  }
+  function duetChord(when,wide,detuneCents,panAmt){
+    const mk=(cents,p)=>{
+      const sp=ctx.createStereoPanner(); sp.pan.value=p;
+      const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.2,when+.1);
+      g.gain.setValueAtTime(.2,when+1.3); g.gain.linearRampToValueAtTime(0,when+1.8);
+      g.connect(sp); sp.connect(master);
+      const f=220*Math.pow(2,cents/1200);
+      [f,f*1.5,f*2].forEach(fr=>{const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=fr; o.connect(g); o.start(when); o.stop(when+1.9);});
+    };
+    if(wide){ mk(-detuneCents,-panAmt); mk(detuneCents,panAmt); }
+    else { mk(0,0); mk(0.6,0); }
+  }
+  function flyby(when,dir,zDist,dur){
+    const p=ctx.createPanner();
+    p.panningModel='HRTF'; p.distanceModel='inverse'; p.refDistance=1; p.maxDistance=40; p.rolloffFactor=1.1;
+    p.positionY.value=0; p.positionZ.value=-zDist;
+    p.positionX.setValueAtTime(dir*-9,when);
+    p.positionX.linearRampToValueAtTime(dir*9,when+dur);
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1400;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.9,when+.15);
+    g.gain.setValueAtTime(.9,when+dur-.15); g.gain.linearRampToValueAtTime(0,when+dur);
+    lp.connect(g); g.connect(p);
+    const dry=ctx.createGain(); dry.gain.value=1; p.connect(dry); dry.connect(master);
+    [150,150.8].forEach(base=>{
+      const o=ctx.createOscillator(); o.type='sawtooth';
+      o.frequency.setValueAtTime(base*1.06,when);
+      o.frequency.setValueAtTime(base*1.06,when+dur*0.42);
+      o.frequency.linearRampToValueAtTime(base*0.94,when+dur*0.58);
+      o.connect(lp); o.start(when); o.stop(when+dur+.05);
+    });
+  }
+  function clickEcho(when,delaySec){
+    const mkClick=(t,gain,dull)=>{
+      const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(0.1);
+      const f=ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=dull?1800:8000;
+      const g=ctx.createGain(); g.gain.setValueAtTime(gain,t); g.gain.exponentialRampToValueAtTime(.0006,t+.06);
+      nb.connect(f); f.connect(g); g.connect(master); nb.start(t); nb.stop(t+.1);
+    };
+    mkClick(when,.7,false);
+    mkClick(when+delaySec,.32,true);
+  }
+  function dynNote(when,gainDb){
+    // base level sits below the safety limiter's knee so the dB difference is reproduced exactly
+    const g=ctx.createGain(); const amp=.28*Math.pow(10,gainDb/20);
+    g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(amp,when+.015);
+    g.gain.exponentialRampToValueAtTime(.0008,when+.8); g.connect(master);
+    [392,784].forEach((f,i)=>{const og=ctx.createGain(); og.gain.value=i?0.3:1; og.connect(g);
+      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f; o.connect(og); o.start(when); o.stop(when+.9);});
+  }
+  function silenceTail(when,hissGain){
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.45,when+.01);
+    g.gain.exponentialRampToValueAtTime(.0008,when+.5); g.connect(master);
+    const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=523; o.connect(g); o.start(when); o.stop(when+.6);
+    if(hissGain>0){
+      const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(2.5);
+      const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=4000; bp.Q.value=.4;
+      const ng=ctx.createGain(); ng.gain.setValueAtTime(0,when+.3); ng.gain.linearRampToValueAtTime(hissGain,when+.6);
+      ng.gain.setValueAtTime(hissGain,when+2.0); ng.gain.linearRampToValueAtTime(0,when+2.2);
+      nb.connect(bp); bp.connect(ng); ng.connect(master); nb.start(when+.3); nb.stop(when+2.3);
+    }
+  }
+  function pulsePattern(when,lateIdx,lateMs){
+    const step=.32;
+    for(let i=0;i<6;i++){
+      const t=when+i*step+(i===lateIdx?lateMs/1000:0);
+      const g=ctx.createGain(); g.gain.setValueAtTime(.5,t); g.gain.exponentialRampToValueAtTime(.0006,t+.12);
+      const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1200;
+      lp.connect(g); g.connect(master);
+      const o=ctx.createOscillator(); o.type='square'; o.frequency.value=220; o.connect(lp); o.start(t); o.stop(t+.15);
+    }
+  }
+  function bassNote(when,dirty,amt){
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.85,when+.02);
+    if(dirty){
+      g.gain.setValueAtTime(.85,when+.25);
+      g.gain.linearRampToValueAtTime(.5,when+.5);
+      g.gain.linearRampToValueAtTime(.65,when+.7);
+      g.gain.exponentialRampToValueAtTime(.001,when+1.5);
+    } else {
+      g.gain.setValueAtTime(.85,when+.2); g.gain.exponentialRampToValueAtTime(.001,when+.8);
+    }
+    g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=55; o.connect(g); o.start(when); o.stop(when+1.6);
+    if(dirty){
+      [110,165].forEach((f,i)=>{const hg=ctx.createGain(); hg.gain.setValueAtTime(0,when); hg.gain.linearRampToValueAtTime(amt/(i+1),when+.03);
+        hg.gain.exponentialRampToValueAtTime(.0006,when+1.2); hg.connect(master);
+        const ho=ctx.createOscillator(); ho.type='sine'; ho.frequency.value=f; ho.connect(hg); ho.start(when); ho.stop(when+1.3);});
+    }
+  }
+  function centreNote(when,panOff){
+    const sp=ctx.createStereoPanner(); sp.pan.value=panOff;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.4,when+.03);
+    g.gain.setValueAtTime(.4,when+1.0); g.gain.linearRampToValueAtTime(0,when+1.3);
+    g.connect(sp); sp.connect(master);
+    [494,988].forEach((f,i)=>{const og=ctx.createGain(); og.gain.value=i?.25:1; og.connect(g);
+      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f; o.connect(og); o.start(when); o.stop(when+1.4);});
+  }
+  // sibilance: "ah" vowel then an "ss" — smooth vs spiky
+  function silkPhrase(when,sibGain){
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.3,when+.05);
+    g.gain.setValueAtTime(.3,when+.85); g.gain.linearRampToValueAtTime(0,when+1.05); g.connect(master);
+    const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=220;
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1200;
+    o.connect(lp); lp.connect(g); o.start(when); o.stop(when+1.1);
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(0.6);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=7000; bp.Q.value=1.2;
+    const ng=ctx.createGain(); ng.gain.setValueAtTime(0,when+.9); ng.gain.linearRampToValueAtTime(sibGain,when+1.0);
+    ng.gain.linearRampToValueAtTime(0,when+1.3);
+    nb.connect(bp); bp.connect(ng); ng.connect(master); nb.start(when+.9); nb.stop(when+1.35);
+  }
+  // midrange presence: rich voice-like tone, with or without a 1.8 kHz scoop
+  function presenceVoice(when,cutDb){
+    const peak=ctx.createBiquadFilter(); peak.type='peaking'; peak.frequency.value=1800; peak.Q.value=.9; peak.gain.value=cutDb;
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=3800;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.3,when+.06);
+    g.gain.setValueAtTime(.3,when+1.2); g.gain.linearRampToValueAtTime(0,when+1.5);
+    peak.connect(lp); lp.connect(g); g.connect(master);
+    const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=196;
+    const vib=ctx.createOscillator(); vib.frequency.value=5; const vg=ctx.createGain(); vg.gain.value=3;
+    vib.connect(vg); vg.connect(o.frequency); vib.start(when); vib.stop(when+1.6);
+    o.connect(peak); o.start(when); o.stop(when+1.6);
+  }
+  // composure: chord clean vs soft-clipped
+  function makeDriveCurve(k){
+    const n=1024, c=new Float32Array(n);
+    for(let i=0;i<n;i++){const x=i/(n-1)*2-1; c[i]=k?Math.tanh(k*x)/Math.tanh(k):x;}
+    return c;
+  }
+  function driveTrim(k){
+    // soft-clipping raises RMS at equal peak, which would let loudness (not distortion)
+    // give the driven chord away — trim it back to the clean chord's level
+    if(!k) return 1;
+    let se=0, ce=0;
+    for(let i=0;i<512;i++){const x=.6*Math.sin(2*Math.PI*i/512); const y=Math.tanh(k*x)/Math.tanh(k); se+=x*x; ce+=y*y;}
+    return Math.sqrt(se/ce);
+  }
+  function composureChord(when,drive){
+    const sh=ctx.createWaveShaper(); sh.curve=makeDriveCurve(drive);
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=5000;
+    const lvl=.55*driveTrim(drive);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(lvl,when+.05);
+    g.gain.setValueAtTime(lvl,when+1.3); g.gain.linearRampToValueAtTime(0,when+1.6);
+    sh.connect(lp); lp.connect(g); g.connect(master);
+    [110,165,220].forEach(f=>{const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f;
+      const og=ctx.createGain(); og.gain.value=.33; o.connect(og); og.connect(sh); o.start(when); o.stop(when+1.7);});
+  }
+
+  // ---------- groups & chapters ----------
+  const GROUPS={
+    holo:{name:'The Out-of-Head Illusion', sub:'space & imaging'},
+    res: {name:'Hearing Everything', sub:'resolution'},
+    tone:{name:'Truth of Tone', sub:'frequency & timbre'},
+    dyn: {name:'Speed & Dynamics', sub:'time & level'},
+  };
+  const CH=[
+    // --- holography ---
+    {group:'holo',tag:'Stage',title:'Point at the singer',tests:'soundstage width',
+     claim:'A great headphone paints instruments across a stage — you can point at each one.',
+     learn:'Your brain places sound by comparing microsecond timing and level differences between your ears. Clean drivers keep those cues intact; sloppy ones blur the map.',
+     notice:'One sound on the stage in front of you. Tap the arc where it sits.',
+     mode:'locate', rounds:[{az:-72},{az:58},{az:-18}]},
+    {group:'holo',tag:'Motion',title:'Track the mover',tests:'imaging precision',
+     claim:'Pinpoint imaging: when a sound moves, you can follow it like watching it.',
+     learn:'Smooth motion means the inter-ear cues update without smearing. A blurry transducer turns a moving point into a travelling cloud.',
+     notice:'The sound glides across the stage, then stops. Tap where it came to rest.',
+     mode:'sweep', rounds:[{from:-85,to:60},{from:75,to:-40}]},
+    {group:'holo',tag:'Centre',title:'Lock the vocalist',tests:'channel matching',
+     claim:'A perfectly matched pair nails the voice dead centre — zero drift.',
+     learn:'A centre image only forms when left and right drivers match within about 1 dB. Any mismatch drags the vocalist off their stool. B&W hand-match pairs for exactly this.',
+     notice:'The same note twice. One sits exactly between your ears; one drifts a hair to one side. Which was dead centre?',
+     mode:'choice', kind:'centre', rounds:[{off:.3},{off:.18},{off:.1}]},
+    {group:'holo',tag:'Orbit',title:'Around your head',tests:'true holography',
+     claim:'True holography: the music exists around you, not inside your skull.',
+     learn:'Front vs back is the hardest cue — it lives in how your outer ear filters treble. Motion rescues it: your brain tracks the path continuously. A mirrored miss is a famous illusion, not a failure.',
+     notice:'The sound circles your whole head — behind you too — then stops. Tap the ring where it landed. Eyes closed, seriously.',
+     mode:'orbit', rounds:[{},{},{}]},
+    {group:'holo',tag:'Depth',title:'Front row, back row',tests:'layering',
+     claim:'Layering: a good mix has a front row and a back row, and you can seat everyone.',
+     learn:'Distance is decoded from three cues at once: loudness, treble roll-off, and how much room reverb rides along with the direct sound.',
+     notice:'Tap the <em>inner</em> arc for a near sound, the <em>outer</em> for a far one.',
+     mode:'depth', rounds:[{az:-45,d:1.3},{az:52,d:7}]},
+    {group:'holo',tag:'Flyby',title:'How close did it pass?',tests:'distance rendering',
+     claim:'Distance is rendered, not implied — near and far are different physical things.',
+     learn:'A pass distance is computed from the Doppler pitch bend plus the loudness swell. The closer the pass, the sharper both curves — action-movie physics, verified.',
+     notice:'Two vehicles cross your stage, pitch bending as they pass. Which came closer?',
+     mode:'choice', kind:'flyby', rounds:[{a:.8,b:6},{a:1,b:3.5},{a:1.2,b:2.4}]},
+    {group:'holo',tag:'Echo',title:'Hear the walls',tests:'spatial cues',
+     claim:'Good transducers preserve the room\u2019s reflections — you can hear the walls.',
+     learn:'Your brain times the gap from click to reflection: roughly 6 ms per metre of wall distance, there and back. You were literally echolocating.',
+     notice:'A click, then its reflection. Longer silence = further wall. Which wall is further?',
+     mode:'choice', kind:'echo', rounds:[{a:.07,b:.32},{a:.1,b:.22},{a:.12,b:.18}]},
+    {group:'holo',tag:'Duet',title:'Wall to wall',tests:'stereo width',
+     claim:'Width: the mix stretches ear to ear and past your shoulders.',
+     learn:'Width is decorrelation — small deliberate differences between channels. Strong channel separation in the headphone keeps them from collapsing back toward mono.',
+     notice:'The same chord twice. One fills the space between your ears; one stays narrow. Which was wide?',
+     mode:'choice', kind:'duet', rounds:[{det:12,pan:.9},{det:7,pan:.6},{det:4,pan:.4}]},
+    // --- resolution ---
+    {group:'res',tag:'Separation',title:'Pick one voice out',tests:'instrument separation',
+     claim:'Each instrument keeps its own pocket of space — nothing smears together.',
+     learn:'Separation is position plus timbre staying stable per source. When drivers distort, sources bleed into each other and the mix turns to porridge.',
+     notice:'Three sounds at once. You hear your target alone first — then tap it out of the crowd.',
+     mode:'separate', rounds:[{spread:65},{spread:42}]},
+    {group:'res',tag:'Crowd',title:'Count the ensemble',tests:'no congestion',
+     claim:'A busy passage never collapses into mush — the mix stays countable.',
+     learn:'Congestion is where cheap gear folds first: as sources stack up, intermodulation smears them together. Countability is the bluntest possible test of it.',
+     notice:'A small ensemble plays at once, spread across the stage. Count the distinct voices.',
+     mode:'choice', kind:'crowd', rounds:[{},{},{}]},
+    {group:'res',tag:'Whisper',title:'Details under the music',tests:'detail retrieval',
+     claim:'You hear things in familiar albums you never knew were there.',
+     learn:'Low-level detail rides 20–30 dB beneath the music. Low driver distortion and noise keep it audible instead of buried — that\u2019s "detail retrieval".',
+     notice:'<b>Lab room.</b> Two warm pads; one hides a single tiny tick. Pick which. Each catch buries the tick deeper — your floor in dB under the music.',
+     mode:'choice', kind:'ticks', rounds:[{g:.16},{g:.09},{g:.055}]},
+    {group:'res',tag:'Silence',title:'The black background',tests:'noise floor',
+     claim:'Between the notes: true black. No hiss, no veil, just nothing.',
+     learn:'"Black background" is a low noise floor — nothing added beneath quiet passages. You just resolved near-silence, which is exactly what the phrase means.',
+     notice:'A note, then silence — twice. One silence hides a faint hiss. Which was truly black?',
+     mode:'choice', kind:'black', rounds:[{h:.03},{h:.016},{h:.009}]},
+    {group:'res',tag:'Grain',title:'Spot the impostor',tests:'timbre resolution',
+     claim:'Timbre is texture — and you can hear when a note\u2019s texture is even slightly off.',
+     learn:'Timbre lives in the balance of overtones. The impostor carried one stray partial at ~2.8× the fundamental — the sound of texture being subtly wrong.',
+     notice:'<b>Lab room.</b> The same note twice — one pure, one with a faint stray overtone. Pick the pure one. The impostor gets subtler with every catch.',
+     mode:'choice', kind:'grain', rounds:[{p:.2},{p:.12},{p:.07}]},
+    {group:'res',tag:'Halls',title:'How the note dies',tests:'decay resolution',
+     claim:'Notes don\u2019t stop — they fade into a space, and you can hear the size of it.',
+     learn:'A reverb tail falls some 60 dB into silence. Resolving where it ends — and how big the room was — is the classic test of low-level linearity.',
+     notice:'The same pluck, in two different rooms. Which room was bigger?',
+     mode:'choice', kind:'halls', rounds:[{pair:'SL'},{pair:'ML'},{pair:'SM'}]},
+    {group:'res',tag:'Composure',title:'Loud stays clean',tests:'low distortion',
+     claim:'Push it hard and it never hardens — composure under pressure.',
+     learn:'Overdrive a bad driver and it clips: harmonics appear that were never in the music, heard as hardness or glare. Composure means loud and clean are the same thing.',
+     notice:'The same big chord twice. One version subtly hardens and buzzes. Which stayed clean?',
+     mode:'choice', kind:'compose', rounds:[{k:6},{k:3.5},{k:2.2}]},
+    // --- tone ---
+    {group:'tone',tag:'Foundation',title:'The floor beneath',tests:'sub-bass extension',
+     claim:'Real extension: bass you feel in your jaw, below what most gear can even produce.',
+     learn:'Below ~40 Hz most gear rolls off and you only hear overtones. This lab room hunted your exact floor: the lowest frequency this chain — headphone plus your ears — still delivers.',
+     notice:'<b>Lab room.</b> Two intervals; one hides a low tone. Pick which. Each catch drives the tone deeper until it vanishes — your threshold in Hz. Moderate volume.',
+     mode:'stair', rounds:[{}]},
+    {group:'tone',tag:'Grip',title:'Taut, not flabby',tests:'bass control',
+     claim:'Bass with grip: taut and textured, never a shapeless boom.',
+     learn:'Loose bass is an envelope problem: the cone keeps moving after the note should stop. Grip is a fast start AND a fast stop — extension\u2019s stricter sibling.',
+     notice:'Two bass notes. One is clean and controlled; one blooms and wobbles. Which was tighter?',
+     mode:'choice', kind:'grip', rounds:[{amt:.5},{amt:.3},{amt:.18}]},
+    {group:'tone',tag:'Presence',title:'The voice in the room',tests:'midrange truth',
+     claim:'Honest mids put the singer in the room; scooped mids put them behind glass.',
+     learn:'Voices live at 1–3 kHz. Cut that band and a singer steps backward and loses body — the "veiled" sound. Honest mids are why some gear feels intimate.',
+     notice:'The same voice-like tone twice. One has its core hollowed out. Which was in the room with you?',
+     mode:'choice', kind:'presence', rounds:[{db:-12},{db:-8},{db:-5}]},
+    {group:'tone',tag:'Air',title:'Room to breathe',tests:'treble extension',
+     claim:'Air: the openness above the music, the shimmer that cheap gear shaves off.',
+     learn:'The top octave (8 kHz and up) carries shimmer, space and "air". Roll it off and music breathes less — even when you can\u2019t name what went missing.',
+     notice:'<b>Lab room.</b> Two intervals; one holds a faint high shimmer. Each catch pushes it higher until it vanishes — your ceiling in kHz.',
+     mode:'choice', kind:'air', rounds:[{hz:4500,db:-14},{hz:6500,db:-10},{hz:8000,db:-7}]},
+    {group:'tone',tag:'Silk',title:'Smooth, never sharp',tests:'sibilance control',
+     claim:'Treble with silk: all the sparkle, none of the needle in the "s".',
+     learn:'Sibilance is an energy spike near 6–8 kHz that turns an "s" into a stab. Smooth treble keeps the energy without the pain — the hardest tuning balance there is.',
+     notice:'A voice-like phrase ending in "ss" — twice. One "ss" stabs; one stays silk. Which was smoother?',
+     mode:'choice', kind:'silk', rounds:[{mult:4},{mult:2.6},{mult:1.8}]},
+    // --- speed & dynamics ---
+    {group:'dyn',tag:'Snap',title:'Slam',tests:'transient attack',
+     claim:'Slam: a drum hit arrives instantly, with edges — that\u2019s driver control.',
+     learn:'A real transient rises in under a millisecond. Reproducing that edge takes a light, stiff, well-damped driver — exactly what exotic cone materials are for.',
+     notice:'Two drum hits. One strikes instantly; the other eases in by a hair. Which truly <em>hit</em>?',
+     mode:'choice', kind:'snap', rounds:[{soft:.05},{soft:.028},{soft:.016}]},
+    {group:'dyn',tag:'Pulse',title:'The tight groove',tests:'timing · prat',
+     claim:'Pace, rhythm and timing: the groove locks, and nothing drags.',
+     learn:'Humans detect timing errors down to ~10 ms. "PRaT" is gear preserving every attack edge so the groove stays locked instead of shuffling.',
+     notice:'Two short grooves. In one, a beat lands a hair late. Which groove was tight?',
+     mode:'choice', kind:'pulse', rounds:[{ms:45},{ms:28},{ms:16}]},
+    {group:'dyn',tag:'Shade',title:'Loud and louder',tests:'micro-dynamics',
+     claim:'Micro-dynamics: the difference between loud and slightly louder is where expression lives.',
+     learn:'A performer\u2019s expression is 1–2 dB shadings between notes. Any compression in the chain flattens those gradations into sameness.',
+     notice:'The same note twice, at slightly different levels. Which was louder?',
+     mode:'choice', kind:'dyn', rounds:[{db:4},{db:2.5},{db:1.5}]},
+  ];
+  const ROMANS=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX','XXI','XXII','XXIII'];
+  const DEVCOLORS=['#7BA79C','#E27A45','#D9A24B','#B7A6E3'];
+
+  let order=[], oi=0, ri=0, score=0, voices=[], target=null, guessLocked=false, replayFn=()=>{}, lastPct=0;
+  let chScore={}, chMax={};
+  let choiceAnswer=0, choiceTimers=[], orbitInt=null;
+  let selected = CH.map(()=>true);
+  let device='Px8 S2';
+  let db={devices:{}}, storageOK=false, cmpVisible={};
+
+  const $=id=>document.getElementById(id);
+  const scr={start:$('start'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare')};
+  const show=n=>{Object.values(scr).forEach(s=>s.classList.remove('on')); scr[n].classList.add('on');};
+  const jit=(v,j)=>v+(Math.random()*2-1)*j;
+  const chap=()=>CH[order[oi]];
+  const wrapErr=(a,b)=>{let d=Math.abs(a-b)%360; return d>180?360-d:d;};
+  const setReplay=(on)=>{$('replay').disabled=!on||guessLocked;};
+
+  // ---- persistent storage (per-device results) ----
+  const STORE_KEY='stoneroom_results_v1';
+  async function loadDB(){
+    try{
+      const r=localStorage.getItem(STORE_KEY);
+      if(r){ db=JSON.parse(r); }
+      storageOK=true;
+    }catch(e){ storageOK=false; }
+    if(!db || typeof db!=='object' || !db.devices) db={devices:{}};
+  }
+  async function saveDB(){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(db)); storageOK=true; }catch(e){ storageOK=false; }
+  }
+  function deviceNames(){ return Object.keys(db.devices).sort((a,b)=>(db.devices[b].date||'').localeCompare(db.devices[a].date||'')); }
+
+  // ---- deep link: #<room tag> jumps straight to that single room ----
+  const deepRoom=(()=>{
+    const h=decodeURIComponent(location.hash.slice(1)).trim().toLowerCase();
+    if(!h) return -1;
+    return CH.findIndex(c=>c.tag.toLowerCase()===h);
+  })();
+  if(deepRoom>=0){
+    selected=CH.map((_,i)=>i===deepRoom);
+    const c=CH[deepRoom], note=$('deepnote');
+    note.style.display='block';
+    note.textContent=`Direct entry · ${c.tag} — ${c.title}. You'll go straight to this room.`;
+  }
+  function shareURL(){
+    const base=location.href.split('#')[0];
+    return base+(order.length===1?'#'+CH[order[0]].tag.toLowerCase():'');
+  }
+
+  $('begin').addEventListener('click',async()=>{
+    initAudio(); ctx.resume(); await loadDB();
+    if(deepRoom>=0){ buildDevice(); show('device'); }
+    else { show('cal'); runCal(); }
+  });
+  $('gocompare').addEventListener('click',async()=>{await loadDB(); buildCompare(); show('compare');});
+  $('calreplay').addEventListener('click',runCal);
+  $('calgo').addEventListener('click',()=>{buildSelect(); show('select');});
+  $('selstart').addEventListener('click',()=>{buildDevice(); show('device');});
+  $('devgo').addEventListener('click',()=>{
+    const v=$('devinput').value.trim();
+    device=v||'My headphones';
+    startGame();
+  });
+  $('again').addEventListener('click',startGame);
+  $('reselect').addEventListener('click',()=>{buildSelect(); show('select');});
+  $('endcompare').addEventListener('click',()=>{buildCompare(); show('compare');});
+  $('cmpback').addEventListener('click',()=>{show(order.length?'end':'start');});
+  $('cmpnew').addEventListener('click',()=>{buildSelect(); show('select');});
+  $('next').addEventListener('click',nextRound);
+  $('field').addEventListener('pointerdown',e=>onTap(e,false));
+  $('fieldO').addEventListener('pointerdown',e=>onTap(e,true));
+  $('replay').addEventListener('click',()=>{ if(!guessLocked && !$('replay').disabled) replayFn(); });
+  $('selall').addEventListener('click',()=>{selected=CH.map(()=>true); paintChips();});
+  $('selnone').addEventListener('click',()=>{selected=CH.map(()=>false); paintChips();});
+
+  function flashSaved(msg){
+    const el=$('saved'), keep=el.textContent;
+    el.textContent=msg; setTimeout(()=>{el.textContent=keep;},1600);
+  }
+  $('sharelink').addEventListener('click',async()=>{
+    const url=shareURL();
+    try{
+      if(navigator.share){ await navigator.share({title:'Stone Room — a listening lab', url}); }
+      else{ await navigator.clipboard.writeText(url); flashSaved('link copied'); }
+    }catch(e){ flashSaved('could not share'); }
+  });
+  $('copyres').addEventListener('click',async()=>{
+    const lines=[`Stone Room — ${device} · ${score} pts (${Math.round(lastPct*100)}%)`];
+    order.forEach(i=>{const c=CH[i], p=Math.round(100*chScore[i]/chMax[i]);
+      lines.push(`  ${c.tag} (${c.tests}): ${stairRes[c.tag]?stairRes[c.tag]+' · '+p+'%':p+'%'}`);});
+    lines.push(shareURL());
+    try{ await navigator.clipboard.writeText(lines.join('\n')); flashSaved('results copied'); }
+    catch(e){ flashSaved('could not copy'); }
+  });
+
+  // show compare shortcut on start if data exists
+  (async()=>{ await loadDB(); if(deviceNames().length) $('gocompare').style.display='inline'; })();
+
+  function runCal(){
+    const seq=[-90,0,90], bar=$('calbar'), dot=$('caldot');
+    bar.classList.add('play');
+    seq.forEach((az,i)=>{ setTimeout(()=>{ const v=makeVoice('bell',az,1.6,0.6); v.playOnce(ctx.currentTime+.02);
+      dot.style.left=(50+az/90*46)+'%'; }, i*750); });
+  }
+
+  function buildDevice(){
+    $('devinput').value=device;
+    const box=$('devchips'); box.innerHTML='';
+    deviceNames().slice(0,4).forEach(n=>{
+      const b=document.createElement('button'); b.className='devchip'; b.textContent=n;
+      b.addEventListener('click',()=>{$('devinput').value=n;});
+      box.appendChild(b);
+    });
+  }
+
+  function buildSelect(){
+    const wrap=$('selscroll'); wrap.innerHTML='';
+    Object.keys(GROUPS).forEach(gk=>{
+      const g=GROUPS[gk];
+      const sec=document.createElement('div'); sec.className='ggroup';
+      const head=document.createElement('div'); head.className='ghead';
+      const idxs=CH.map((c,i)=>c.group===gk?i:-1).filter(i=>i>=0);
+      head.innerHTML=`<span><span class="gname">${g.name}</span><span class="gsub">${g.sub}</span></span>`;
+      const tog=document.createElement('button');
+      tog.addEventListener('click',()=>{
+        const allOn=idxs.every(i=>selected[i]);
+        idxs.forEach(i=>selected[i]=!allOn);
+        paintChips();
+      });
+      head.appendChild(tog);
+      sec.appendChild(head);
+      const grid=document.createElement('div'); grid.className='chipgrid';
+      idxs.forEach(i=>{
+        const c=CH[i];
+        const b=document.createElement('button'); b.className='chip'; b.dataset.idx=i;
+        b.innerHTML=`<div class="cname">${c.tag}</div><div class="cq">${c.tests}${ADAPT[c.tag]?' · lab':' · skill'}</div><div class="cclaim">${c.claim}</div>`;
+        b.addEventListener('click',()=>{selected[i]=!selected[i]; paintChips();});
+        grid.appendChild(b);
+      });
+      sec.appendChild(grid);
+      wrap.appendChild(sec);
+    });
+    paintChips();
+  }
+  function paintChips(){
+    document.querySelectorAll('#selscroll .chip').forEach(b=>{
+      b.classList.toggle('on', selected[+b.dataset.idx]);
+    });
+    document.querySelectorAll('#selscroll .ggroup').forEach((sec,gi)=>{
+      const gk=Object.keys(GROUPS)[gi];
+      const idxs=CH.map((c,i)=>c.group===gk?i:-1).filter(i=>i>=0);
+      sec.querySelector('.ghead button').textContent = idxs.every(i=>selected[i]) ? 'skip group' : 'take group';
+    });
+    $('selstart').disabled = !selected.some(Boolean);
+  }
+
+  function startGame(){
+    initAudio(); ctx.resume();
+    order = CH.map((_,i)=>i).filter(i=>selected[i]);
+    if(!order.length) order=CH.map((_,i)=>i);
+    score=0; oi=0; ri=0; chScore={}; chMax={}; stairRes={};
+    order.forEach(i=>{chScore[i]=0; chMax[i]=ADAPT[CH[i].tag]?100:CH[i].rounds.length*100;});
+    $('score').textContent='0'; $('devlabel').textContent=device;
+    show('game'); loadChapter();
+  }
+  function loadChapter(){
+    const c=chap();
+    $('chapno').textContent=ROMANS[oi]; $('chaptag').textContent=c.tag; $('chaptitle').textContent=c.title;
+    $('claim').textContent=c.claim; $('notice').innerHTML=c.notice;
+    const p=$('progress'); p.innerHTML=''; c.rounds.forEach(()=>{const d=document.createElement('div');d.className='pip';p.appendChild(d);});
+    const cd=$('chapdots'); cd.innerHTML=''; order.forEach((_,i)=>{const d=document.createElement('div');d.className='cdot'+(i<oi?' done':i===oi?' now':'');cd.appendChild(d);});
+    ri=0; startRound();
+  }
+  function paintPips(){const pl=$('progress').children; for(let i=0;i<pl.length;i++) pl[i].className='pip'+(i<ri?' done':i===ri?' now':'');}
+  function stopVoices(){
+    voices.forEach(v=>v.stop()); voices=[];
+    choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+    if(orbitInt){clearInterval(orbitInt); orbitInt=null;}
+    $('comet').classList.remove('on');
+  }
+  function showLearn(){
+    const c=chap();
+    const L=$('learn'); L.innerHTML=`<b>Why audiophiles care</b>${c.learn}`; L.classList.add('on');
+  }
+
+  function startRound(){
+    guessLocked=false; stopVoices();
+    ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
+    $('learn').classList.remove('on');
+    paintPips(); $('next').classList.remove('on'); setReplay(true);
+    const c=chap(), r=c.rounds[ri];
+    const isStair = !!ADAPT[c.tag];
+    const isChoice = !isStair && c.mode==='choice', isOrbit = c.mode==='orbit';
+    $('fieldwrap').classList.toggle('hidden', isChoice||isOrbit||isStair);
+    $('fieldwrapO').classList.toggle('hidden', !isOrbit);
+    $('choices').classList.toggle('on', isChoice||isStair);
+    if(isStair){ setupStair(c); }
+    else if(isChoice){ setupChoice(c,r); }
+    else if(isOrbit){ setupOrbit(); listenO(); }
+    else if(c.mode==='separate'){ setupSeparate(r); listen(); }
+    else if(c.mode==='sweep'){ setupSweep(r); listen(); }
+    else { setupSingle(c.mode,r); listen(); }
+  }
+
+  // ---- arc rooms ----
+  function setupSingle(mode,r){
+    const az=jit(r.az,5), dist=mode==='depth'?r.d:1.6, key=rndTimbre();
+    const build=()=>{stopVoices(); const v=makeVoice(key,az,dist,0.55); voices=[v]; setTimeout(()=>voices[0]&&voices[0].loop(),200);};
+    target={az,dist,mode}; replayFn=()=>{listen(); build();};
+    $('status').textContent='Listen…'; build();
+  }
+  function setupSweep(r){
+    const from=jit(r.from,4), to=jit(r.to,4), key=rndTimbre();
+    const build=()=>{stopVoices(); const v=makeVoice(key,from,1.6,0.55); voices=[v];
+      setTimeout(()=>{ if(!voices[0])return; v.loop(); v.glide(from,to,2.2); },200);};
+    target={az:to,dist:1.6,mode:'sweep'}; replayFn=()=>{listen(); build();};
+    $('status').textContent='It moves…'; build();
+  }
+  function setupSeparate(r){
+    const centre=jit(0,30), keys=[...T_KEYS].sort(()=>Math.random()-.5).slice(0,3);
+    let angs=[centre-r.spread,centre,centre+r.spread].map(a=>Math.max(-86,Math.min(86,a)));
+    const ti=Math.floor(Math.random()*3);
+    target={az:angs[ti],dist:1.7,mode:'separate',key:keys[ti]};
+    const play=(solo)=>{ stopVoices(); voices=keys.map((k,i)=>makeVoice(k,angs[i],1.7,0.5));
+      if(solo){ $('status').textContent='Your target, alone…'; let t=ctx.currentTime+0.3; t=voices[ti].playOnce(t);
+        choiceTimers.push(setTimeout(()=>{ if(guessLocked)return; $('status').textContent='Now — find it.'; voices.forEach(v=>v.loop()); },(t-ctx.currentTime+0.5)*1000));
+      } else { $('status').textContent='Find it.'; voices.forEach(v=>v.loop()); } };
+    replayFn=()=>{listen(); play(false);};
+    play(true);
+  }
+  function listen(){$('fieldwrap').classList.remove('listening'); void $('field').offsetWidth; $('fieldwrap').classList.add('listening');}
+  function listenO(){$('fieldwrapO').classList.remove('listening'); void $('fieldO').offsetWidth; $('fieldwrapO').classList.add('listening');}
+
+  // ---- orbit ----
+  function setupOrbit(){
+    const startAz=Math.random()*360;
+    const dir=Math.random()<.5?1:-1;
+    const sweep=360+Math.random()*180;
+    const endAz=((startAz+dir*sweep)%360+360)%360;
+    const dur=4.2;
+    target={az:endAz, dist:1.6, mode:'orbit'};
+    const key=rndTimbre();
+    const build=()=>{
+      stopVoices();
+      const v=makeVoice(key,startAz,1.6,0.55); voices=[v]; v.loop();
+      const t0=performance.now();
+      const comet=$('comet'); comet.classList.add('on');
+      orbitInt=setInterval(()=>{
+        const f=Math.min(1,(performance.now()-t0)/(dur*1000));
+        const az=startAz+dir*sweep*f;
+        v.setAz(az);
+        const a=az*Math.PI/180, r=112;
+        comet.setAttribute('cx',Math.sin(a)*r); comet.setAttribute('cy',-Math.cos(a)*r);
+        if(f>=1){clearInterval(orbitInt); orbitInt=null; comet.classList.remove('on'); if(!guessLocked)$('status').textContent='It stopped. Where?';}
+      },40);
+    };
+    replayFn=()=>{listenO(); $('status').textContent='It circles…'; build();};
+    $('status').textContent='It circles…'; build();
+  }
+
+  // ---- choice rooms ----
+  function buildChoices(labels,subs,handler){
+    const box=$('choices'); box.innerHTML='';
+    const h=handler||choicePick;
+    labels.forEach((L,i)=>{
+      const b=document.createElement('button'); b.className='choice';
+      b.innerHTML=L+(subs&&subs[i]?'<small>'+subs[i]+'</small>':'');
+      b.addEventListener('click',()=>h(i));
+      box.appendChild(b);
+    });
+    return [...box.children];
+  }
+  function setChoicesEnabled(on){[...$('choices').children].forEach(b=>b.disabled=!on);}
+
+  // ---------- adaptive staircase (lab rooms) ----------
+  function marker(t){
+    const g=ctx.createGain(); g.gain.setValueAtTime(.06,t); g.gain.exponentialRampToValueAtTime(.0005,t+.04);
+    g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=880; o.connect(g); o.start(t); o.stop(t+.06);
+  }
+  function shimmerBurst(f,t,dur,gain){
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(dur+.2);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=8;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(gain,t+.08);
+    g.gain.setValueAtTime(gain,t+dur-.15); g.gain.linearRampToValueAtTime(0,t+dur);
+    nb.connect(bp); bp.connect(g); g.connect(master); nb.start(t); nb.stop(t+dur+.05);
+  }
+  const LN=Math.log;
+  // type D: one interval holds the stimulus (pick it). type X: both play; one is altered.
+  // play(level, t, flag): D → flag=stimulus present; X → flag=this interval is the altered one.
+  const ADAPT={
+    Foundation:{type:'D', q:'Which held a tone?', start:55, floor:24, ceil:95, hard:.90, easy:1.15, fineHard:.95, fineEasy:1.07,
+      dur:1.4, log:true, betterHigh:false, anchors:[70,26], fmt:v=>Math.round(v)+' Hz',
+      play:(lv,t,on)=>{marker(t); if(on) subTone(lv, t+.12, 1.15, lv<45?.85:.7);}},
+    Air:{type:'D', q:'Which held a shimmer?', start:8500, floor:6000, ceil:16000, hard:1.08, easy:.88, fineHard:1.04, fineEasy:.93,
+      dur:1.1, log:true, betterHigh:true, anchors:[8000,14500], fmt:v=>(v/1000).toFixed(1)+' kHz',
+      play:(lv,t,on)=>{marker(t); if(on) shimmerBurst(lv, t+.15, .8, .16);}},
+    Whisper:{type:'D', q:'Which pad hid a tick?', start:.12, floor:.01, ceil:.3, hard:.72, easy:1.6, fineHard:.85, fineEasy:1.3,
+      dur:1.7, log:true, betterHigh:false, anchors:[.14,.015], fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
+      play:(lv,t,on)=>{pad(t,1.6,.2); if(on) tick(t+.5+Math.random()*.7, lv);}},
+    Silence:{type:'X', q:'Which hid a hiss?', answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, fineHard:.85, fineEasy:1.3,
+      dur:2.3, log:true, betterHigh:false, anchors:[.05,.006], fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
+      play:(lv,t,alt)=>silenceTail(t, alt?lv:0)},
+    Grain:{type:'X', q:'Which was pure?', answerAltered:false, start:.16, floor:.015, ceil:.35, hard:.75, easy:1.5, fineHard:.87, fineEasy:1.25,
+      dur:1.15, log:true, betterHigh:false, anchors:[.18,.025], fmt:v=>'partial '+Math.round(v*100)+'%',
+      play:(lv,t,alt)=>grainNote(t, alt, lv)},
+    Composure:{type:'X', q:'Which stayed clean?', answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, fineHard:.87, fineEasy:1.25,
+      dur:1.8, log:true, betterHigh:false, anchors:[5,.8], fmt:v=>'drive '+v.toFixed(1),
+      play:(lv,t,alt)=>composureChord(t, alt?lv:0)},
+    Grip:{type:'X', q:'Which was tighter?', answerAltered:false, start:.4, floor:.05, ceil:.8, hard:.75, easy:1.5, fineHard:.87, fineEasy:1.25,
+      dur:1.7, log:true, betterHigh:false, anchors:[.45,.08], fmt:v=>'bloom '+Math.round(v*100)+'%',
+      play:(lv,t,alt)=>bassNote(t, alt, lv)},
+    Presence:{type:'X', q:'Which was in the room?', answerAltered:false, start:9, floor:1, ceil:16, hard:.75, easy:1.4, fineHard:.87, fineEasy:1.2,
+      dur:1.7, log:false, betterHigh:false, anchors:[10,1.5], fmt:v=>v.toFixed(1)+' dB scoop',
+      play:(lv,t,alt)=>presenceVoice(t, alt?-lv:0)},
+    Silk:{type:'X', q:'Which "s" stabbed?', answerAltered:true, start:.18, floor:.015, ceil:.5, hard:.72, easy:1.55, fineHard:.85, fineEasy:1.3,
+      dur:1.5, log:true, betterHigh:false, anchors:[.2,.03], fmt:v=>'+'+Math.round(20*Math.log10((0.05+v)/0.05))+' dB sib',
+      play:(lv,t,alt)=>silkPhrase(t, .05+(alt?lv:0))},
+    Snap:{type:'X', q:'Which truly hit?', answerAltered:false, start:.035, floor:.004, ceil:.08, hard:.75, easy:1.5, fineHard:.87, fineEasy:1.25,
+      dur:.9, log:true, betterHigh:false, anchors:[.04,.006], fmt:v=>Math.round(v*1000)+' ms attack',
+      play:(lv,t,alt)=>snapHit(t, alt?lv:.001)},
+    Pulse:{type:'X', q:'Which groove was tight?', answerAltered:false, start:40, floor:5, ceil:80, hard:.75, easy:1.5, fineHard:.87, fineEasy:1.25,
+      dur:2.15, log:true, betterHigh:false, anchors:[45,8], fmt:v=>Math.round(v)+' ms',
+      play:(lv,t,alt)=>pulsePattern(t, 3, alt?lv:0)},
+    Shade:{type:'X', q:'Which was louder?', answerAltered:true, start:3, floor:.25, ceil:6, hard:.75, easy:1.55, fineHard:.87, fineEasy:1.3,
+      dur:.95, log:true, betterHigh:false, anchors:[3.5,.5], fmt:v=>v.toFixed(2)+' dB',
+      play:(lv,t,alt)=>dynNote(t, alt?lv:0)},
+    Centre:{type:'X', q:'Which sat dead centre?', answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, fineHard:.87, fineEasy:1.25,
+      dur:1.5, log:true, betterHigh:false, anchors:[.28,.05], fmt:v=>Math.round(v*100)+'% off',
+      play:(lv,t,alt)=>centreNote(t, alt?(Math.random()<.5?1:-1)*lv:0)},
+    Duet:{type:'X', q:'Which felt wider?', answerAltered:true, start:.8, floor:.1, ceil:1, hard:.72, easy:1.5, fineHard:.85, fineEasy:1.25,
+      dur:2.0, log:true, betterHigh:false, anchors:[.9,.15], fmt:v=>'width '+Math.round(v*100)+'%',
+      play:(lv,t,alt)=>duetChord(t, alt, 12*lv, .9*lv)},
+    Echo:{type:'X', q:'Which wall was further?', answerAltered:true, start:.1, floor:.012, ceil:.3, hard:.75, easy:1.5, fineHard:.87, fineEasy:1.25,
+      dur:.85, log:true, betterHigh:false, anchors:[.12,.02], fmt:v=>'+'+Math.round(v*1000)+' ms',
+      play:(lv,t,alt)=>clickEcho(t, .12+(alt?lv:0))},
+  };
+  let stairRes={}, st=null;
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const geoMean=a=>Math.exp(a.reduce((s,v)=>s+LN(v),0)/a.length);
+
+  function setupStair(c){
+    const A=ADAPT[c.tag];
+    st={A, tag:c.tag, level:A.start, trial:1, maxT:14, streak:0, lastMove:null, revs:[], done:false, side:0};
+    $('progress').innerHTML='';
+    stairTrial();
+  }
+  function stairTrial(){
+    const A=st.A;
+    st.side=Math.random()<.5?0:1;
+    const btns=buildChoices(['A','B'],['first','second'],stairPick);
+    const play=()=>{
+      choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+      setChoicesEnabled(false); setReplay(false);
+      $('status').innerHTML=`Trial ${st.trial}/${st.maxT} · <span class="pts">${A.fmt(st.level)}</span>`;
+      const t=ctx.currentTime+.25, gap=.3;
+      for(let i=0;i<2;i++){
+        const flag = A.type==='D' ? (i===st.side) : (i===st.side);
+        A.play(st.level, t+i*(A.dur+gap), flag);
+        choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(0.25+i*(A.dur+gap))*1000));
+      }
+      choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); $('status').innerHTML=`${A.q} <span style="color:var(--muted)">· trial ${st.trial}/${st.maxT}</span>`; setChoicesEnabled(true); setReplay(true);},(0.25+2*A.dur+gap)*1000));
+    };
+    replayFn=play; play();
+  }
+  function stairMove(harder){
+    const A=st.A, fine=st.revs.length>=2;
+    const f = harder ? (fine?A.fineHard:A.hard) : (fine?A.fineEasy:A.easy);
+    const nv=clamp(st.level*f, A.floor, A.ceil);
+    const dir=harder?'h':'e';
+    if(st.lastMove && st.lastMove!==dir) st.revs.push(st.level);
+    st.lastMove=dir; st.level=nv;
+  }
+  function stairPick(i){
+    if(!st || st.done) return;
+    setChoicesEnabled(false); setReplay(false);
+    const A=st.A;
+    const answer = A.type==='D' ? st.side : (A.answerAltered ? st.side : 1-st.side);
+    const hit = i===answer;
+    [...$('choices').children].forEach((b,k)=>{ if(k===answer) b.classList.add('correct'); else if(k===i) b.classList.add('wrong'); });
+    if(hit){ st.streak++; if(st.streak>=2){ st.streak=0; stairMove(true);} }
+    else { st.streak=0; stairMove(false); }
+    st.trial++;
+    const finished = st.revs.length>=6 || st.trial>st.maxT;
+    if(!finished){
+      $('status').innerHTML = hit ? `✓ tightening…` : `✗ easing back…`;
+      choiceTimers.push(setTimeout(stairTrial, 650));
+      return;
+    }
+    st.done=true; guessLocked=true;
+    const revLevels = st.revs.slice(-4);
+    const thr = revLevels.length ? (A.log?geoMean(revLevels):revLevels.reduce((a,b)=>a+b,0)/revLevels.length) : st.level;
+    const [w,b]=A.anchors;
+    let p;
+    if(A.log){ const lw=LN(w),lb=LN(b),lt=LN(clamp(thr,Math.min(w,b),Math.max(w,b)));
+      p = A.betterHigh ? (lt-lw)/(lb-lw) : (lw-lt)/(lw-lb); }
+    else { const ct=clamp(thr,Math.min(w,b),Math.max(w,b));
+      p = A.betterHigh ? (ct-w)/(b-w) : (w-ct)/(w-b); }
+    const pct=Math.round(clamp(p,0,1)*100);
+    score+=pct; chScore[order[oi]]=pct; $('score').textContent=score;
+    stairRes[st.tag]=A.fmt(thr);
+    const grade=pct>=85?'Reference-grade.':pct>=60?'Strong.':pct>=35?'Fair.':'The chain gave out early.';
+    $('status').innerHTML=`Fade point: <span class="pts">${A.fmt(thr)}</span> · ${grade} <span class="pts">+${pct}</span>`;
+    showLearn();
+    advanceUI();
+  }
+
+
+  function seqAB(cfg){
+    choiceAnswer=cfg.answer;
+    const btns=buildChoices(['A','B'],['first','second']);
+    const gap=cfg.gap!=null?cfg.gap:0.3;
+    const play=()=>{
+      choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+      setChoicesEnabled(false); setReplay(false); $('status').textContent='A…';
+      const t=ctx.currentTime+.25;
+      cfg.playA(t); btns[0].classList.add('playing');
+      choiceTimers.push(setTimeout(()=>{btns[0].classList.remove('playing'); btns[1].classList.add('playing'); $('status').textContent='B…';},(0.25+cfg.durA)*1000));
+      cfg.playB(t+cfg.durA+gap);
+      choiceTimers.push(setTimeout(()=>{btns[1].classList.remove('playing'); $('status').textContent=cfg.question; setChoicesEnabled(true); setReplay(true);},(0.25+cfg.durA+gap+cfg.durB)*1000));
+    };
+    replayFn=play; play();
+  }
+
+  function setupChoice(c,r){
+    if(c.kind==='sub'){
+      const deepFirst=Math.random()<.5;
+      const f=(x)=>x<45?.92:x<55?.8:.7;
+      const fa=deepFirst?r.a:r.b, fb=deepFirst?r.b:r.a;
+      seqAB({answer:deepFirst?0:1, durA:1.5, durB:1.5, gap:.4,
+        playA:t=>subTone(fa,t,1.5,f(fa)), playB:t=>subTone(fb,t,1.5,f(fb)),
+        question:'Which sat deeper?'});
+    }
+    else if(c.kind==='ticks'){
+      const n=2+Math.floor(Math.random()*3);
+      choiceAnswer=n-2;
+      buildChoices(['2','3','4'],['ticks','ticks','ticks']);
+      const play=()=>{ choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+        setChoicesEnabled(false); setReplay(false); $('status').textContent='Listen deep…';
+        const t=ctx.currentTime+.25, dur=4.4;
+        pad(t,dur,.2);
+        const slots=[.9,1.55,2.2,2.9,3.6].sort(()=>Math.random()-.5).slice(0,n);
+        slots.forEach(s=>tick(t+s,r.g));
+        choiceTimers.push(setTimeout(()=>{$('status').textContent='How many ticks?'; setChoicesEnabled(true); setReplay(true);},(dur+.4)*1000));
+      };
+      replayFn=play; play();
+    }
+    else if(c.kind==='crowd'){
+      const n=3+Math.floor(Math.random()*3);
+      choiceAnswer=n-3;
+      buildChoices(['3','4','5'],['voices','voices','voices']);
+      const keys=[...T_KEYS].sort(()=>Math.random()-.5).slice(0,n);
+      const span=160, step=span/(n-1);
+      const angs=keys.map((_,i)=>-80+i*step+jit(0,6));
+      const play=()=>{ choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+        stopVoices(); setChoicesEnabled(false); setReplay(false); $('status').textContent='The ensemble…';
+        voices=keys.map((k,i)=>makeVoice(k,angs[i],1.7,0.42));
+        voices.forEach(v=>v.loop());
+        choiceTimers.push(setTimeout(()=>{voices.forEach(v=>v.stop()); $('status').textContent='How many voices?'; setChoicesEnabled(true); setReplay(true);},5000));
+      };
+      replayFn=play; play();
+    }
+    else if(c.kind==='grain'){
+      choiceAnswer=Math.floor(Math.random()*3);
+      const btns=buildChoices(['1','2','3']);
+      const play=()=>{ choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+        setChoicesEnabled(false); setReplay(false); $('status').textContent='Three notes…';
+        const t=ctx.currentTime+.25;
+        for(let i=0;i<3;i++){
+          grainNote(t+i*1.25, i===choiceAnswer, r.p);
+          choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(0.25+i*1.25)*1000));
+        }
+        choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); $('status').textContent='Which was different?'; setChoicesEnabled(true); setReplay(true);},(0.25+3*1.25)*1000));
+      };
+      replayFn=play; play();
+    }
+    else if(c.kind==='halls'){
+      const halls={S:hallSmall,M:hallMed,L:hallLarge};
+      const big=r.pair[1], small=r.pair[0];
+      const bigFirst=Math.random()<.5;
+      seqAB({answer:bigFirst?0:1, durA:2.6, durB:2.6, gap:.3,
+        playA:t=>hallPluck(t, halls[bigFirst?big:small], .5),
+        playB:t=>hallPluck(t, halls[bigFirst?small:big], .5),
+        question:'Which room was bigger?'});
+    }
+    else if(c.kind==='air'){
+      const openFirst=Math.random()<.5;
+      seqAB({answer:openFirst?0:1, durA:2.0, durB:2.0, gap:.3,
+        playA:t=>airChord(t, r.hz, openFirst?0:r.db),
+        playB:t=>airChord(t, r.hz, openFirst?r.db:0),
+        question:'Which felt more open?'});
+    }
+    else if(c.kind==='snap'){
+      const sharpFirst=Math.random()<.5;
+      seqAB({answer:sharpFirst?0:1, durA:.8, durB:.8, gap:.5,
+        playA:t=>snapHit(t, sharpFirst?.001:r.soft),
+        playB:t=>snapHit(t, sharpFirst?r.soft:.001),
+        question:'Which hit snapped?'});
+    }
+    else if(c.kind==='duet'){
+      const wideFirst=Math.random()<.5;
+      seqAB({answer:wideFirst?0:1, durA:1.9, durB:1.9, gap:.3,
+        playA:t=>duetChord(t, wideFirst, r.det, r.pan),
+        playB:t=>duetChord(t, !wideFirst, r.det, r.pan),
+        question:'Which felt wider?'});
+    }
+    else if(c.kind==='flyby'){
+      const closeFirst=Math.random()<.5;
+      seqAB({answer:closeFirst?0:1, durA:2.4, durB:2.4, gap:.5,
+        playA:t=>flyby(t, Math.random()<.5?1:-1, closeFirst?r.a:r.b, 2.4),
+        playB:t=>flyby(t, Math.random()<.5?1:-1, closeFirst?r.b:r.a, 2.4),
+        question:'Which passed closer?'});
+    }
+    else if(c.kind==='echo'){
+      const farFirst=Math.random()<.5;
+      seqAB({answer:farFirst?0:1, durA:.8, durB:.8, gap:.5,
+        playA:t=>clickEcho(t, farFirst?r.b:r.a),
+        playB:t=>clickEcho(t, farFirst?r.a:r.b),
+        question:'Which wall was further?'});
+    }
+    else if(c.kind==='dyn'){
+      const loudFirst=Math.random()<.5;
+      seqAB({answer:loudFirst?0:1, durA:.9, durB:.9, gap:.35,
+        playA:t=>dynNote(t, loudFirst?0:-r.db),
+        playB:t=>dynNote(t, loudFirst?-r.db:0),
+        question:'Which was louder?'});
+    }
+    else if(c.kind==='black'){
+      const cleanFirst=Math.random()<.5;
+      seqAB({answer:cleanFirst?0:1, durA:2.3, durB:2.3, gap:.4,
+        playA:t=>silenceTail(t, cleanFirst?0:r.h),
+        playB:t=>silenceTail(t, cleanFirst?r.h:0),
+        question:'Which silence was truly black?'});
+    }
+    else if(c.kind==='pulse'){
+      const tightFirst=Math.random()<.5;
+      seqAB({answer:tightFirst?0:1, durA:2.1, durB:2.1, gap:.4,
+        playA:t=>pulsePattern(t, 3, tightFirst?0:r.ms),
+        playB:t=>pulsePattern(t, 3, tightFirst?r.ms:0),
+        question:'Which groove was tight?'});
+    }
+    else if(c.kind==='grip'){
+      const cleanFirst=Math.random()<.5;
+      seqAB({answer:cleanFirst?0:1, durA:1.7, durB:1.7, gap:.4,
+        playA:t=>bassNote(t, !cleanFirst, r.amt),
+        playB:t=>bassNote(t, cleanFirst, r.amt),
+        question:'Which bass was tighter?'});
+    }
+    else if(c.kind==='centre'){
+      const centFirst=Math.random()<.5;
+      const sign=Math.random()<.5?1:-1;
+      seqAB({answer:centFirst?0:1, durA:1.4, durB:1.4, gap:.35,
+        playA:t=>centreNote(t, centFirst?0:sign*r.off),
+        playB:t=>centreNote(t, centFirst?sign*r.off:0),
+        question:'Which sat dead centre?'});
+    }
+    else if(c.kind==='silk'){
+      const smoothFirst=Math.random()<.5;
+      const base=.06;
+      seqAB({answer:smoothFirst?0:1, durA:1.5, durB:1.5, gap:.35,
+        playA:t=>silkPhrase(t, smoothFirst?base:base*r.mult),
+        playB:t=>silkPhrase(t, smoothFirst?base*r.mult:base),
+        question:'Which was smoother?'});
+    }
+    else if(c.kind==='presence'){
+      const fullFirst=Math.random()<.5;
+      seqAB({answer:fullFirst?0:1, durA:1.7, durB:1.7, gap:.35,
+        playA:t=>presenceVoice(t, fullFirst?0:r.db),
+        playB:t=>presenceVoice(t, fullFirst?r.db:0),
+        question:'Which was in the room?'});
+    }
+    else if(c.kind==='compose'){
+      const cleanFirst=Math.random()<.5;
+      seqAB({answer:cleanFirst?0:1, durA:1.8, durB:1.8, gap:.35,
+        playA:t=>composureChord(t, cleanFirst?0:r.k),
+        playB:t=>composureChord(t, cleanFirst?r.k:0),
+        question:'Which stayed clean?'});
+    }
+  }
+
+  function choicePick(i){
+    if(guessLocked) return;
+    guessLocked=true; setChoicesEnabled(false); $('replay').disabled=true;
+    stopVoices();
+    const c=chap();
+    const hit = i===choiceAnswer;
+    let pts = hit?100:0;
+    if(!hit && (c.kind==='ticks'||c.kind==='crowd') && Math.abs(i-choiceAnswer)===1) pts=40;
+    [...$('choices').children].forEach((b,k)=>{ if(k===choiceAnswer) b.classList.add('correct'); else if(k===i) b.classList.add('wrong'); });
+    score+=pts; chScore[order[oi]]+=pts; $('score').textContent=score;
+    const lbl=$('choices').children[choiceAnswer].firstChild.textContent;
+    $('status').innerHTML = hit ? `Yes — claim verified. <span class="pts">+100</span>`
+      : pts>0 ? `Close — it was ${lbl}. <span class="pts">+${pts}</span>`
+      : `It was ${lbl}. <span class="pts">+0</span>`;
+    showLearn();
+    advanceUI();
+  }
+
+  // ---- tap handling ----
+  function svgPoint(e,svg,vb){
+    const r=svg.getBoundingClientRect();
+    return {x:((e.clientX-r.left)/r.width)*vb.w+vb.x, y:((e.clientY-r.top)/r.height)*vb.h+vb.y};
+  }
+  const angErr=(a,b)=>Math.abs(a-b);
+  function onTap(e,isOrbit){
+    if(guessLocked)return; e.preventDefault();
+    if(isOrbit){
+      if(orbitInt) return;
+      const {x,y}=svgPoint(e,$('fieldO'),{x:-160,y:-160,w:320,h:320});
+      const rad=Math.min(Math.hypot(x,y),150);
+      let az=Math.atan2(x,-y)*180/Math.PI; az=(az+360)%360;
+      lockOrbit(az,rad);
+    } else {
+      const {x,y}=svgPoint(e,$('field'),{x:-168,y:-78,w:336,h:208});
+      const dx=x, dy=LY-y; const rad=Math.min(Math.hypot(dx,dy),RAD);
+      let az=Math.atan2(dx,dy)*180/Math.PI; az=Math.max(-90,Math.min(90,az));
+      lock(az,rad);
+    }
+  }
+
+  function confirmNote(key,az,dist){
+    choiceTimers.push(setTimeout(()=>{
+      const tv=makeVoice(key,az,dist,0.6); tv.playOnce(ctx.currentTime+.05);
+    },200));
+  }
+
+  function lockOrbit(az,rad){
+    guessLocked=true; $('fieldwrapO').classList.remove('listening'); $('replay').disabled=true;
+    const key=voices[0]?.timbre||'bell';
+    stopVoices();
+    const gx=Math.sin(az*Math.PI/180)*rad, gy=-Math.cos(az*Math.PI/180)*rad;
+    $('guessO').setAttribute('cx',gx); $('guessO').setAttribute('cy',gy); $('guessO').classList.add('on');
+    const tr=112, tx=Math.sin(target.az*Math.PI/180)*tr, ty=-Math.cos(target.az*Math.PI/180)*tr;
+    $('truthO').setAttribute('cx',tx); $('truthO').setAttribute('cy',ty); $('truthgO').classList.add('on');
+    const L=$('linkO'); L.setAttribute('x1',gx);L.setAttribute('y1',gy);L.setAttribute('x2',tx);L.setAttribute('y2',ty); L.classList.add('on');
+    confirmNote(key,target.az,1.6);
+    const we=wrapErr(az,target.az);
+    let pts=we<15?100:we<30?85:we<50?65:we<80?40:we<110?20:0;
+    let msg;
+    const mirrorAz=((180-target.az)%360+360)%360;
+    if(pts<50 && wrapErr(az,mirrorAz)<20){
+      pts=Math.max(pts,50);
+      msg=`Mirrored — the classic front/back flip. <span class="pts">+${pts}</span>`;
+    } else {
+      const w=we<15?'Pinpoint.':we<30?'Dialled in.':we<50?'Nicely placed.':we<80?'In the area.':we<110?'Roughly there.':'Lost it.';
+      msg=`${w} <span class="pts">+${pts}</span> · ${Math.round(we)}° off`;
+    }
+    score+=pts; chScore[order[oi]]+=pts; $('score').textContent=score; $('status').innerHTML=msg;
+    showLearn();
+    advanceUI();
+  }
+
+  function lock(az,rad){
+    guessLocked=true; $('fieldwrap').classList.remove('listening'); $('replay').disabled=true;
+    const c=chap(), mode=c.mode;
+    const sepVoices=voices.map(v=>({az:v.az,timbre:v.timbre}));
+    const key=target.key||voices[0]?.timbre||'bell';
+    stopVoices();
+    const g={x:Math.sin(az*Math.PI/180)*rad, y:LY-Math.cos(az*Math.PI/180)*rad};
+    $('guess').setAttribute('cx',g.x); $('guess').setAttribute('cy',g.y); $('guess').classList.add('on');
+    let truthRad = mode==='depth' ? (target.dist<3?74:RAD) : 110;
+    const tm={x:Math.sin(target.az*Math.PI/180)*truthRad, y:LY-Math.cos(target.az*Math.PI/180)*truthRad};
+    $('truth').setAttribute('cx',tm.x); $('truth').setAttribute('cy',tm.y); $('truthg').classList.add('on');
+    const L=$('link'); L.setAttribute('x1',g.x);L.setAttribute('y1',g.y);L.setAttribute('x2',tm.x);L.setAttribute('y2',tm.y); L.classList.add('on');
+    confirmNote(key,target.az,target.dist);
+
+    const err=angErr(az,target.az); let pts=0,msg='';
+    if(mode==='separate'){
+      let best=999,bestKey=null; sepVoices.forEach(v=>{const e=angErr(az,v.az); if(e<best){best=e;bestKey=v.timbre;}});
+      const hit=bestKey===target.key&&best<50; pts=hit?(err<15?100:err<30?85:60):0;
+      msg=hit?`Locked on. <span class="pts">+${pts}</span>`:`That was another voice. <span class="pts">+0</span>`;
+    } else if(mode==='depth'){
+      const dErr=Math.abs(rad-truthRad); const aP=err<12?60:err<24?48:err<40?32:err<60?16:0; const dP=dErr<38?40:dErr<62?26:dErr<88?12:0; pts=aP+dP;
+      const dir=err<24?'Right on the bearing':err<45?'Close bearing':'Off the bearing';
+      const dep=dErr<38?(target.dist<3?'and right up close':'and you caught how far it sat'):(target.dist<3?'— it was nearer':'— it was further');
+      msg=`${dir} ${dep}. <span class="pts">+${pts}</span>`;
+    } else {
+      pts=err<10?100:err<20?85:err<32?68:err<48?45:err<70?22:0;
+      const w=err<10?'Pinpoint.':err<20?'Dialled in.':err<32?'Nicely placed.':err<48?'In the area.':err<70?'Roughly there.':'Lost it.';
+      msg=`${w} <span class="pts">+${pts}</span> · ${Math.round(err)}° off`;
+    }
+    score+=pts; chScore[order[oi]]+=pts; $('score').textContent=score; $('status').innerHTML=msg;
+    showLearn();
+    advanceUI();
+  }
+
+  function advanceUI(){
+    const c=chap();
+    const lastR=ADAPT[c.tag]?true:ri>=c.rounds.length-1, lastC=oi>=order.length-1;
+    $('next').textContent=(lastR&&lastC)?'See result':'Next'; $('next').classList.add('on');
+  }
+  function nextRound(){
+    stopVoices();
+    const c=chap();
+    if(!ADAPT[c.tag] && ri<c.rounds.length-1){ri++; startRound();}
+    else if(oi<order.length-1){oi++; loadChapter();}
+    else finish();
+  }
+
+  async function finish(){
+    stopVoices(); show('end');
+    const max=order.reduce((a,i)=>a+chMax[i],0);
+    $('finalnum').textContent=score; const pct=max?score/max:0; lastPct=pct;
+    let rank,verdict;
+    if(pct>=.85){rank='Golden ear'; verdict=`Every claim verified on the ${device} — holography, slam, air, silk, the lot. The reviews weren\u2019t poetry after all.`;}
+    else if(pct>=.6){rank='Tuned in'; verdict='Most claims verified. Whatever scored lowest below is the quality worth hunting for in your next album.';}
+    else if(pct>=.35){rank='Warming up'; verdict='Critical listening is a learned skill. Another lap and the claims start proving themselves.';}
+    else{rank='First listen'; verdict='All of this lives in the sound — it takes a few laps to hear it. Pick one group and drill it.';}
+    $('rank').textContent=rank; $('verdict').textContent=verdict;
+    const dev = db.devices[device] || {rooms:{}};
+    order.forEach(i=>{
+      const tag=CH[i].tag, p=Math.round(100*chScore[i]/chMax[i]);
+      dev.rooms[tag] = stairRes[tag] ? {pct:p, thr:stairRes[tag]} : p;
+    });
+    dev.date=new Date().toISOString();
+    db.devices[device]=dev;
+    await saveDB();
+    $('saved').textContent = storageOK
+      ? `saved · ${device}` + (deviceNames().length>1 ? ' · compare available' : '')
+      : 'storage unavailable — results kept for this session only';
+    const bd=$('breakdown'); bd.innerHTML='';
+    Object.keys(GROUPS).forEach(gk=>{
+      const idxs=order.filter(i=>CH[i].group===gk);
+      if(!idxs.length) return;
+      const h=document.createElement('div'); h.className='bghead'; h.textContent=GROUPS[gk].name; bd.appendChild(h);
+      idxs.forEach(i=>{
+        const c=CH[i], p=Math.round(100*chScore[i]/chMax[i]);
+        const val=stairRes[c.tag]||`${p}%`;
+        const row=document.createElement('div'); row.className='brow';
+        row.innerHTML=`<span class="bname">${c.tag}</span><div class="btrack"><div class="bfill"></div></div><span class="bpct">${val}</span>`;
+        bd.appendChild(row);
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{row.querySelector('.bfill').style.width=p+'%';}));
+      });
+    });
+  }
+
+  // ---- comparison ----
+  function buildCompare(){
+    const names=deviceNames();
+    const leg=$('legend'); leg.innerHTML='';
+    names.forEach((n,i)=>{ if(!(n in cmpVisible)) cmpVisible[n]=i<4; });
+    names.forEach((n,i)=>{
+      const b=document.createElement('button'); b.className='legchip'+(cmpVisible[n]?' on':'');
+      const col=DEVCOLORS[i%DEVCOLORS.length];
+      const dot=document.createElement('span'); dot.className='dot'; dot.style.background=col;
+      b.appendChild(dot); b.appendChild(document.createTextNode(n));
+      b.addEventListener('click',()=>{cmpVisible[n]=!cmpVisible[n]; b.classList.toggle('on',cmpVisible[n]); renderCompareRows(names);});
+      leg.appendChild(b);
+    });
+    renderCompareRows(names);
+  }
+  function renderCompareRows(names){
+    const box=$('cmpscroll'); box.innerHTML='';
+    if(!names.length){
+      box.innerHTML='<div class="cmpempty">No saved results yet.<br>Finish a tour with a headphone name and it lands here — then run the same rooms on a second pair.</div>';
+      return;
+    }
+    const active=names.filter(n=>cmpVisible[n]);
+    Object.keys(GROUPS).forEach(gk=>{
+      const rooms=CH.filter(c=>c.group===gk).filter(c=>active.some(n=>{const v=db.devices[n].rooms[c.tag]; return v!=null && (typeof v==='number'||v.pct!=null);}));
+      if(!rooms.length) return;
+      const h=document.createElement('div'); h.className='bghead'; h.textContent=GROUPS[gk].name; box.appendChild(h);
+      rooms.forEach(c=>{
+        const row=document.createElement('div'); row.className='cmprow';
+        row.innerHTML=`<div class="rname">${c.tag} · ${c.tests}</div>`;
+        active.forEach(n=>{
+          const v=db.devices[n].rooms[c.tag];
+          const p = v==null ? null : (typeof v==='number' ? v : v.pct);
+          const label = v==null ? '—' : (typeof v==='object' && v.thr ? v.thr : p+'%');
+          const col=DEVCOLORS[names.indexOf(n)%DEVCOLORS.length];
+          const bar=document.createElement('div'); bar.className='cmpbar';
+          bar.innerHTML = p!=null
+            ? `<div class="track"><div class="fill" style="width:${p}%;background:${col}"></div></div><span class="pct">${label}</span>`
+            : `<div class="track"></div><span class="pct">—</span>`;
+          row.appendChild(bar);
+        });
+        box.appendChild(row);
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>

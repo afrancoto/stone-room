@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Stone Room — a listening lab</title>
+<meta name="description" content="A free listening lab: test your headphones and train your ears. 23 short rooms that measure your pair's fade points in real Hz and dB — and teach you what the reviews mean." />
+<meta name="theme-color" content="#17130F" />
+<meta property="og:title" content="Stone Room — a listening lab" />
+<meta property="og:description" content="Test your headphones and train your ears. Adaptive rooms measure your pair in real Hz and dB, saved so you can compare pairs — and teach the vocabulary as you go." />
+<meta property="og:type" content="website" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Stone Room" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app">
+
+  <!-- landing / explainer -->
+  <section id="intro" class="screen on">
+    <div class="cans">◗ ◖</div>
+    <div class="eyebrow">A listening lab</div>
+    <h1>Stone Room</h1>
+    <p class="lede deepnote" id="deepnote"></p>
+    <div class="introcard">
+      <div class="ic"><h3><span class="dot" style="background:var(--sage)"></span>What this is</h3><p id="introWhat"></p></div>
+      <div class="ic gapcard"><h3><span class="dot" style="background:var(--gold)"></span>Why it's different</h3><p id="introGap"></p></div>
+      <div class="ic"><h3><span class="dot" style="background:var(--ember)"></span>For a clean read</h3><ul class="howto" id="introHowto"></ul></div>
+    </div>
+    <p class="promise" id="introPromise"></p>
+    <button class="btn" id="begin" style="margin-top:16px">Tune in</button><br>
+    <button class="minor" id="gocompare" style="display:none">View headphone comparison</button>
+  </section>
+
+  <!-- calibration -->
+  <section id="cal" class="screen">
+    <div class="eyebrow">First, a quick check</div>
+    <h2>Left. Centre. Right.</h2>
+    <p class="lede">Three notes travel across the stage. If they clearly move ear to ear, you're set. If they don't — or left and right feel smeared — turn off <em>Dolby Atmos</em> and check <em>Mono audio</em> is off.</p>
+    <div class="calbar" id="calbar">
+      <span class="end" style="text-align:left">◀ Left</span>
+      <div class="caltrack"><div class="caldot" id="caldot"></div></div>
+      <span class="end" style="text-align:right">Right ▶</span>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="calreplay">↺ Again</button>
+      <button class="btn" id="calgo">It moves — continue</button>
+    </div>
+  </section>
+
+  <!-- room select -->
+  <section id="select" class="screen">
+    <div class="eyebrow">Build your tour</div>
+    <h2>What do you want to prove?</h2>
+    <p class="lede">Each room tests one audiophile claim, adaptively — it hunts your exact limit. Tap rooms in or out; use a group's toggle for the whole set.</p>
+    <div class="selscroll" id="selscroll"></div>
+    <div class="seltools">
+      <button id="selall">Everything</button>
+      <button id="selnone">Clear</button>
+    </div>
+    <div class="row"><button class="btn" id="selstart">Continue</button></div>
+  </section>
+
+  <!-- device -->
+  <section id="device" class="screen">
+    <div class="eyebrow">One more thing</div>
+    <h2>Which headphones are on?</h2>
+    <p class="lede">Results are saved per pair, so you can run the same rooms on different headphones and compare them.</p>
+    <div class="warnbox"><b>Comparing pairs?</b> Match loudness first: replay the calibration notes on each pair and set the phone volume until they sound equally loud. Keep ANC in the same mode, and check both use their best Bluetooth codec (Developer options → Bluetooth audio codec).</div>
+    <input id="devinput" maxlength="24" placeholder="e.g. HD 600, AirPods Pro…" />
+    <div class="devchips" id="devchips"></div>
+    <div class="row"><button class="btn" id="devgo">Start the tour</button></div>
+  </section>
+
+  <!-- game -->
+  <section id="game" class="screen">
+    <div class="devlabel" id="devlabel"></div>
+    <div class="scorebar">SCORE <b id="score">0</b></div>
+
+    <div class="g-top">
+      <div class="chapline"><span class="chapno" id="chapno">I</span><span class="chaptag" id="chaptag"></span></div>
+      <div class="chaptitle-row">
+        <div class="chaptitle" id="chaptitle"></div>
+        <button class="iconbtn" id="infobtn" aria-label="The science behind this room" title="The science behind this room">i</button>
+      </div>
+      <div class="claim" id="claim"></div>
+      <div class="notice" id="notice"></div>
+    </div>
+
+    <div class="g-mid">
+      <div class="field-wrap" id="fieldwrap">
+        <svg class="field" id="field" viewBox="-168 -78 336 208" aria-label="frontal listening stage">
+          <path class="arcfaint" d="M -150 95 A 150 150 0 0 1 150 95"/>
+          <path class="arc" d="M -110 41 A 110 110 0 0 1 110 41"/>
+          <text class="lbl" x="-150" y="112" text-anchor="middle">left</text>
+          <text class="lbl" x="0" y="-64" text-anchor="middle">front</text>
+          <text class="lbl" x="150" y="112" text-anchor="middle">right</text>
+          <circle class="ripple" id="ripple" cx="0" cy="95" r="10"/>
+          <circle class="headdot" cx="0" cy="95" r="5"/>
+          <line class="link" id="link" x1="0" y1="95" x2="0" y2="95"/>
+          <circle class="guess" id="guess" cx="0" cy="0" r="7"/>
+          <g class="truthg" id="truthg"><circle class="truth" id="truth" cx="0" cy="0" r="8"/></g>
+        </svg>
+      </div>
+
+      <div class="field-wrap circle hidden" id="fieldwrapO">
+        <svg class="field" id="fieldO" viewBox="-160 -160 320 320" aria-label="full-circle listening field">
+          <circle class="arcfaint" cx="0" cy="0" r="150"/>
+          <circle class="arc" cx="0" cy="0" r="112"/>
+          <text class="lbl" x="0" y="-138" text-anchor="middle">front</text>
+          <text class="lbl" x="0" y="146" text-anchor="middle">back</text>
+          <text class="lbl" x="-141" y="4" text-anchor="middle">L</text>
+          <text class="lbl" x="141" y="4" text-anchor="middle">R</text>
+          <circle class="ripple" id="rippleO" cx="0" cy="0" r="10"/>
+          <circle class="headdot" cx="0" cy="0" r="5"/>
+          <circle class="comet" id="comet" cx="0" cy="0" r="5"/>
+          <line class="link" id="linkO" x1="0" y1="0" x2="0" y2="0"/>
+          <circle class="guess" id="guessO" cx="0" cy="0" r="7"/>
+          <g class="truthg" id="truthgO"><circle class="truth" id="truthO" cx="0" cy="0" r="8"/></g>
+        </svg>
+      </div>
+
+      <div class="choices" id="choices"></div>
+
+      <div class="status" id="status">Listen…</div>
+      <div class="precision" id="precision">
+        <div class="plabel"><span>Precision</span><span id="pvalue"></span></div>
+        <div class="ptrack"><div class="pfill" id="pfill"></div></div>
+      </div>
+      <div class="learn" id="learn"></div>
+    </div>
+
+    <div class="g-bot">
+      <div class="controls">
+        <button class="replay" id="replay"><span>↺</span> Replay</button>
+        <button class="btn ghost lockbtn" id="lockbtn">Lock in ✓</button>
+        <button class="btn next" id="next">Next</button>
+      </div>
+      <div class="chapdots" id="chapdots"></div>
+    </div>
+  </section>
+
+  <!-- end -->
+  <section id="end" class="screen">
+    <div class="eyebrow">Tour complete</div>
+    <div class="num" id="finalnum">0</div>
+    <div class="rank" id="rank">—</div>
+    <p class="verdict" id="verdict"></p>
+    <div class="saved" id="saved"></div>
+    <div class="seltools">
+      <button id="copyres">Copy results</button>
+      <button id="sharelink">Share</button>
+    </div>
+    <div class="breakdown" id="breakdown"></div>
+    <div class="support">
+      <p>Stone Room is free and always will be. If it helped you hear your headphones, you can leave a tip.</p>
+      <div class="srow"><a class="coffee" href="#" role="button">☕ Buy me a coffee</a></div>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="reselect">Rooms</button>
+      <button class="btn ghost" id="endcompare">Compare</button>
+      <button class="btn" id="again">Again</button>
+    </div>
+  </section>
+
+  <!-- compare -->
+  <section id="compare" class="screen">
+    <div class="eyebrow">The lab bench</div>
+    <h2>Headphone vs headphone</h2>
+    <p class="lede">Same rooms, different pairs. Tap names to show or hide them.</p>
+    <div class="legend" id="legend"></div>
+    <div class="cmpscroll" id="cmpscroll"></div>
+    <div class="row">
+      <button class="btn ghost" id="cmpback">Back</button>
+      <button class="btn" id="cmpnew">New tour</button>
+    </div>
+  </section>
+
+</div>
+
+<!-- info sheet (science per room) -->
+<div class="modal" id="modal">
+  <div class="sheet">
+    <button class="close" id="infoclose" aria-label="Close">×</button>
+    <div class="m-tag" id="mTag"></div>
+    <h2 id="mTitle"></h2>
+    <div class="m-sec m-bench"><p id="mBench"></p></div>
+    <div class="m-sec"><h4>What's happening in the driver</h4><p id="mScience"></p></div>
+    <div class="m-sec"><p class="m-models" id="mModels"></p></div>
+  </div>
+</div>
+
+<script src="content.js"></script>
+<script src="adaptive.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
