@@ -61,7 +61,7 @@
     // space map: concentric blur cones, one ring per acuity room measured
     const SMAP=[['Stage',COL.sage],['Motion',COL.gold],['Separation',COL.ember],['Depth',COL.iris],['Orbit',COL.stone]];
     const smap=SMAP.filter(([t])=>rooms[t]&&rooms[t].val!=null);
-    const spaceH=smap.length?164:0;
+    const spaceH=smap.length?206:0;
     const rowsY=172+spaceH;
     const H = rowsY + rowsH + 16;
 
@@ -70,13 +70,12 @@
     let g='';
     // axis + ticks
     const ticks=[20,50,100,200,500,1000,2000,5000,10000,20000];
-    const lbl={20:'20',100:'100',1000:'1k',10000:'10k',20000:'20k'};
+    const lbl={20:'20',100:'100',1000:'1k',10000:'10k',20000:'20 kHz'};
     g+=`<line x1="${PAD}" y1="${BASE}" x2="${W-PAD}" y2="${BASE}" stroke="${COL.line}" stroke-width="1.5"/>`;
     for(const t of ticks){
       g+=`<line x1="${x(t)}" y1="${BASE}" x2="${x(t)}" y2="${BASE+4}" stroke="${COL.line}"/>`;
-      if(lbl[t]) g+=`<text x="${x(t)}" y="${BASE+16}" fill="${COL.muted}" font-size="9" text-anchor="middle" font-family="${FONT}">${lbl[t]}</text>`;
+      if(lbl[t]) g+=`<text x="${x(t)}" y="${BASE+16}" fill="${COL.muted}" font-size="9" text-anchor="${t===20000?'end':'middle'}" font-family="${FONT}">${lbl[t]}</text>`;
     }
-    g+=`<text x="${W-PAD}" y="${BASE+28}" fill="${COL.muted}" font-size="8" text-anchor="end" letter-spacing="2" font-family="${FONT}">FREQUENCY · Hz</text>`;
 
     // audible window
     const x1=found&&found.val?x(found.val):x(20), x2=air&&air.val?x(air.val):x(20000);
@@ -94,49 +93,55 @@
       const X=x(r.val);
       s+=`<line x1="${X}" y1="${LINE-12}" x2="${X}" y2="${BASE}" stroke="${COL.ember}" stroke-width="2"/>`;
       const txt=isLow?`${Math.round(r.val)} Hz`:`${(r.val/1000).toFixed(1)} kHz`;
-      const anchor=isLow?'end':'start', dx=isLow?-5:5;
+      // labels sit inside the audible window so they can never clip the card edges
+      const anchor=isLow?'start':'end', dx=isLow?6:-6;
       s+=`<text x="${X+dx}" y="${LINE-18}" fill="${COL.stone}" font-size="12" font-weight="600" text-anchor="${anchor}" font-family="${FONT}">${txt}</text>`;
       s+=`<text x="${X+dx}" y="${LINE-32}" fill="${COL.muted}" font-size="8" letter-spacing="1.5" text-anchor="${anchor}" font-family="${FONT}">${isLow?'YOUR FLOOR':'YOUR CEILING'}</text>`;
       return s;
     };
     g+=edge(found,true)+edge(air,false);
 
-    // dip glyph (presence @1.8 kHz): depth = smallest audible scoop
+    // dip glyph (presence @1.8 kHz) and spike glyph (sibilance @7 kHz); their labels live
+    // on a fixed legend row under the axis where nothing can collide or clip
+    let legendX=PAD;
     if(dip&&dip.val!=null){
       const X=x(1800), d=Math.min(26, SPEC.Presence.conv(dip.val)*2.0);
       g+=`<path d="M ${X-16} ${LINE} Q ${X} ${LINE+d*2} ${X+16} ${LINE}" fill="none" stroke="${COL.gold}" stroke-width="1.5"/>`;
-      g+=`<text x="${X}" y="${LINE+d+22}" fill="${COL.gold}" font-size="8.5" text-anchor="middle" font-family="${FONT}">${esc(SPEC.Presence.label(SPEC.Presence.conv(dip.val)))}</text>`;
+      g+=`<text x="${legendX}" y="${BASE+30}" fill="${COL.gold}" font-size="8.5" font-family="${FONT}">▼ ${esc(SPEC.Presence.label(SPEC.Presence.conv(dip.val)))} at 1.8 kHz</text>`;
+      legendX+=158;
     }
-    // spike glyph (sibilance @7 kHz): height = smallest audible spike
     if(spike&&spike.val!=null){
       const X=x(7000), h=Math.min(24, SPEC.Silk.conv(spike.val)*1.8);
       g+=`<path d="M ${X-9} ${LINE} L ${X} ${LINE-h*1.6} L ${X+9} ${LINE}" fill="none" stroke="${COL.iris}" stroke-width="1.5"/>`;
-      // label sits left of the glyph so it can't collide with the ceiling marker
-      g+=`<text x="${X-13}" y="${LINE-10}" fill="${COL.iris}" font-size="8.5" text-anchor="end" font-family="${FONT}">${esc(SPEC.Silk.label(SPEC.Silk.conv(spike.val)))}</text>`;
+      g+=`<text x="${legendX}" y="${BASE+30}" fill="${COL.iris}" font-size="8.5" font-family="${FONT}">▲ ${esc(SPEC.Silk.label(SPEC.Silk.conv(spike.val)))} at 7 kHz</text>`;
     }
 
-    // ---- space map: concentric blur cones, all aimed front ----
-    // each arc spans ±(median error): half the listener's placements landed inside it.
+    // ---- space map: radar view ----
+    // each room is a translucent cone at its own bearing (frontal tasks in front, Orbit
+    // behind — the behind-you room). Cone width = ±(median error): half the listener's
+    // placements landed inside it. Bearings are presentational; widths are the data.
     let spaceSvg='';
     if(smap.length){
-      const y0=168, cx=104, cy=y0+114;
+      const y0=168, cx=104, cy=y0+100, R=72;
+      const AZ={Stage:-52, Motion:52, Separation:0, Depth:-125, Orbit:180};
       spaceSvg+=`<line x1="${PAD}" y1="${y0-6}" x2="${W-PAD}" y2="${y0-6}" stroke="${COL.line}" opacity="0.6"/>`;
-      spaceSvg+=`<text x="${PAD}" y="${y0+10}" fill="${COL.muted}" font-size="8" letter-spacing="2" font-family="${FONT}">SPACE · BLUR CONES</text>`;
-      spaceSvg+=`<line x1="${cx-96}" y1="${cy}" x2="${cx+96}" y2="${cy}" stroke="${COL.line}" opacity="0.5"/>`;
-      spaceSvg+=`<circle cx="${cx}" cy="${cy}" r="3.5" fill="${COL.muted}"/>`;
-      spaceSvg+=`<text x="${cx}" y="${y0+24}" fill="${COL.muted}" font-size="8" text-anchor="middle" letter-spacing="1.5" font-family="${FONT}">FRONT</text>`;
+      spaceSvg+=`<text x="${PAD}" y="${y0+10}" fill="${COL.muted}" font-size="8" letter-spacing="2" font-family="${FONT}">SPACE · WHERE YOUR EARS BLUR</text>`;
+      spaceSvg+=`<circle cx="${cx}" cy="${cy}" r="${R+6}" fill="none" stroke="${COL.line}" opacity="0.55"/>`;
+      spaceSvg+=`<circle cx="${cx}" cy="${cy}" r="3.5" fill="${COL.stone}"/>`;
+      spaceSvg+=`<text x="${cx}" y="${cy-R-12}" fill="${COL.muted}" font-size="8" text-anchor="middle" letter-spacing="1.5" font-family="${FONT}">FRONT</text>`;
+      spaceSvg+=`<text x="${cx}" y="${cy+R+18}" fill="${COL.muted}" font-size="8" text-anchor="middle" letter-spacing="1.5" font-family="${FONT}">BACK</text>`;
       const pt=(r,aDeg)=>{const a=aDeg*Math.PI/180; return `${(cx+r*Math.sin(a)).toFixed(1)} ${(cy-r*Math.cos(a)).toFixed(1)}`;};
-      let legendY=y0+34;
-      smap.forEach(([tag,col],i)=>{
-        const med=Math.min(88, rooms[tag].val);
-        const r=38+i*13;
-        spaceSvg+=`<path d="M ${pt(r,-med)} A ${r} ${r} 0 0 1 ${pt(r,med)}" fill="none" stroke="${col}" stroke-width="5" stroke-linecap="round" opacity="0.9"/>`;
+      let legendY=y0+30;
+      smap.forEach(([tag,col])=>{
+        const med=Math.min(88, rooms[tag].val), az=AZ[tag]||0;
+        // filled cone from the head out to R, spanning ±med around its bearing
+        spaceSvg+=`<path d="M ${cx} ${cy} L ${pt(R,az-med)} A ${R} ${R} 0 0 1 ${pt(R,az+med)} Z" fill="${col}" fill-opacity="0.14" stroke="${col}" stroke-opacity="0.75" stroke-width="1.3"/>`;
         spaceSvg+=`<circle cx="226" cy="${legendY-3.5}" r="3" fill="${col}"/>`;
         spaceSvg+=`<text x="235" y="${legendY}" fill="${COL.stone}" font-size="11" font-family="${FONT}">${tag} ±${Math.round(rooms[tag].val)}°</text>`;
         legendY+=17;
       });
-      spaceSvg+=`<text x="226" y="${Math.max(legendY+6, cy+12)}" fill="${COL.muted}" font-size="8" font-family="${FONT}">half your taps land</text>`;
-      spaceSvg+=`<text x="226" y="${Math.max(legendY+16, cy+22)}" fill="${COL.muted}" font-size="8" font-family="${FONT}">inside each arc</text>`;
+      spaceSvg+=`<text x="226" y="${legendY+4}" fill="${COL.muted}" font-size="8" font-family="${FONT}">half your taps land</text>`;
+      spaceSvg+=`<text x="226" y="${legendY+14}" fill="${COL.muted}" font-size="8" font-family="${FONT}">inside each cone</text>`;
     }
 
     // ---- reading rows ----
