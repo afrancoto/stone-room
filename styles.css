@@ -204,9 +204,12 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .cdot.done{background:var(--gold)} .cdot.now{background:var(--stone)}
 
 /* ---- end ---- */
-#end .num{font-family:var(--disp); font-size:56px; line-height:1; color:var(--gold); margin:.1em 0}
+#end .num{font-family:var(--disp); font-size:60px; line-height:1; color:var(--gold); margin:.08em 0 0}
+#end .finalout{font-size:13px; color:var(--muted); margin:2px 0 8px; letter-spacing:.02em}
+#end .finalout b{color:var(--stone); font-weight:600}
 #end .rank{font-size:12px; letter-spacing:.24em; text-transform:uppercase; color:var(--muted)}
 #end .verdict{margin:12px auto 6px; max-width:32ch; color:var(--stone); font-size:14px; line-height:1.5}
+.benchnote{margin:6px auto 4px; max-width:34ch; color:var(--muted); font-size:12px; line-height:1.5; border-left:2px solid var(--gold); padding:4px 0 4px 12px; text-align:left}
 #end .saved{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--sage); min-height:16px}
 .breakdown{width:min(88vw,340px); margin:12px auto 0; text-align:left; flex:0 1 auto; overflow-y:auto; min-height:0}
 .bghead{font-family:var(--disp); font-size:13px; color:var(--stone); margin:10px 0 2px; border-bottom:1px solid var(--line); padding-bottom:4px}

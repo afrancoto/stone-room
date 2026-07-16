@@ -93,7 +93,7 @@
         g2.gain.exponentialRampToValueAtTime(.0006,t+T.len*.6+T.rel); g2.connect(panner);
         const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=freq*T.ov; o2.connect(g2); o2.start(t); o2.stop(t+T.len+T.rel+.05);}
     }
-    function playOnce(start){let t=start; T.motif.forEach(s=>{note(semis(T.base,s),t); t+=T.len*1.02;}); return t;}
+    function playOnce(start){let t=start; T.motif.forEach(s=>{note(semis(T.base*rvF,s),t); t+=T.len*1.02;}); return t;}
     function loop(){stopped=false; const step=()=>{if(stopped)return; const end=playOnce(ctx.currentTime+.02); timer=setTimeout(step,(end-ctx.currentTime+.32)*1000);}; step();}
     function stop(){stopped=true; if(timer){clearTimeout(timer);timer=null;}}
     function setAz(az2){const {x,z}=pos(az2,dist); panner.positionX.value=x; panner.positionZ.value=z;}
@@ -131,14 +131,14 @@
   function grainNote(when,dirty,partialGain){
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.5,when+.01);
     g.gain.exponentialRampToValueAtTime(.0008,when+.9); g.connect(master);
-    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=330; o.connect(g); o.start(when); o.stop(when+1);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=330*rvF; o.connect(g); o.start(when); o.stop(when+1);
     const g2=ctx.createGain(); g2.gain.setValueAtTime(0,when); g2.gain.linearRampToValueAtTime(.18,when+.01);
     g2.gain.exponentialRampToValueAtTime(.0006,when+.7); g2.connect(master);
-    const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=660; o2.connect(g2); o2.start(when); o2.stop(when+1);
+    const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=660*rvF; o2.connect(g2); o2.start(when); o2.stop(when+1);
     if(dirty){
       const g3=ctx.createGain(); g3.gain.setValueAtTime(0,when); g3.gain.linearRampToValueAtTime(partialGain,when+.01);
       g3.gain.exponentialRampToValueAtTime(.0005,when+.6); g3.connect(master);
-      const o3=ctx.createOscillator(); o3.type='sine'; o3.frequency.value=330*2.76; o3.connect(g3); o3.start(when); o3.stop(when+1);
+      const o3=ctx.createOscillator(); o3.type='sine'; o3.frequency.value=330*rvF*2.76; o3.connect(g3); o3.start(when); o3.stop(when+1);
     }
   }
   function hallPluck(when,hall,wet){
@@ -186,7 +186,7 @@
       const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.2,when+.1);
       g.gain.setValueAtTime(.2,when+1.3); g.gain.linearRampToValueAtTime(0,when+1.8);
       g.connect(sp); sp.connect(master);
-      const f=220*Math.pow(2,cents/1200);
+      const f=220*rvF*Math.pow(2,cents/1200);
       [f,f*1.5,f*2].forEach(fr=>{const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=fr; o.connect(g); o.start(when); o.stop(when+1.9);});
     };
     if(wide){ mk(-detuneCents,-panAmt); mk(detuneCents,panAmt); }
@@ -227,12 +227,12 @@
     g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(amp,when+.015);
     g.gain.exponentialRampToValueAtTime(.0008,when+.8); g.connect(master);
     [392,784].forEach((f,i)=>{const og=ctx.createGain(); og.gain.value=i?0.3:1; og.connect(g);
-      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f; o.connect(og); o.start(when); o.stop(when+.9);});
+      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f*rvF; o.connect(og); o.start(when); o.stop(when+.9);});
   }
   function silenceTail(when,hissGain){
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.45,when+.01);
     g.gain.exponentialRampToValueAtTime(.0008,when+.5); g.connect(master);
-    const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=523; o.connect(g); o.start(when); o.stop(when+.6);
+    const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=523*rvF; o.connect(g); o.start(when); o.stop(when+.6);
     if(hissGain>0){
       const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(2.5);
       const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=4000; bp.Q.value=.4;
@@ -248,7 +248,7 @@
       const g=ctx.createGain(); g.gain.setValueAtTime(.5,t); g.gain.exponentialRampToValueAtTime(.0006,t+.12);
       const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1200;
       lp.connect(g); g.connect(master);
-      const o=ctx.createOscillator(); o.type='square'; o.frequency.value=220; o.connect(lp); o.start(t); o.stop(t+.15);
+      const o=ctx.createOscillator(); o.type='square'; o.frequency.value=220*rvF; o.connect(lp); o.start(t); o.stop(t+.15);
     }
   }
   function bassNote(when,dirty,amt){
@@ -262,11 +262,11 @@
       g.gain.setValueAtTime(.85,when+.2); g.gain.exponentialRampToValueAtTime(.001,when+.8);
     }
     g.connect(master);
-    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=55; o.connect(g); o.start(when); o.stop(when+1.6);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=55*rvF; o.connect(g); o.start(when); o.stop(when+1.6);
     if(dirty){
       [110,165].forEach((f,i)=>{const hg=ctx.createGain(); hg.gain.setValueAtTime(0,when); hg.gain.linearRampToValueAtTime(amt/(i+1),when+.03);
         hg.gain.exponentialRampToValueAtTime(.0006,when+1.2); hg.connect(master);
-        const ho=ctx.createOscillator(); ho.type='sine'; ho.frequency.value=f; ho.connect(hg); ho.start(when); ho.stop(when+1.3);});
+        const ho=ctx.createOscillator(); ho.type='sine'; ho.frequency.value=f*rvF; ho.connect(hg); ho.start(when); ho.stop(when+1.3);});
     }
   }
   function centreNote(when,panOff){
@@ -275,7 +275,7 @@
     g.gain.setValueAtTime(.4,when+1.0); g.gain.linearRampToValueAtTime(0,when+1.3);
     g.connect(sp); sp.connect(master);
     [494,988].forEach((f,i)=>{const og=ctx.createGain(); og.gain.value=i?.25:1; og.connect(g);
-      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f; o.connect(og); o.start(when); o.stop(when+1.4);});
+      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f*rvF; o.connect(og); o.start(when); o.stop(when+1.4);});
   }
   function silkPhrase(when,sibGain){
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.3,when+.05);
@@ -319,7 +319,7 @@
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(lvl,when+.05);
     g.gain.setValueAtTime(lvl,when+1.3); g.gain.linearRampToValueAtTime(0,when+1.6);
     sh.connect(lp); lp.connect(g); g.connect(master);
-    [110,165,220].forEach(f=>{const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f;
+    [110,165,220].forEach(f=>{const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f*rvF;
       const og=ctx.createGain(); og.gain.value=.33; o.connect(og); og.connect(sh); o.start(when); o.stop(when+1.7);});
   }
   function marker(t){
@@ -335,7 +335,7 @@
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(1,when+.006);
     g.gain.exponentialRampToValueAtTime(.0008,when+.35);
     g.connect(dry); g.connect(send);
-    const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=440; o.connect(g); o.start(when); o.stop(when+.5);
+    const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=440*rvF; o.connect(g); o.start(when); o.stop(when+.5);
   }
 
   // ---------- room table (behaviour) ----------
@@ -442,29 +442,29 @@
   // type D: one interval holds the stimulus (pick it). type X: both play; one is altered.
   // play(level, t, flag): D → flag=stimulus present; X → flag=this interval is the altered one.
   const ADAPT={
-    Foundation:{type:'D', q:'Which held a tone?', dur:1.4, start:55, floor:24, ceil:95, hard:.90, easy:1.15, log:true, betterHigh:false, anchors:[70,26], fmt:v=>Math.round(v)+' Hz',
+    Foundation:{type:'D', q:'Which held a tone?', dur:1.4, start:40, floor:16, ceil:63, hard:.90, easy:1.15, log:true, betterHigh:false, anchors:[50,20], fmt:v=>Math.round(v)+' Hz',
       play:(lv,t,on)=>{marker(t); if(on) subTone(lv, t+.12, 1.15, lv<45?.85:.7);}},
-    Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:8500, floor:6000, ceil:16000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[8000,14500], fmt:v=>(v/1000).toFixed(1)+' kHz',
+    Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:13000, floor:8000, ceil:20000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[10000,17000], fmt:v=>(v/1000).toFixed(1)+' kHz',
       play:(lv,t,on)=>{marker(t); if(on) shimmerBurst(lv, t+.15, .8, .16);}},
-    Whisper:{type:'D', q:'Which pad hid a tick?', dur:1.7, start:.12, floor:.01, ceil:.3, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.14,.015], fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
+    Whisper:{type:'D', q:'Which pad hid a tick?', dur:1.7, start:.04, floor:.002, ceil:.2, hard:.78, easy:1.5, log:true, betterHigh:false, anchors:[.04,.008], fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
       play:(lv,t,on)=>{pad(t,1.6,.2); if(on) tick(t+.5+Math.random()*.7, lv);}},
     Silence:{type:'X', q:'Which hid a hiss?', dur:2.4, answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.05,.006], fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
       play:(lv,t,alt)=>silenceTail(t, alt?lv:0)},
-    Grain:{type:'X', q:'Which was pure?', dur:1.15, answerAltered:false, start:.16, floor:.015, ceil:.35, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.18,.025], fmt:v=>'partial '+Math.round(v*100)+'%',
+    Grain:{type:'X', q:'Which was pure?', dur:1.15, answerAltered:false, start:.1, floor:.008, ceil:.35, hard:.78, easy:1.4, log:true, betterHigh:false, anchors:[.15,.02], fmt:v=>'partial '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>grainNote(t, alt, lv)},
     Composure:{type:'X', q:'Which stayed clean?', dur:1.8, answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], fmt:v=>'drive '+v.toFixed(1),
       play:(lv,t,alt)=>composureChord(t, alt?lv:0)},
-    Grip:{type:'X', q:'Which was tighter?', dur:1.7, answerAltered:false, start:.4, floor:.05, ceil:.8, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.45,.08], fmt:v=>'bloom '+Math.round(v*100)+'%',
+    Grip:{type:'X', q:'Which was tighter?', dur:1.7, answerAltered:false, start:.15, floor:.02, ceil:.5, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[.35,.06], fmt:v=>'bloom '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>bassNote(t, alt, lv)},
-    Presence:{type:'X', q:'Which was in the room?', dur:1.7, answerAltered:false, start:9, floor:1, ceil:16, hard:.75, easy:1.4, log:false, betterHigh:false, anchors:[10,1.5], fmt:v=>v.toFixed(1)+' dB scoop',
+    Presence:{type:'X', q:'Which was in the room?', dur:1.7, answerAltered:false, start:2.5, floor:.5, ceil:6, hard:.8, easy:1.35, log:false, betterHigh:false, anchors:[5,1], fmt:v=>v.toFixed(1)+' dB scoop',
       play:(lv,t,alt)=>presenceVoice(t, alt?-lv:0)},
-    Silk:{type:'X', q:'Which "s" stabbed?', dur:1.5, answerAltered:true, start:.18, floor:.015, ceil:.5, hard:.72, easy:1.55, log:true, betterHigh:false, anchors:[.2,.03], fmt:v=>'+'+Math.round(20*Math.log10((0.05+v)/0.05))+' dB sib',
+    Silk:{type:'X', q:'Which "s" stabbed?', dur:1.5, answerAltered:true, start:.1, floor:.005, ceil:.35, hard:.78, easy:1.4, log:true, betterHigh:false, anchors:[.15,.02], fmt:v=>'+'+Math.round(20*Math.log10((0.05+v)/0.05))+' dB sib',
       play:(lv,t,alt)=>silkPhrase(t, .05+(alt?lv:0))},
     Snap:{type:'X', q:'Which truly hit?', dur:.9, answerAltered:false, start:.035, floor:.004, ceil:.08, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.04,.006], fmt:v=>Math.round(v*1000)+' ms attack',
       play:(lv,t,alt)=>snapHit(t, alt?lv:.001)},
     Pulse:{type:'X', q:'Which groove was tight?', dur:2.15, answerAltered:false, start:40, floor:5, ceil:80, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[45,8], fmt:v=>Math.round(v)+' ms',
       play:(lv,t,alt)=>pulsePattern(t, 3, alt?lv:0)},
-    Shade:{type:'X', q:'Which was louder?', dur:.95, answerAltered:true, start:3, floor:.25, ceil:6, hard:.75, easy:1.55, log:true, betterHigh:false, anchors:[3.5,.5], fmt:v=>v.toFixed(2)+' dB',
+    Shade:{type:'X', q:'Which was louder?', dur:.95, answerAltered:true, start:1.5, floor:.3, ceil:4, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[3,.5], fmt:v=>v.toFixed(2)+' dB',
       play:(lv,t,alt)=>dynNote(t, alt?lv:0)},
     Centre:{type:'X', q:'Which sat dead centre?', dur:1.5, answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], fmt:v=>Math.round(v*100)+'% off',
       play:(lv,t,alt)=>centreNote(t, alt?(Math.random()<.5?1:-1)*lv:0)},
@@ -483,18 +483,21 @@
   // score maps median angular error to pct via [weakDeg, refDeg]; stops when the running
   // acuity estimate is confident (SE small) after a minimum, else at maxRounds.
   const SPATIAL={
-    Stage:{minR:4, maxR:8, weak:42, ref:7, ecc:[40,58,74,86]},
-    Motion:{minR:4, maxR:8, weak:48, ref:9, spd:[2.6,2.2,1.8,1.5]},
-    Orbit:{minR:4, maxR:8, weak:80, ref:16, dur:[4.4,4.0,3.5,3.1]},
-    Depth:{minR:4, maxR:7, weak:55, ref:12},
-    Separation:{minR:4, maxR:7, weak:55, ref:12, spread:[68,52,40,30]},
+    Stage:{minR:3, maxR:6, weak:40, ref:5, ecc:[40,58,74,86]},
+    Motion:{minR:3, maxR:6, weak:45, ref:7, spd:[2.4,2.0,1.7,1.4]},
+    Orbit:{minR:3, maxR:6, weak:75, ref:14, dur:[4.2,3.8,3.4,3.0]},
+    Depth:{minR:3, maxR:6, weak:52, ref:10},
+    Separation:{minR:3, maxR:6, weak:52, ref:10, spread:[64,48,36,28]},
   };
 
   // ---------- state ----------
   let order=[], oi=0, score=0, voices=[], target=null, guessLocked=false, replayFn=()=>{};
   let chScore={}, chPct={}, roomThr={}, roomVal={};   // per-room score, readout text, numeric measurement
   let choiceTimers=[], orbitInt=null;
-  let selected = CH.map(()=>true);
+  // curated default tour (~11 non-redundant rooms across all four domains) — keeps the set
+  // short. Every other room stays available on the select screen, just off by default.
+  const DEFAULT_ROOMS = new Set(['Stage','Orbit','Depth','Crowd','Whisper','Grain','Foundation','Air','Presence','Snap','Shade']);
+  let selected = CH.map(c=>DEFAULT_ROOMS.has(c.tag));
   let device='';
   let db={devices:{}}, storageOK=false, cmpVisible={};
   let lastPct=0;
@@ -502,6 +505,14 @@
   let sp=null;                                    // active spatial state
   let cnt=null;                                   // active count state
   let kbAz=0, kbRad=110, kbActive=false;          // keyboard guess cursor (spatial rooms)
+  // per-trial roving: defeats memorisation of a fixed reference. Level and base pitch are
+  // randomised each trial (both intervals share the same rove) so only the tested DIFFERENCE
+  // is informative — you can't learn the token, only hear the change.
+  let rvF=1;
+  function roveTrial(){
+    rvF = Math.pow(2, (Math.random()*6-3)/12);     // ±3 semitones base transpose
+    if(master) master.gain.setValueAtTime(0.85*(0.62+Math.random()*0.38), ctx.currentTime); // −4..0 dB
+  }
 
   const $=id=>document.getElementById(id);
   const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare')};
@@ -520,7 +531,7 @@
     if(c.mode==='stair'){
       const A=ADAPT[c.tag], d=A.dur||1.5;
       const t=0.25+2*d+0.3+1.7;                 // both intervals + answer + feedback pause
-      return {q:14*t, f:28*t};
+      return {q:9*t, f:16*t};
     }
     if(c.mode==='count') return {q:5*7.5, f:8*7.5};
     const per={locate:7,sweep:8.5,depth:7.5,separate:10,orbit:11}[c.mode]||8;
@@ -603,8 +614,8 @@
     $('cmpback').addEventListener('click',()=>{show(order.length?'end':'intro');});
     $('cmpnew').addEventListener('click',()=>{buildSelect(); show('select');});
     $('next').addEventListener('click',nextChapter);
-    $('lockbtn').addEventListener('click',()=>{ if(st&&!st.done) lockStair(); else if(cnt&&!cnt.done) finishCount(); else if(sp&&!sp._finished) lockSpatial(); });
-    $('contbtn').addEventListener('click',()=>{ const fn=pendingContinue; hideCheckpointBtns(); guessLocked=false; if(fn) fn(); });
+    $('lockbtn').addEventListener('click',redoRoom);        // "↻ Redo" on the result
+    $('contbtn').addEventListener('click',sharpenRoom);     // "Sharpen ↑" on the result
     $('field').addEventListener('pointerdown',e=>onTap(e,false));
     $('fieldO').addEventListener('pointerdown',e=>onTap(e,true));
     document.addEventListener('keydown',onKeydown);
@@ -634,6 +645,7 @@
   }
 
   function runCal(){
+    rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // clear any leftover rove
     const seq=[-90,0,90], bar=$('calbar'), dot=$('caldot');
     bar.classList.add('play');
     seq.forEach((az,i)=>{ setTimeout(()=>{ const v=makeVoice('bell',az,1.6,0.6); v.playOnce(ctx.currentTime+.02);
@@ -705,7 +717,7 @@
     $('chapno').textContent=ROMANS[oi]; $('chaptag').textContent=c.tag; $('chaptitle').textContent=c.title;
     $('claim').textContent=c.claim; $('notice').innerHTML=c.notice;
     const cd=$('chapdots'); cd.innerHTML=''; order.forEach((_,i)=>{const d=document.createElement('div');d.className='cdot'+(i<oi?' done':i===oi?' now':'');cd.appendChild(d);});
-    $('learn').classList.remove('on'); $('next').classList.remove('on'); $('lockbtn').classList.remove('on');
+    $('learn').classList.remove('on'); $('next').classList.remove('on'); hideCheckpointBtns();
     setPrecision(0,''); $('precision').classList.remove('on');
     startChapter();
   }
@@ -718,25 +730,31 @@
   }
   function showLearn(){ const c=chap(); const L=$('learn'); L.innerHTML=`<b>Why audiophiles care</b>${c.learn}`; L.classList.add('on'); }
 
-  // precision meter
+  // precision meter — colour reflects the confidence value (red < 40% < amber < 70% < green)
   function setPrecision(frac,label){
-    $('pfill').style.width=Math.round(clamp(frac,0,1)*100)+'%';
+    const f=clamp(frac,0,1);
+    $('pfill').style.width=Math.round(f*100)+'%';
+    $('pfill').style.background = f<0.4?'var(--ember)' : f<0.7?'var(--gold)' : 'var(--sage)';
     $('pvalue').textContent=label||'';
   }
   function showPrecisionUI(){ $('precision').classList.add('on'); }
 
-  // ---- checkpoint: pause and let the listener lock in or keep going for a sharper reading ----
-  let pendingContinue=null;
-  function showCheckpoint(readout, conf, continueFn, remain){
-    guessLocked=true; clearTimers(); setReplay(false);
-    setPrecision(conf, readout);
-    $('status').innerHTML=`Reading: <span class="pts">${readout}</span> · ${Math.round(conf*100)}% confident.<br><span style="color:var(--muted)">Lock it in, or sharpen the number?</span>`;
-    pendingContinue=continueFn;
-    $('lockbtn').classList.add('on');
-    $('contbtn').textContent = remain ? `Sharpen (≤${remain} more)` : 'Keep going →';
-    $('contbtn').classList.toggle('on', !!continueFn);
+  // ---- result-screen actions: the room finishes on its own; you may Sharpen or Redo ----
+  function showResultBtns(canSharpen){ $('contbtn').classList.toggle('on', !!canSharpen); $('lockbtn').classList.add('on'); }
+  function hideCheckpointBtns(){ $('lockbtn').classList.remove('on'); $('contbtn').classList.remove('on'); }
+  function sharpenRoom(){
+    hideCheckpointBtns(); $('next').classList.remove('on'); $('learn').classList.remove('on');
+    if(st && st.done){ st.done=false; st.sharpen=true; guessLocked=false; stairTrial(); }
+    else if(sp && sp._finished){ sp._finished=false; sp.done=false; sp.sharpen=true; guessLocked=false; spatialRound(); }
   }
-  function hideCheckpointBtns(){ $('lockbtn').classList.remove('on'); $('contbtn').classList.remove('on'); $('contbtn').textContent='Keep going →'; pendingContinue=null; }
+  function redoRoom(){
+    const i=order[oi], tag=CH[i].tag;
+    if(chScore[i]!=null){ score-=chScore[i]; }
+    chScore[i]=0; delete chPct[i]; delete roomThr[tag]; delete roomVal[tag];
+    $('score').textContent=score;
+    hideCheckpointBtns();
+    loadChapter();
+  }
 
   function startChapter(){
     guessLocked=false; st=null; sp=null; cnt=null; stopVoices();
@@ -782,7 +800,7 @@
     const dur=st.dur, gap=.3;
     const play=()=>{
       choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
-      setChoicesEnabled(false); setReplay(false);
+      setChoicesEnabled(false); setReplay(false); roveTrial();
       $('status').innerHTML=`Trial ${st.trial+1} <span style="color:var(--muted)">of ≤${st.eng.nMax}</span> · <span class="pts">honing in…</span>`;
       const t=ctx.currentTime+.25;
       for(let i=0;i<2;i++){
@@ -808,35 +826,29 @@
     const micro = hit ? pick(cont.hit||['Caught it.']) : pick(cont.miss||['Easing back.']);
     setPrecision(stt.conf, A.fmt(st.eng.levelOf(stt.mean)));
     const clearMarks=()=>[...$('choices').children].forEach(b=>b.classList.remove('correct','wrong'));
-    // hard cap, or (once we're sharpening) the precise target → finish
-    if(stt.forceStop || (st.sharpen && stt.precise)){ finishStair(); return; }
-    // first time it's confident enough: pause and ask lock vs keep going
-    if(!st.sharpen && stt.usable){
+    // normal flow auto-finishes when confident; a Sharpen run continues to the tighter target
+    const doneNow = st.sharpen ? (stt.solid || stt.forceStop) : (stt.usable || stt.forceStop);
+    if(doneNow){
       $('status').innerHTML=`${hit?'✓':'○'} ${micro}`;
-      choiceTimers.push(setTimeout(()=>{ clearMarks();
-        const s2=st.eng.z.stats();
-        showCheckpoint(A.fmt(st.eng.levelOf(s2.mean)), s2.conf, ()=>{ st.sharpen=true; stairTrial(); }, st.eng.nMax-st.trial);
-      }, 520));
+      choiceTimers.push(setTimeout(()=>{ clearMarks(); finishStair(); }, 480));
       return;
     }
     $('status').innerHTML = `${hit?'✓':'○'} ${micro} <span style="color:var(--muted)">· trial ${st.trial}</span>`;
-    choiceTimers.push(setTimeout(()=>{ clearMarks(); stairTrial(); }, 560));
+    choiceTimers.push(setTimeout(()=>{ clearMarks(); stairTrial(); }, 520));
   }
-  function lockStair(){ if(st && !st.done) finishStair(); }
   function finishStair(){
-    if(st.done) return; st.done=true; guessLocked=true; clearTimers(); hideCheckpointBtns();
+    if(st.done && st._shown) return; st.done=true; st._shown=true; guessLocked=true; clearTimers();
     const A=st.A, stt=st.eng.z.stats();
     const thr=st.eng.levelOf(stt.mean);
     const pct=pctFromThreshold(A,thr);
-    // 95% band in display units
     const b1=st.eng.levelOf(stt.mean-1.96*stt.sd), b2=st.eng.levelOf(stt.mean+1.96*stt.sd);
     const loT=Math.min(b1,b2), hiT=Math.max(b1,b2);
     recordRoom(pct, A.fmt(thr), {val:thr, lo:loT, hi:hiT});
-    const tier=tierLine(st.tag,pct);
     const conf=Math.round(stt.conf*100);
     $('status').innerHTML=`Your reading: <span class="pts">${A.fmt(thr)}</span> · +${pct} <span style="color:var(--muted)">· ${conf}% confident</span>`;
     setPrecision(stt.conf, `${A.fmt(thr)}  ·  ${bandStr(A,loT,hiT)}`);
-    showLearn(); appendTier(tier);
+    showLearn(); appendTier(tierLine(st.tag,pct));
+    showResultBtns(!stt.solid && stt.trial < st.eng.nMax);
     advanceUI();
   }
   const pctFromThreshold=(A,thr)=>{
@@ -867,7 +879,7 @@
     const angs=chosen.map((_,i)=>-80+i*step+jit(0,7));
     const play=()=>{
       choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
-      stopVoices(); setChoicesEnabled(false); setReplay(false); $('status').textContent='The ensemble…';
+      stopVoices(); roveTrial(); setChoicesEnabled(false); setReplay(false); $('status').textContent='The ensemble…';
       voices=chosen.map((k,i)=>makeVoice(k,angs[i],1.7,0.42));
       voices.forEach(v=>v.loop());
       choiceTimers.push(setTimeout(()=>{voices.forEach(v=>v.stop()); $('status').textContent='How many voices?'; setChoicesEnabled(true); setReplay(true);},4600));
@@ -889,17 +901,18 @@
     const enough=cnt.trial>=cnt.minR && (cnt.wrong>=2);
     if(cnt.trial>=cnt.maxR || enough){ finishCount(); return; }
     $('status').innerHTML = hit? `✓ ${pick(cont.hit)}` : `○ ${pick(cont.miss)}`;
-    if(cnt.trial>=cnt.minR) $('lockbtn').classList.add('on');
     choiceTimers.push(setTimeout(()=>{ [...$('choices').children].forEach(b=>b.classList.remove('correct','wrong')); countTrial(); }, 640));
   }
   function finishCount(){
-    if(cnt.done) return; cnt.done=true; guessLocked=true; stopVoices(); hideCheckpointBtns();
+    if(cnt.done) return; cnt.done=true; guessLocked=true; stopVoices();
     const best=Math.max(cnt.best,3);             // 3 is the smallest ensemble ever presented
     const pct=Math.round(clamp((best-3)/(7-3),0,1)*100);
     recordRoom(pct, best+' voices', {val:best});
     $('status').innerHTML=`You held <span class="pts">${best} voices</span> apart · +${pct}`;
     setPrecision(1, best+' voices');
-    showLearn(); appendTier(tierLine('Crowd',pct)); advanceUI();
+    showLearn(); appendTier(tierLine('Crowd',pct));
+    showResultBtns(false);   // Redo only (no "sharpen" for a counting task)
+    advanceUI();
   }
   // ---------- adaptive spatial ----------
   // force reflow on the wrapping HTML div (offsetWidth is undefined on <svg> in Firefox)
@@ -915,7 +928,7 @@
   function spatialRound(){
     guessLocked=false; sp.locked=false;
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
-    setReplay(true);
+    setReplay(true); roveTrial();
     kbActive=false; kbAz=0; kbRad = sp.mode==='orbit'?112 : sp.mode==='depth'?90 : 110;
     const c=sp.c, S=sp.S, r=sp.round;
     if(c.mode==='locate'){
@@ -1080,17 +1093,12 @@
     const a=acuityStats();
     setPrecision(a.conf, `≈ ${Math.round(a.med)}° acuity`);
     const enough = sp.round>=sp.minR && a.se < sp.S.ref*0.6;
-    if(sp.round>=sp.maxR){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
-    if(sp.sharpen && enough){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
-    if(!sp.sharpen && enough){
-      choiceTimers.push(setTimeout(()=>showCheckpoint(`${Math.round(a.med)}° acuity`, a.conf, ()=>{ sp.sharpen=true; spatialRound(); }, sp.maxR-sp.round), 700));
-      return;
-    }
+    // normal flow auto-finishes when confident; a Sharpen run continues to maxR
+    if(sp.round>=sp.maxR || (!sp.sharpen && enough)){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
     choiceTimers.push(setTimeout(()=>spatialRound(), 820));
   }
-  function lockSpatial(){ if(sp && !sp._finished){ sp.done=true; finishSpatial(); } }
   function finishSpatial(){
-    if(sp._finished) return; sp.done=true; sp._finished=true; clearTimers(); hideCheckpointBtns(); guessLocked=true;
+    if(sp._finished) return; sp.done=true; sp._finished=true; clearTimers(); guessLocked=true;
     const S=sp.S, a=acuityStats();
     // map median error (deg) between ref (100%) and weak (0%) in log space
     const lw=Math.log(S.weak), lb=Math.log(S.ref), lt=Math.log(clamp(a.med,S.ref,S.weak));
@@ -1098,12 +1106,15 @@
     recordRoom(pct, `${Math.round(a.med)}° acuity`, {val:a.med, lo:Math.max(1,a.med-1.96*a.se), hi:a.med+1.96*a.se});
     $('status').innerHTML=`Your acuity: <span class="pts">${Math.round(a.med)}°</span> · +${pct} <span style="color:var(--muted)">· ${Math.round(a.conf*100)}% confident</span>`;
     setPrecision(a.conf, `${Math.round(a.med)}° · ${sp.round} rounds`);
-    showLearn(); appendTier(tierLine(sp.c.tag,pct)); advanceUI();
+    showLearn(); appendTier(tierLine(sp.c.tag,pct));
+    showResultBtns(sp.round < sp.maxR);
+    advanceUI();
   }
 
   // ---------- shared result plumbing ----------
   function recordRoom(pct, readout, extra){
     const i=order[oi], tag=CH[i].tag;
+    if(chScore[i]!=null) score-=chScore[i];        // replace (not accumulate) — Sharpen re-records
     chScore[i]=pct; chPct[i]=pct; roomThr[tag]=readout;
     if(extra && extra.val!=null) roomVal[tag]={val:extra.val, lo:extra.lo, hi:extra.hi};
     score+=pct; $('score').textContent=score;
@@ -1125,7 +1136,7 @@
     $('next').textContent=lastC?'See result':'Next'; $('next').classList.add('on');
   }
   function nextChapter(){
-    stopVoices();
+    stopVoices(); hideCheckpointBtns();
     if(oi<order.length-1){ oi++; loadChapter(); }
     else finish();
   }
@@ -1162,13 +1173,25 @@
   async function finish(){
     stopVoices(); show('end');
     const max=order.length*100; $('finalnum').textContent=score;
-    const pct=max?score/max:0; lastPct=pct;
+    const pct=max?score/max:0; lastPct=pct; const pctR=Math.round(pct*100);
+    $('finalout').innerHTML=`of <b>${max}</b> · <b>${pctR}%</b> across ${order.length} room${order.length>1?'s':''}`;
     let rank,verdict;
     if(pct>=.85){rank='Golden ear'; verdict=`Every claim verified on the ${device} — holography, slam, air, silk, the lot. The reviews weren’t poetry after all.`;}
     else if(pct>=.6){rank='Tuned in'; verdict='Most claims verified. Whatever scored lowest below is the quality worth hunting for in your next album.';}
     else if(pct>=.35){rank='Warming up'; verdict='Critical listening is a learned skill. Another lap and the claims start proving themselves.';}
     else{rank='First listen'; verdict='All of this lives in the sound — it takes a few laps to hear it. Pick one group and drill it.';}
     $('rank').textContent=rank; $('verdict').textContent=verdict;
+    // honest benchmark context + what drives the gap (hearing vs headphones)
+    const where = pctR>=80 ? 'well above the ~50–65% most people score on a first run — trained-ear territory'
+      : pctR>=55 ? 'right around where most first-time listeners land (~50–65%)'
+      : pctR>=35 ? 'a touch below the ~50–65% typical first run — the rooms you missed are the ones to drill'
+      : 'below a typical first run — try a smaller set and turn the volume up a little';
+    // find weakest room and note whether it's hearing- or headphone-limited
+    const hearingRooms={Air:'your ears (treble fades with age)',Foundation:'your ears and the headphones together'};
+    let worst=null,worstP=101; order.forEach(i=>{ if(chPct[i]<worstP){worstP=chPct[i];worst=CH[i].tag;} });
+    const drive = worst && hearingRooms[worst] ? `Your lowest room, ${worst}, leans on ${hearingRooms[worst]}.`
+      : worst ? `Your lowest room was ${worst} — mostly down to the headphones and practice.` : '';
+    $('benchnote').innerHTML = `${pctR}% is ${where}. ${drive} To separate your ears from the gear, run the same rooms on a second pair — your ears stay constant, so the difference is the headphones.`;
     const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
     order.forEach(i=>{ const tag=CH[i].tag;
       dev.rooms[tag] = Object.assign({pct:chPct[i], thr:roomThr[tag]}, roomVal[tag]||{});
@@ -1230,10 +1253,25 @@
     });
     renderCompareRows(names);
   }
+  const deviceTotal=n=>{
+    const rooms=db.devices[n].rooms||{}; const ps=Object.keys(rooms).map(k=>{const v=rooms[k]; return typeof v==='number'?v:(v&&v.pct);}).filter(p=>p!=null);
+    return ps.length ? Math.round(ps.reduce((a,b)=>a+b,0)/ps.length) : null;
+  };
   function renderCompareRows(names){
     const box=$('cmpscroll'); box.innerHTML='';
     if(!names.length){ box.innerHTML='<div class="cmpempty">No saved results yet.<br>Finish a tour with a headphone name and it lands here — then run the same rooms on a second pair.</div>'; return; }
     const active=names.filter(n=>cmpVisible[n]);
+    // overall score per device, up top
+    const th=document.createElement('div'); th.className='bghead'; th.textContent='Overall'; box.appendChild(th);
+    const trow=document.createElement('div'); trow.className='cmprow';
+    trow.innerHTML='<div class="rname">Average across rooms</div>';
+    active.forEach(n=>{
+      const tot=deviceTotal(n), col=DEVCOLORS[names.indexOf(n)%DEVCOLORS.length];
+      const bar=document.createElement('div'); bar.className='cmpbar';
+      bar.innerHTML = tot!=null ? `<div class="track"><div class="fill" style="width:${tot}%;background:${col}"></div></div><span class="pct"><b>${tot}%</b></span>` : `<div class="track"></div><span class="pct">—</span>`;
+      trow.appendChild(bar);
+    });
+    box.appendChild(trow);
     Object.keys(GROUPS).forEach(gk=>{
       const rooms=CH.filter(c=>c.group===gk).filter(c=>active.some(n=>{const v=db.devices[n].rooms[c.tag]; return v!=null && (typeof v==='number'||v.pct!=null);}));
       if(!rooms.length) return;
