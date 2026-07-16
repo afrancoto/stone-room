@@ -16,11 +16,12 @@
     Air:       { group:'freq' },
     Presence:  { group:'dip',  conv:v=>v,                          label:v=>`−${v.toFixed(1)} dB dip heard` },
     Silk:      { group:'spike',conv:v=>20*Math.log10((0.05+v)/0.05), label:v=>`+${v.toFixed(1)} dB spike heard` },
-    Stage:     { group:'space', conv:v=>v, txt:v=>`Stage ${Math.round(v)}°` },
-    Motion:    { group:'space', conv:v=>v, txt:v=>`Motion ${Math.round(v)}°` },
-    Orbit:     { group:'space', conv:v=>v, txt:v=>`Orbit ${Math.round(v)}°` },
-    Depth:     { group:'space', conv:v=>v, txt:v=>`Depth ${Math.round(v)}°` },
-    Separation:{ group:'space', conv:v=>v, txt:v=>`Separation ${Math.round(v)}°` },
+    // acuity rooms render on the space map, not as rows
+    Stage:     { group:'spacemap' },
+    Motion:    { group:'spacemap' },
+    Orbit:     { group:'spacemap' },
+    Depth:     { group:'spacemap' },
+    Separation:{ group:'spacemap' },
     Centre:    { group:'space', conv:v=>v*100, txt:v=>`Centre ${Math.round(v)}% off` },
     Duet:      { group:'space', conv:v=>v*100, txt:v=>`Width ${Math.round(v)}%` },
     Snap:      { group:'time',  conv:v=>v*1000, txt:v=>`Snap ${Math.round(v)} ms` },
@@ -57,7 +58,12 @@
     }
     const nRows=rows.length, rowsPerCol=Math.ceil(nRows/2);
     const rowsH = nRows? rowsPerCol*19+16 : 0;
-    const H = 172 + rowsH + 16;
+    // space map: concentric blur cones, one ring per acuity room measured
+    const SMAP=[['Stage',COL.sage],['Motion',COL.gold],['Separation',COL.ember],['Depth',COL.iris],['Orbit',COL.stone]];
+    const smap=SMAP.filter(([t])=>rooms[t]&&rooms[t].val!=null);
+    const spaceH=smap.length?164:0;
+    const rowsY=172+spaceH;
+    const H = rowsY + rowsH + 16;
 
     // ---- frequency block ----
     const TOP=44, LINE=86, BASE=126;
@@ -109,10 +115,34 @@
       g+=`<text x="${X-13}" y="${LINE-10}" fill="${COL.iris}" font-size="8.5" text-anchor="end" font-family="${FONT}">${esc(SPEC.Silk.label(SPEC.Silk.conv(spike.val)))}</text>`;
     }
 
+    // ---- space map: concentric blur cones, all aimed front ----
+    // each arc spans ±(median error): half the listener's placements landed inside it.
+    let spaceSvg='';
+    if(smap.length){
+      const y0=168, cx=104, cy=y0+114;
+      spaceSvg+=`<line x1="${PAD}" y1="${y0-6}" x2="${W-PAD}" y2="${y0-6}" stroke="${COL.line}" opacity="0.6"/>`;
+      spaceSvg+=`<text x="${PAD}" y="${y0+10}" fill="${COL.muted}" font-size="8" letter-spacing="2" font-family="${FONT}">SPACE · BLUR CONES</text>`;
+      spaceSvg+=`<line x1="${cx-96}" y1="${cy}" x2="${cx+96}" y2="${cy}" stroke="${COL.line}" opacity="0.5"/>`;
+      spaceSvg+=`<circle cx="${cx}" cy="${cy}" r="3.5" fill="${COL.muted}"/>`;
+      spaceSvg+=`<text x="${cx}" y="${y0+24}" fill="${COL.muted}" font-size="8" text-anchor="middle" letter-spacing="1.5" font-family="${FONT}">FRONT</text>`;
+      const pt=(r,aDeg)=>{const a=aDeg*Math.PI/180; return `${(cx+r*Math.sin(a)).toFixed(1)} ${(cy-r*Math.cos(a)).toFixed(1)}`;};
+      let legendY=y0+34;
+      smap.forEach(([tag,col],i)=>{
+        const med=Math.min(88, rooms[tag].val);
+        const r=38+i*13;
+        spaceSvg+=`<path d="M ${pt(r,-med)} A ${r} ${r} 0 0 1 ${pt(r,med)}" fill="none" stroke="${col}" stroke-width="5" stroke-linecap="round" opacity="0.9"/>`;
+        spaceSvg+=`<circle cx="226" cy="${legendY-3.5}" r="3" fill="${col}"/>`;
+        spaceSvg+=`<text x="235" y="${legendY}" fill="${COL.stone}" font-size="11" font-family="${FONT}">${tag} ±${Math.round(rooms[tag].val)}°</text>`;
+        legendY+=17;
+      });
+      spaceSvg+=`<text x="226" y="${Math.max(legendY+6, cy+12)}" fill="${COL.muted}" font-size="8" font-family="${FONT}">half your taps land</text>`;
+      spaceSvg+=`<text x="226" y="${Math.max(legendY+16, cy+22)}" fill="${COL.muted}" font-size="8" font-family="${FONT}">inside each arc</text>`;
+    }
+
     // ---- reading rows ----
     let rowsSvg='';
     if(nRows){
-      const y0=172;
+      const y0=rowsY;
       rowsSvg+=`<line x1="${PAD}" y1="${y0-10}" x2="${W-PAD}" y2="${y0-10}" stroke="${COL.line}" opacity="0.6"/>`;
       rows.forEach((r,i)=>{
         const col=i<rowsPerCol?0:1;
@@ -133,7 +163,7 @@
 
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="${COL.bg}" stroke="${COL.line}"/>
-${head}${g}${rowsSvg}${mark}
+${head}${g}${spaceSvg}${rowsSvg}${mark}
 </svg>`;
     el.innerHTML=svg;
     return el.firstChild;
@@ -165,7 +195,7 @@ ${head}${g}${rowsSvg}${mark}
     rooms:{
       Foundation:{val:31,lo:27,hi:36}, Air:{val:13600,lo:12400,hi:14900},
       Presence:{val:3.2}, Silk:{val:.049},
-      Stage:{val:11}, Orbit:{val:26}, Depth:{val:16},
+      Stage:{val:11}, Motion:{val:14}, Separation:{val:17}, Depth:{val:21}, Orbit:{val:29},
       Snap:{val:.009}, Pulse:{val:13},
       Shade:{val:.9}, Whisper:{val:.018}, Silence:{val:.014},
       Grain:{val:.06}, Crowd:{val:5}
