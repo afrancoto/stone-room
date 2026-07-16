@@ -564,7 +564,8 @@
     $('cmpback').addEventListener('click',()=>{show(order.length?'end':'intro');});
     $('cmpnew').addEventListener('click',()=>{buildSelect(); show('select');});
     $('next').addEventListener('click',nextChapter);
-    $('lockbtn').addEventListener('click',()=>{ if(st&&!st.done) lockStair(); else if(cnt&&!cnt.done) finishCount(); else if(sp&&!sp.done) lockSpatial(); });
+    $('lockbtn').addEventListener('click',()=>{ if(st&&!st.done) lockStair(); else if(cnt&&!cnt.done) finishCount(); else if(sp&&!sp._finished) lockSpatial(); });
+    $('contbtn').addEventListener('click',()=>{ const fn=pendingContinue; hideCheckpointBtns(); guessLocked=false; if(fn) fn(); });
     $('field').addEventListener('pointerdown',e=>onTap(e,false));
     $('fieldO').addEventListener('pointerdown',e=>onTap(e,true));
     $('replay').addEventListener('click',()=>{ if(!guessLocked && !$('replay').disabled) replayFn(); });
@@ -676,6 +677,18 @@
   }
   function showPrecisionUI(){ $('precision').classList.add('on'); }
 
+  // ---- checkpoint: pause and let the listener lock in or keep going for a sharper reading ----
+  let pendingContinue=null;
+  function showCheckpoint(readout, conf, continueFn){
+    guessLocked=true; clearTimers(); setReplay(false);
+    setPrecision(conf, readout);
+    $('status').innerHTML=`Reading: <span class="pts">${readout}</span> · ${Math.round(conf*100)}% confident.<br><span style="color:var(--muted)">Lock it in, or keep going for a sharper number?</span>`;
+    pendingContinue=continueFn;
+    $('lockbtn').classList.add('on');
+    $('contbtn').classList.toggle('on', !!continueFn);
+  }
+  function hideCheckpointBtns(){ $('lockbtn').classList.remove('on'); $('contbtn').classList.remove('on'); pendingContinue=null; }
+
   function startChapter(){
     guessLocked=false; st=null; sp=null; cnt=null; stopVoices();
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
@@ -746,14 +759,24 @@
     const cont=contentOf(st.tag);
     const micro = hit ? pick(cont.hit||['Caught it.']) : pick(cont.miss||['Easing back.']);
     setPrecision(stt.conf, A.fmt(st.eng.levelOf(stt.mean)));
-    if(stt.precise || stt.forceStop){ finishStair(); return; }
-    $('status').innerHTML = `${hit?'✓':'○'} ${micro}`;
-    if(stt.usable) $('lockbtn').classList.add('on');
-    choiceTimers.push(setTimeout(()=>{ [...$('choices').children].forEach(b=>b.classList.remove('correct','wrong')); stairTrial(); }, 620));
+    const clearMarks=()=>[...$('choices').children].forEach(b=>b.classList.remove('correct','wrong'));
+    // hard cap, or (once we're sharpening) the precise target → finish
+    if(stt.forceStop || (st.sharpen && stt.precise)){ finishStair(); return; }
+    // first time it's confident enough: pause and ask lock vs keep going
+    if(!st.sharpen && stt.usable){
+      $('status').innerHTML=`${hit?'✓':'○'} ${micro}`;
+      choiceTimers.push(setTimeout(()=>{ clearMarks();
+        const s2=st.eng.z.stats();
+        showCheckpoint(A.fmt(st.eng.levelOf(s2.mean)), s2.conf, ()=>{ st.sharpen=true; stairTrial(); });
+      }, 520));
+      return;
+    }
+    $('status').innerHTML = `${hit?'✓':'○'} ${micro} <span style="color:var(--muted)">· trial ${st.trial}</span>`;
+    choiceTimers.push(setTimeout(()=>{ clearMarks(); stairTrial(); }, 560));
   }
   function lockStair(){ if(st && !st.done) finishStair(); }
   function finishStair(){
-    if(st.done) return; st.done=true; guessLocked=true; clearTimers(); $('lockbtn').classList.remove('on');
+    if(st.done) return; st.done=true; guessLocked=true; clearTimers(); hideCheckpointBtns();
     const A=st.A, stt=st.eng.z.stats();
     const thr=st.eng.levelOf(stt.mean);
     const pct=pctFromThreshold(A,thr);
@@ -819,7 +842,7 @@
     choiceTimers.push(setTimeout(()=>{ [...$('choices').children].forEach(b=>b.classList.remove('correct','wrong')); countTrial(); }, 640));
   }
   function finishCount(){
-    if(cnt.done) return; cnt.done=true; guessLocked=true; clearTimers(); $('lockbtn').classList.remove('on');
+    if(cnt.done) return; cnt.done=true; guessLocked=true; clearTimers(); hideCheckpointBtns();
     // map best countable (3..7) to pct
     const pct=Math.round(clamp((cnt.best-3)/(7-3),0,1)*100);
     recordRoom(pct, cnt.best+' voices', {conf:clamp(cnt.trial/cnt.maxR,0,1)});
@@ -880,14 +903,14 @@
       const dur=S.dur[Math.min(r,S.dur.length-1)];
       sp.target={az:endAz,dist:1.6,mode:'orbit'};
       const key=rndTimbre();
+      // no visual comet: it would trace the true path and reveal the answer. Localize by ear.
       const build=()=>{ stopVoices();
         const v=makeVoice(key,startAz,1.6,0.55); voices=[v]; v.loop();
-        const t0=performance.now(), comet=$('comet'); comet.classList.add('on');
+        const t0=performance.now();
         orbitInt=setInterval(()=>{
           const f=Math.min(1,(performance.now()-t0)/(dur*1000));
           const az=startAz+dir*sweep*f; v.setAz(az);
-          const a=az*Math.PI/180, rr=112; comet.setAttribute('cx',Math.sin(a)*rr); comet.setAttribute('cy',-Math.cos(a)*rr);
-          if(f>=1){clearInterval(orbitInt); orbitInt=null; comet.classList.remove('on'); comet.setAttribute('cx',0); comet.setAttribute('cy',0); if(!guessLocked)$('status').textContent='It stopped. Where?';}
+          if(f>=1){clearInterval(orbitInt); orbitInt=null; if(!guessLocked)$('status').textContent='It stopped. Tap where you heard it land.';}
         },40);
       };
       replayFn=()=>{listenO(); $('status').textContent='It circles…'; build();};
@@ -977,13 +1000,17 @@
     const a=acuityStats();
     setPrecision(a.conf, `≈ ${Math.round(a.med)}° acuity`);
     const enough = sp.round>=sp.minR && a.se < sp.S.ref*0.6;
-    if(sp.round>=sp.maxR || enough){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
-    if(sp.round>=sp.minR) $('lockbtn').classList.add('on');
+    if(sp.round>=sp.maxR){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
+    if(sp.sharpen && enough){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
+    if(!sp.sharpen && enough){
+      choiceTimers.push(setTimeout(()=>showCheckpoint(`${Math.round(a.med)}° acuity`, a.conf, ()=>{ sp.sharpen=true; spatialRound(); }), 700));
+      return;
+    }
     choiceTimers.push(setTimeout(()=>spatialRound(), 820));
   }
   function lockSpatial(){ if(sp && !sp._finished){ sp.done=true; finishSpatial(); } }
   function finishSpatial(){
-    if(sp._finished) return; sp.done=true; sp._finished=true; clearTimers(); $('lockbtn').classList.remove('on'); guessLocked=true;
+    if(sp._finished) return; sp.done=true; sp._finished=true; clearTimers(); hideCheckpointBtns(); guessLocked=true;
     const S=sp.S, a=acuityStats();
     // map median error (deg) between ref (100%) and weak (0%) in log space
     const lw=Math.log(S.weak), lb=Math.log(S.ref), lt=Math.log(clamp(a.med,S.ref,S.weak));

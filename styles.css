@@ -183,6 +183,8 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .next.on{opacity:1; pointer-events:auto}
 .lockbtn{display:none}
 .lockbtn.on{display:inline-flex}
+.contbtn{display:none}
+.contbtn.on{display:inline-flex}
 
 .progress{display:flex; gap:6px; justify-content:center; margin-top:14px; flex-wrap:wrap}
 .pip{width:7px; height:7px; border-radius:50%; background:var(--line)}
