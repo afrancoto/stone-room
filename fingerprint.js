@@ -1,176 +1,149 @@
 /* Stone Room — the listening fingerprint card.
-   Renders a measurement card as SVG: a log frequency axis (20 Hz–20 kHz) carrying the
-   measured audible window (sub-bass floor → treble ceiling) and threshold glyphs at their
-   true frequencies, plus space/time/level readings. Every mark is a real measurement from
-   the run — nothing decorative. Exportable to PNG. */
+   A scorecard, not a data-dump: a hero score up top, one spectrum-reach band, then
+   bullet bars grouped by domain. Bar LENGTH is the quality (longer = better) so the
+   card reads at a glance; colour (green/gold/ember) is a redundant band cue and every
+   bar carries its measured value + a plain word. Exports to PNG. */
 (function () {
   "use strict";
 
-  const COL = { bg:'#221C15', line:'#3C332A', stone:'#EDE4D6', muted:'#A2937F',
-                ember:'#E27A45', sage:'#7BA79C', gold:'#D9A24B', iris:'#B7A6E3' };
-  const FONT = "Space Grotesk, system-ui, sans-serif";
+  const COL = { bg:'#221C15', card:'#2A231C', line:'#3C332A', track:'#3a322a',
+                stone:'#EDE4D6', muted:'#A2937F', dim:'#6f6456',
+                ember:'#E27A45', gold:'#D9A24B', sage:'#8FB89A', good:'#9FC46E' };
+  const FONT = "Space Grotesk, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
 
-  // per-room: how to convert the raw stored value into a display number + which group it belongs to
-  const SPEC = {
-    Foundation:{ group:'freq' },
-    Air:       { group:'freq' },
-    Presence:  { group:'dip',  conv:v=>v,                          label:v=>`−${v.toFixed(1)} dB dip heard` },
-    Silk:      { group:'spike',conv:v=>20*Math.log10((0.05+v)/0.05), label:v=>`+${v.toFixed(1)} dB spike heard` },
-    // acuity rooms render on the space map, not as rows
-    Stage:     { group:'spacemap' },
-    Motion:    { group:'spacemap' },
-    Orbit:     { group:'spacemap' },
-    Depth:     { group:'spacemap' },
-    Separation:{ group:'spacemap' },
-    Centre:    { group:'space', conv:v=>v*100, txt:v=>`Centre ${Math.round(v)}% off` },
-    Duet:      { group:'space', conv:v=>v*100, txt:v=>`Width ${Math.round(v)}%` },
-    Snap:      { group:'time',  conv:v=>v*1000, txt:v=>`Snap ${Math.round(v)} ms` },
-    Pulse:     { group:'time',  conv:v=>v,      txt:v=>`Pulse ${Math.round(v)} ms` },
-    Echo:      { group:'time',  conv:v=>v*1000, txt:v=>`Echo ${Math.round(v)} ms` },
-    Flyby:     { group:'space', conv:v=>v,      txt:v=>`Flyby ${v.toFixed(1)}× gap` },
-    Halls:     { group:'texture', conv:v=>v*100, txt:v=>`Halls ${Math.round(v)}% room` },
-    Shade:     { group:'level', conv:v=>v,                        txt:v=>`Shade ${v.toFixed(2)} dB` },
-    Whisper:   { group:'level', conv:v=>20*Math.log10(.2/v),      txt:v=>`Detail ${Math.round(v)} dB under` },
-    Silence:   { group:'level', conv:v=>20*Math.log10(v/.45),     txt:v=>`Hiss ${Math.round(v)} dB` },
-    Grain:     { group:'texture', conv:v=>v*100, txt:v=>`Grain ${Math.round(v)}% partial` },
-    Composure: { group:'texture', conv:v=>v,     txt:v=>`Drive ${v.toFixed(1)}` },
-    Grip:      { group:'texture', conv:v=>v*100, txt:v=>`Bloom ${Math.round(v)}%` },
-    Crowd:     { group:'texture', conv:v=>v,     txt:v=>`Crowd ${Math.round(v)} voices` },
+  // per-room: display name, domain group, and how to render the measured value
+  const META = {
+    Foundation:{ name:'Sub-bass reach', group:'edge', fmt:v=>Math.round(v)+' Hz' },
+    Air:       { name:'Treble reach',   group:'edge', fmt:v=>(v/1000).toFixed(1)+' kHz' },
+    Stage:     { group:'space', name:'Soundstage',    fmt:v=>'±'+Math.round(v)+'°' },
+    Motion:    { group:'space', name:'Moving image',  fmt:v=>'±'+Math.round(v)+'°' },
+    Orbit:     { group:'space', name:'360 imaging',   fmt:v=>'±'+Math.round(v)+'°' },
+    Depth:     { group:'space', name:'Depth layers',  fmt:v=>'±'+Math.round(v)+'°' },
+    Separation:{ group:'space', name:'Separation',    fmt:v=>'±'+Math.round(v)+'°' },
+    Centre:    { group:'space', name:'Centre image',  fmt:v=>Math.round(v*100)+'% off' },
+    Duet:      { group:'space', name:'Stereo width',  fmt:v=>Math.round(v*100)+'%' },
+    Flyby:     { group:'space', name:'Distance',      fmt:v=>v.toFixed(1)+'× gap' },
+    Echo:      { group:'space', name:'Reflections',   fmt:v=>Math.round(v*1000)+' ms' },
+    Crowd:     { group:'detail',name:'Ensemble count',fmt:v=>Math.round(v)+' voices' },
+    Whisper:   { group:'detail',name:'Buried detail', fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under' },
+    Silence:   { group:'detail',name:'Noise floor',   fmt:v=>Math.round(20*Math.log10(v/.45))+' dB' },
+    Grain:     { group:'detail',name:'Timbre purity', fmt:v=>Math.round(v*100)+'% partial' },
+    Halls:     { group:'detail',name:'Decay / rooms', fmt:v=>Math.round(v*100)+'% Δ' },
+    Composure: { group:'detail',name:'Composure',     fmt:v=>'drive '+v.toFixed(1) },
+    Grip:      { group:'tone',  name:'Bass grip',     fmt:v=>Math.round(v*100)+'% bloom' },
+    Presence:  { group:'tone',  name:'Midrange',      fmt:v=>v.toFixed(1)+' dB dip' },
+    Silk:      { group:'tone',  name:'Sibilance',     fmt:v=>'+'+Math.round(20*Math.log10((.05+v)/.05))+' dB' },
+    Snap:      { group:'time',  name:'Slam / attack', fmt:v=>Math.round(v*1000)+' ms' },
+    Pulse:     { group:'time',  name:'Timing',        fmt:v=>Math.round(v)+' ms' },
+    Shade:     { group:'time',  name:'Micro-dynamics',fmt:v=>v.toFixed(2)+' dB' },
   };
-  const GROUP_COL = { space:COL.sage, time:COL.gold, level:COL.ember, texture:COL.iris };
-  const GROUP_ORDER = ['space','time','level','texture'];
-
-  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const GROUPS = [
+    ['space','Space & imaging'],
+    ['detail','Detail & resolution'],
+    ['tone','Tone & frequency'],
+    ['time','Time & dynamics'],
+  ];
+  function band(pct){
+    if(pct>=82) return { word:'reference', col:COL.good };
+    if(pct>=58) return { word:'strong',    col:COL.sage };
+    if(pct>=34) return { word:'fair',      col:COL.gold };
+    return { word:'weak', col:COL.ember };
+  }
+  function rankWord(pct){ return pct>=82?'Golden ear':pct>=60?'Tuned in':pct>=35?'Warming up':'First listen'; }
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const round1=(a,b)=>`<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="${a.r||3}" fill="${a.fill}"${a.op?` fill-opacity="${a.op}"`:''}/>`;
 
   function render(el, data){
-    const W=360, PAD=26;
+    const W=384, PAD=22, IW=W-2*PAD;
     const rooms=data.rooms||{};
-    const x = f => PAD + (Math.log10(Math.max(20,Math.min(20000,f))/20)/Math.log10(1000)) * (W-2*PAD);
+    const has=t=>rooms[t] && rooms[t].pct!=null;
+    const score=data.score!=null?Math.round(data.score):null;
 
-    // ---- collect ----
-    const found=rooms.Foundation, air=rooms.Air;
-    const dip=rooms.Presence, spike=rooms.Silk;
-    const rows=[];
-    for(const g of GROUP_ORDER){
-      for(const tag of Object.keys(SPEC)){
-        const s=SPEC[tag];
-        if(s.group!==g || !s.txt || !rooms[tag] || rooms[tag].val==null) continue;
-        rows.push({ txt:s.txt(s.conv(rooms[tag].val)), col:GROUP_COL[g] });
-      }
+    // ---- assemble scorecard groups (everything except the spectrum edges) ----
+    const sections=[];
+    for(const [gk,gname] of GROUPS){
+      const rows=Object.keys(META).filter(t=>META[t].group===gk && has(t))
+        .map(t=>({tag:t, name:META[t].name, pct:rooms[t].pct, val:rooms[t].val}))
+        .sort((a,b)=>a.pct-b.pct);                     // weakest first — problems read top of each block
+      if(rows.length) sections.push({gname, rows});
     }
-    const nRows=rows.length, rowsPerCol=Math.ceil(nRows/2);
-    const rowsH = nRows? rowsPerCol*19+16 : 0;
-    // space map: concentric blur cones, one ring per acuity room measured
-    const SMAP=[['Stage',COL.sage],['Motion',COL.gold],['Separation',COL.ember],['Depth',COL.iris],['Orbit',COL.stone]];
-    const smap=SMAP.filter(([t])=>rooms[t]&&rooms[t].val!=null);
-    const spaceH=smap.length?206:0;
-    const rowsY=172+spaceH;
-    const H = rowsY + rowsH + 16;
+    const showSpectrum = has('Foundation') || has('Air');
 
-    // ---- frequency block ----
-    const TOP=44, LINE=86, BASE=126;
+    // ---- measure height ----
+    let y = 52;                                         // after header
+    if(score!=null) y += 78;                            // hero block
+    if(showSpectrum) y += 78;
+    const cardTop = 8;
+    for(const s of sections){ y += 26 + s.rows.length*24; }
+    y += 22;                                            // footer note
+    const H = y + 12;
+
+    // ================= draw =================
     let g='';
-    // axis + ticks
-    const ticks=[20,50,100,200,500,1000,2000,5000,10000,20000];
-    const lbl={20:'20',100:'100',1000:'1k',10000:'10k',20000:'20 kHz'};
-    g+=`<line x1="${PAD}" y1="${BASE}" x2="${W-PAD}" y2="${BASE}" stroke="${COL.line}" stroke-width="1.5"/>`;
-    for(const t of ticks){
-      g+=`<line x1="${x(t)}" y1="${BASE}" x2="${x(t)}" y2="${BASE+4}" stroke="${COL.line}"/>`;
-      if(lbl[t]) g+=`<text x="${x(t)}" y="${BASE+16}" fill="${COL.muted}" font-size="9" text-anchor="${t===20000?'end':'middle'}" font-family="${FONT}">${lbl[t]}</text>`;
+    // header
+    g+=`<text x="${PAD}" y="24" fill="${COL.muted}" font-size="9.5" letter-spacing="2.4" font-family="${FONT}">STONE ROOM · FINGERPRINT</text>`;
+    if(data.date) g+=`<text x="${W-PAD}" y="24" fill="${COL.dim}" font-size="9.5" text-anchor="end" font-family="${FONT}">${esc(data.date)}</text>`;
+    g+=`<text x="${PAD}" y="43" fill="${COL.gold}" font-size="16" font-weight="600" font-family="${FONT}">${esc(data.device||'')}</text>`;
+    let cy=52;
+
+    // hero score
+    if(score!=null){
+      g+=`<text x="${PAD}" y="${cy+34}" fill="${COL.stone}" font-size="46" font-weight="600" font-family="${FONT}">${score}</text>`;
+      const nx=PAD+ (score>=100?86:64);
+      g+=`<text x="${nx}" y="${cy+20}" fill="${COL.muted}" font-size="13" font-family="${FONT}">/ 100</text>`;
+      g+=`<text x="${nx}" y="${cy+37}" fill="${COL.stone}" font-size="15" font-weight="600" font-family="${FONT}">${rankWord(score)}</text>`;
+      // overall bar
+      const by=cy+50;
+      g+=round1({x:PAD,y:by,w:IW,h:8,r:4,fill:COL.track});
+      g+=round1({x:PAD,y:by,w:Math.max(6,IW*score/100),h:8,r:4,fill:score>=58?COL.good:score>=34?COL.gold:COL.ember});
+      g+=`<text x="${PAD}" y="${by+24}" fill="${COL.muted}" font-size="10.5" font-family="${FONT}">${esc(data.context||'')}</text>`;
+      cy+=78;
     }
 
-    // audible window
-    const x1=found&&found.val?x(found.val):x(20), x2=air&&air.val?x(air.val):x(20000);
-    if((found&&found.val)||(air&&air.val)){
-      g+=`<rect x="${x1}" y="${TOP}" width="${Math.max(0,x2-x1)}" height="${BASE-TOP}" fill="${COL.sage}" opacity="0.07"/>`;
-      g+=`<line x1="${x1}" y1="${LINE}" x2="${x2}" y2="${LINE}" stroke="${COL.sage}" stroke-width="1.5" opacity="0.85"/>`;
+    // spectrum reach
+    if(showSpectrum){
+      const x=f=>PAD + (Math.log10(Math.max(20,Math.min(20000,f))/20)/Math.log10(1000))*IW;
+      g+=`<text x="${PAD}" y="${cy+12}" fill="${COL.muted}" font-size="9.5" letter-spacing="1.8" font-family="${FONT}">SPECTRUM REACH</text>`;
+      g+=`<text x="${W-PAD}" y="${cy+12}" fill="${COL.dim}" font-size="9" text-anchor="end" font-family="${FONT}">of the 20 Hz–20 kHz audible range</text>`;
+      const ay=cy+36;
+      g+=round1({x:PAD,y:ay,w:IW,h:8,r:4,fill:COL.track});      // full 20–20k reference
+      const lo=has('Foundation')?rooms.Foundation.val:20, hi=has('Air')?rooms.Air.val:20000;
+      const x1=x(lo), x2=x(hi);
+      g+=round1({x:x1,y:ay,w:Math.max(4,x2-x1),h:8,r:4,fill:COL.sage});
+      if(has('Foundation')) g+=`<text x="${x1}" y="${ay-6}" fill="${COL.stone}" font-size="11.5" font-weight="600" text-anchor="start" font-family="${FONT}">${Math.round(lo)} Hz</text>`;
+      if(has('Air')) g+=`<text x="${x2}" y="${ay-6}" fill="${COL.stone}" font-size="11.5" font-weight="600" text-anchor="end" font-family="${FONT}">${(hi/1000).toFixed(1)} kHz</text>`;
+      // ticks
+      [[20,'20'],[100,'100'],[1000,'1k'],[10000,'10k'],[20000,'20k']].forEach(([f,l],i,arr)=>{
+        g+=`<text x="${x(f)}" y="${ay+22}" fill="${COL.dim}" font-size="8.5" text-anchor="${i===0?'start':i===arr.length-1?'end':'middle'}" font-family="${FONT}">${l}</text>`;
+      });
+      cy+=78;
     }
-    // confidence bands + edge markers
-    const edge=(r,isLow)=>{
-      if(!r||r.val==null) return '';
-      let s='';
-      if(r.lo!=null&&r.hi!=null&&r.hi>r.lo){
-        s+=`<rect x="${x(r.lo)}" y="${LINE-9}" width="${Math.max(1,x(r.hi)-x(r.lo))}" height="18" rx="3" fill="${COL.ember}" opacity="0.18"/>`;
+
+    // scorecard
+    const nameX=PAD, trackX0=PAD+116, trackX1=W-PAD-72, twMax=trackX1-trackX0;
+    for(const s of sections){
+      g+=`<text x="${PAD}" y="${cy+14}" fill="${COL.muted}" font-size="10" letter-spacing="1.6" font-family="${FONT}">${s.gname.toUpperCase()}</text>`;
+      cy+=26;
+      for(const r of s.rows){
+        const b=band(r.pct), rowY=cy;
+        g+=`<text x="${nameX}" y="${rowY+4}" fill="${COL.stone}" font-size="12.5" font-family="${FONT}">${esc(r.name)}</text>`;
+        g+=round1({x:trackX0,y:rowY-3,w:twMax,h:6,r:3,fill:COL.track});
+        g+=round1({x:trackX0,y:rowY-3,w:Math.max(4,twMax*r.pct/100),h:6,r:3,fill:b.col});
+        const vtxt = (META[r.tag].fmt && r.val!=null) ? META[r.tag].fmt(r.val) : '';
+        g+=`<text x="${W-PAD}" y="${rowY+4}" fill="${COL.muted}" font-size="10.5" text-anchor="end" font-family="${FONT}">${esc(vtxt)}</text>`;
+        cy+=24;
       }
-      const X=x(r.val);
-      s+=`<line x1="${X}" y1="${LINE-12}" x2="${X}" y2="${BASE}" stroke="${COL.ember}" stroke-width="2"/>`;
-      const txt=isLow?`${Math.round(r.val)} Hz`:`${(r.val/1000).toFixed(1)} kHz`;
-      // labels sit inside the audible window so they can never clip the card edges
-      const anchor=isLow?'start':'end', dx=isLow?6:-6;
-      s+=`<text x="${X+dx}" y="${LINE-18}" fill="${COL.stone}" font-size="12" font-weight="600" text-anchor="${anchor}" font-family="${FONT}">${txt}</text>`;
-      s+=`<text x="${X+dx}" y="${LINE-32}" fill="${COL.muted}" font-size="8" letter-spacing="1.5" text-anchor="${anchor}" font-family="${FONT}">${isLow?'YOUR FLOOR':'YOUR CEILING'}</text>`;
-      return s;
-    };
-    g+=edge(found,true)+edge(air,false);
-
-    // dip glyph (presence @1.8 kHz) and spike glyph (sibilance @7 kHz); their labels live
-    // on a fixed legend row under the axis where nothing can collide or clip
-    let legendX=PAD;
-    if(dip&&dip.val!=null){
-      const X=x(1800), d=Math.min(26, SPEC.Presence.conv(dip.val)*2.0);
-      g+=`<path d="M ${X-16} ${LINE} Q ${X} ${LINE+d*2} ${X+16} ${LINE}" fill="none" stroke="${COL.gold}" stroke-width="1.5"/>`;
-      g+=`<text x="${legendX}" y="${BASE+30}" fill="${COL.gold}" font-size="8.5" font-family="${FONT}">▼ ${esc(SPEC.Presence.label(SPEC.Presence.conv(dip.val)))} at 1.8 kHz</text>`;
-      legendX+=158;
     }
-    if(spike&&spike.val!=null){
-      const X=x(7000), h=Math.min(24, SPEC.Silk.conv(spike.val)*1.8);
-      g+=`<path d="M ${X-9} ${LINE} L ${X} ${LINE-h*1.6} L ${X+9} ${LINE}" fill="none" stroke="${COL.iris}" stroke-width="1.5"/>`;
-      g+=`<text x="${legendX}" y="${BASE+30}" fill="${COL.iris}" font-size="8.5" font-family="${FONT}">▲ ${esc(SPEC.Silk.label(SPEC.Silk.conv(spike.val)))} at 7 kHz</text>`;
-    }
+    // footer note
+    g+=`<line x1="${PAD}" y1="${cy}" x2="${W-PAD}" y2="${cy}" stroke="${COL.line}" opacity="0.5"/>`;
+    g+=`<text x="${PAD}" y="${cy+15}" fill="${COL.dim}" font-size="9" font-family="${FONT}">Longer bar = better. Measured through your own ears + gear.</text>`;
 
-    // ---- space map: radar view ----
-    // each room is a translucent cone at its own bearing (frontal tasks in front, Orbit
-    // behind — the behind-you room). Cone width = ±(median error): half the listener's
-    // placements landed inside it. Bearings are presentational; widths are the data.
-    let spaceSvg='';
-    if(smap.length){
-      const y0=168, cx=104, cy=y0+100, R=72;
-      const AZ={Stage:-52, Motion:52, Separation:0, Depth:-125, Orbit:180};
-      spaceSvg+=`<line x1="${PAD}" y1="${y0-6}" x2="${W-PAD}" y2="${y0-6}" stroke="${COL.line}" opacity="0.6"/>`;
-      spaceSvg+=`<text x="${PAD}" y="${y0+10}" fill="${COL.muted}" font-size="8" letter-spacing="2" font-family="${FONT}">SPACE · WHERE YOUR EARS BLUR</text>`;
-      spaceSvg+=`<circle cx="${cx}" cy="${cy}" r="${R+6}" fill="none" stroke="${COL.line}" opacity="0.55"/>`;
-      spaceSvg+=`<circle cx="${cx}" cy="${cy}" r="3.5" fill="${COL.stone}"/>`;
-      spaceSvg+=`<text x="${cx}" y="${cy-R-12}" fill="${COL.muted}" font-size="8" text-anchor="middle" letter-spacing="1.5" font-family="${FONT}">FRONT</text>`;
-      spaceSvg+=`<text x="${cx}" y="${cy+R+18}" fill="${COL.muted}" font-size="8" text-anchor="middle" letter-spacing="1.5" font-family="${FONT}">BACK</text>`;
-      const pt=(r,aDeg)=>{const a=aDeg*Math.PI/180; return `${(cx+r*Math.sin(a)).toFixed(1)} ${(cy-r*Math.cos(a)).toFixed(1)}`;};
-      let legendY=y0+30;
-      smap.forEach(([tag,col])=>{
-        const med=Math.min(88, rooms[tag].val), az=AZ[tag]||0;
-        // filled cone from the head out to R, spanning ±med around its bearing
-        spaceSvg+=`<path d="M ${cx} ${cy} L ${pt(R,az-med)} A ${R} ${R} 0 0 1 ${pt(R,az+med)} Z" fill="${col}" fill-opacity="0.14" stroke="${col}" stroke-opacity="0.75" stroke-width="1.3"/>`;
-        spaceSvg+=`<circle cx="226" cy="${legendY-3.5}" r="3" fill="${col}"/>`;
-        spaceSvg+=`<text x="235" y="${legendY}" fill="${COL.stone}" font-size="11" font-family="${FONT}">${tag} ±${Math.round(rooms[tag].val)}°</text>`;
-        legendY+=17;
-      });
-      spaceSvg+=`<text x="226" y="${legendY+4}" fill="${COL.muted}" font-size="8" font-family="${FONT}">half your taps land</text>`;
-      spaceSvg+=`<text x="226" y="${legendY+14}" fill="${COL.muted}" font-size="8" font-family="${FONT}">inside each cone</text>`;
-    }
-
-    // ---- reading rows ----
-    let rowsSvg='';
-    if(nRows){
-      const y0=rowsY;
-      rowsSvg+=`<line x1="${PAD}" y1="${y0-10}" x2="${W-PAD}" y2="${y0-10}" stroke="${COL.line}" opacity="0.6"/>`;
-      rows.forEach((r,i)=>{
-        const col=i<rowsPerCol?0:1;
-        const rx=PAD+col*((W-2*PAD)/2+8), ry=y0+ (i%rowsPerCol)*19 + 8;
-        rowsSvg+=`<circle cx="${rx+3}" cy="${ry-3.5}" r="3" fill="${r.col}"/>`;
-        rowsSvg+=`<text x="${rx+12}" y="${ry}" fill="${COL.stone}" font-size="11.5" font-family="${FONT}">${esc(r.txt)}</text>`;
-      });
-    }
-
-    // ---- header / footer / watermark ----
-    const dev=esc(data.device||'');
-    const dateStr=data.date?esc(data.date):'';
-    let head=`<text x="${PAD}" y="22" fill="${COL.muted}" font-size="9" letter-spacing="2.5" font-family="${FONT}">STONE ROOM · LISTENING FINGERPRINT</text>`;
-    head+=`<text x="${PAD}" y="36" fill="${COL.gold}" font-size="13" font-weight="600" font-family="${FONT}">${dev}</text>`;
-    if(dateStr) head+=`<text x="${W-PAD}" y="22" fill="${COL.muted}" font-size="9" text-anchor="end" font-family="${FONT}">${dateStr}</text>`;
     let mark='';
-    if(data.sample) mark=`<text x="${W/2}" y="${H/2+10}" fill="${COL.stone}" opacity="0.10" font-size="46" font-weight="600" letter-spacing="10" text-anchor="middle" transform="rotate(-14 ${W/2} ${H/2})" font-family="${FONT}">SAMPLE</text>`;
+    if(data.sample) mark=`<text x="${W/2}" y="${H/2}" fill="${COL.stone}" opacity="0.08" font-size="52" font-weight="700" letter-spacing="10" text-anchor="middle" transform="rotate(-16 ${W/2} ${H/2})" font-family="${FONT}">SAMPLE</text>`;
 
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
-<rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="${COL.bg}" stroke="${COL.line}"/>
-${head}${g}${spaceSvg}${rowsSvg}${mark}
+<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="16" fill="${COL.bg}" stroke="${COL.line}"/>
+${g}${mark}
 </svg>`;
     el.innerHTML=svg;
     return el.firstChild;
@@ -185,8 +158,6 @@ ${head}${g}${spaceSvg}${rowsSvg}${mark}
       document.head.appendChild(s);
     });
   }
-  // rasterize the card to a PNG blob for sharing/saving. The exported SVG is rendered in an
-  // isolated image context that can't reach the page's web font, so embed it as @font-face.
   async function toPNG(svgEl, scale){
     const s=scale||3;
     const font=await loadCardFont().catch(()=>null);
@@ -210,17 +181,16 @@ ${head}${g}${spaceSvg}${rowsSvg}${mark}
     });
   }
 
-  // plausible sample for the landing demo — clearly watermarked, never presented as real
+  // watermarked sample for the landing demo
   const SAMPLE={
-    device:'Sample pair',
-    sample:true,
+    device:'Sample pair', sample:true, score:71, date:'',
+    context:'above a typical first listen (~50–65%)',
     rooms:{
-      Foundation:{val:31,lo:27,hi:36}, Air:{val:13600,lo:12400,hi:14900},
-      Presence:{val:3.2}, Silk:{val:.049},
-      Stage:{val:11}, Motion:{val:14}, Separation:{val:17}, Depth:{val:21}, Orbit:{val:29},
-      Snap:{val:.009}, Pulse:{val:13},
-      Shade:{val:.9}, Whisper:{val:.018}, Silence:{val:.014},
-      Grain:{val:.06}, Crowd:{val:5}
+      Foundation:{pct:78,val:26}, Air:{pct:64,val:15200},
+      Presence:{pct:72,val:2.4}, Silk:{pct:58,val:.06}, Grip:{pct:66,val:.12},
+      Stage:{pct:82,val:8}, Motion:{pct:70,val:12}, Orbit:{pct:44,val:30}, Depth:{pct:61,val:16}, Separation:{pct:69,val:14}, Centre:{pct:88,val:.09}, Duet:{pct:74,val:.55}, Flyby:{pct:57,val:1.6}, Echo:{pct:63,val:.12},
+      Crowd:{pct:50,val:5}, Whisper:{pct:66,val:.02}, Grain:{pct:72,val:.05}, Halls:{pct:55,val:.4}, Composure:{pct:80,val:1.1},
+      Snap:{pct:75,val:.009}, Pulse:{pct:62,val:13}, Shade:{pct:48,val:.9}
     }
   };
 

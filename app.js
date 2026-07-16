@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v12";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v13";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -328,6 +328,15 @@
     g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=880; o.connect(g); o.start(t); o.stop(t+.06);
   }
+  // short neutral noise wash between the two intervals — a "palate cleanser" that resets
+  // the ear (releases forward masking) so A and B are judged fresh. Optional.
+  function interNoise(when, dur){
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(dur+.2);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1400; bp.Q.value=.5;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.09,when+.05);
+    g.gain.setValueAtTime(.09,when+dur-.06); g.gain.linearRampToValueAtTime(0,when+dur);
+    nb.connect(bp); bp.connect(g); g.connect(master); nb.start(when); nb.stop(when+dur+.05);
+  }
   // sized reverberant pluck for adaptive Halls: bigger 'sec' = bigger room
   function hallPluckSec(when,sec){
     const v=makeVerbNode(sec, 2.4);
@@ -509,6 +518,7 @@
   // per-trial roving: defeats memorisation of a fixed reference. Level and base pitch are
   // randomised each trial (both intervals share the same rove) so only the tested DIFFERENCE
   // is informative — you can't learn the token, only hear the change.
+  let noiseReset=false;                             // white-noise wash between A and B (user toggle)
   let rvF=1;
   function roveTrial(){
     rvF = Math.pow(2, (Math.random()*6-3)/12);     // ±3 semitones base transpose
@@ -611,6 +621,9 @@
     $('calreplay').addEventListener('click',runCal);
     $('calgo').addEventListener('click',()=>{buildSelect(); show('select');});
     $('selstart').addEventListener('click',()=>{buildDevice(); show('device');});
+    try{ noiseReset = localStorage.getItem('stoneroom_noise')==='1'; }catch(e){}
+    $('optnoise').checked = noiseReset;
+    $('optnoise').addEventListener('change',e=>{ noiseReset=e.target.checked; try{ localStorage.setItem('stoneroom_noise', noiseReset?'1':'0'); }catch(_){} });
     $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName()); startGame(); });
     $('again').addEventListener('click',startGame);
     $('reselect').addEventListener('click',()=>{buildSelect(); show('select');});
@@ -770,6 +783,9 @@
     $('fieldwrap').classList.toggle('hidden', !(isField));
     $('fieldwrapO').classList.toggle('hidden', !isOrbit);
     $('choices').classList.toggle('on', isStair||isCount);
+    $('hint').textContent = isStair ? '👆 Tap A or B below'
+      : isCount ? '👆 Tap how many voices you count'
+      : '👆 Tap the field where you hear it — one tap, no dragging';
     if(isStair) setupStair(c);
     else if(isCount) setupCount(c);
     else if(isOrbit) setupSpatial(c);
@@ -806,13 +822,15 @@
       choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
       setChoicesEnabled(false); setReplay(false); roveTrial();
       $('status').innerHTML=`Trial ${st.trial+1} <span style="color:var(--muted)">of ≤${st.eng.nMax}</span> · <span class="pts">honing in…</span>`;
+      const g2 = noiseReset ? gap+0.25 : gap;         // widen the gap to fit the noise wash
       const t=ctx.currentTime+.25;
       for(let i=0;i<2;i++){
         const flag=(i===st.side);
-        A.play(st.curLevel, t+i*(dur+gap), flag);
-        choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(0.25+i*(dur+gap))*1000));
+        A.play(st.curLevel, t+i*(dur+g2), flag);
+        choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(0.25+i*(dur+g2))*1000));
       }
-      choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); $('status').innerHTML=`${A.q} <span style="color:var(--muted)">· ${A.type==='D'?'first or second':'A or B'}</span>`; setChoicesEnabled(true); setReplay(true);},(0.25+2*dur+gap)*1000));
+      if(noiseReset) interNoise(t+dur+0.1, g2-0.2);
+      choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); $('status').innerHTML=`${A.q} <span style="color:var(--muted)">· ${A.type==='D'?'first or second':'A or B'}</span>`; setChoicesEnabled(true); setReplay(true);},(0.25+2*dur+g2)*1000));
     };
     replayFn=play; play();
   }
@@ -1136,6 +1154,7 @@
   }
 
   function advanceUI(){
+    $('hint').textContent='';                        // room done — clear the interaction hint
     const lastC=oi>=order.length-1;
     $('next').textContent=lastC?'See result':'Next'; $('next').classList.add('on');
   }
@@ -1222,12 +1241,17 @@
   // ---------- fingerprint card ----------
   function renderCard(dev){
     // full picture of THIS pair: this run merged with anything measured before
-    const rooms={};
-    Object.keys(dev.rooms||{}).forEach(tag=>{ const r=dev.rooms[tag]; if(r && r.val!=null) rooms[tag]={val:r.val, lo:r.lo, hi:r.hi}; });
+    const rooms={}; const ps=[];
+    Object.keys(dev.rooms||{}).forEach(tag=>{ const r=dev.rooms[tag]; if(r && r.pct!=null){ rooms[tag]={pct:r.pct, val:r.val}; ps.push(r.pct); } });
     const wrap=$('fpwrap');
-    if(!Object.keys(rooms).length){ wrap.style.display='none'; return; }
+    if(!ps.length){ wrap.style.display='none'; return; }
     wrap.style.display='block';
-    window.SR_FP.render($('fpcard'), { device, date:new Date().toLocaleDateString(), rooms });
+    const score=Math.round(ps.reduce((a,b)=>a+b,0)/ps.length);
+    const context = score>=80?'trained-ear territory — most first runs are ~50–65%'
+      : score>=55?'around a typical first listen (~50–65%)'
+      : score>=35?'a little below a typical first run'
+      : 'below a typical first run — try fewer rooms, a touch louder';
+    window.SR_FP.render($('fpcard'), { device, date:new Date().toLocaleDateString(), score, context, rooms });
   }
   async function saveCard(){
     const svg=$('fpcard').querySelector('svg'); if(!svg) return;

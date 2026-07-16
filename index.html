@@ -97,6 +97,7 @@
     <div class="warnbox"><b>Comparing pairs?</b> Match loudness first: replay the calibration notes on each pair and set the phone volume until they sound equally loud. Keep ANC in the same mode, and check both use their best Bluetooth codec (Developer options → Bluetooth audio codec).</div>
     <input id="devinput" maxlength="24" placeholder="e.g. HD 600, AirPods Pro…" />
     <div class="devchips" id="devchips"></div>
+    <label class="optrow"><input type="checkbox" id="optnoise" /><span>Soft noise wash between A and B — resets your ear between samples <em>(experimental)</em></span></label>
     <div class="row"><button class="btn" id="devgo">Start the tour</button></div>
   </section>
 
@@ -150,6 +151,7 @@
 
       <div class="choices" id="choices"></div>
 
+      <div class="hint" id="hint"></div>
       <div class="status" id="status">Listen…</div>
       <div class="precision" id="precision">
         <div class="plabel"><span>Precision</span><span id="pvalue"></span></div>
