@@ -161,7 +161,12 @@
     // for Hz, dB, and negative dBFS) so an auto-widened grid can report a threshold beyond the
     // original floor/ceil. That's the whole point of widening.
     const rLo=Math.min(P.floor,P.ceil), rHi=Math.max(P.floor,P.ceil), rSpan=rHi-rLo;
-    const loB=rLo-1.5*rSpan, hiB=rHi+1.5*rSpan;
+    let loB=rLo-1.5*rSpan, hiB=rHi+1.5*rSpan;
+    // physical limits: a frequency room must not report a level that isn't a real percept (e.g.
+    // sub-20 Hz "hearing" or supra-20 kHz), which auto-widening + a click-chasing listener would
+    // otherwise drift into. physLo/physHi (in level units) hard-cap the reported threshold.
+    if(P.physLo!=null) loB=Math.max(loB, P.physLo);
+    if(P.physHi!=null) hiB=Math.min(hiB, P.physHi);
     return {
       z: eng, dir, span, nMin: cfg.nMin, nMax: cfg.nMax,
       levelOf(x){ return Math.max(loB, Math.min(hiB, inv(dir*x))); }

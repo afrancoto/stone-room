@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v22";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v23";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -116,9 +116,15 @@
 
   // ---- audio primitives (each a controllable stimulus) ----
   function subTone(freq, when, dur, gain){
+    // raised-cosine (Hann) attack/release, long enough that even a very low tone has NO audible
+    // onset/offset click — otherwise the listener detects the click, not the bass, and the room
+    // drifts to physically meaningless sub-audio frequencies.
     const g=ctx.createGain();
-    g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.15);
-    g.gain.setValueAtTime(gain,when+dur-.2); g.gain.linearRampToValueAtTime(0,when+dur);
+    const ramp=Math.min(0.3, dur*0.42), N=64, up=new Float32Array(N), dn=new Float32Array(N);
+    for(let i=0;i<N;i++){ const c=0.5-0.5*Math.cos(Math.PI*i/(N-1)); up[i]=gain*c; dn[i]=gain*(1-c); }
+    g.gain.setValueAtTime(0,when);
+    g.gain.setValueCurveAtTime(up, when, ramp);
+    g.gain.setValueCurveAtTime(dn, when+dur-ramp, ramp);
     g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=freq;
     o.connect(g); o.start(when); o.stop(when+dur+.05);
@@ -198,8 +204,11 @@
       const f=220*rvF*Math.pow(2,cents/1200);
       [f,f*1.5,f*2].forEach(fr=>{const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=fr; o.connect(g); o.start(when); o.stop(when+1.9);});
     };
+    // Both chords carry identical spectral decorrelation (same detune magnitude) and identical
+    // power; ONLY the stereo pan differs. Otherwise the narrow pair summed ~3 dB louder (coherent)
+    // and you could pick "wider" by picking "quieter/less-buzzy" — an off-cue the audit caught.
     if(wide){ mk(-detuneCents,-panAmt); mk(detuneCents,panAmt); }
-    else { mk(0,0); mk(0.6,0); }
+    else { mk(-detuneCents,0); mk(detuneCents,0); }
   }
   function flyby(when,dir,zDist,dur){
     const p=ctx.createPanner();
@@ -487,9 +496,9 @@
   // type D: one interval holds the stimulus (pick it). type X: both play; one is altered.
   // play(level, t, flag): D → flag=stimulus present; X → flag=this interval is the altered one.
   const ADAPT={
-    Foundation:{type:'D', q:'Which held a tone?', dur:1.4, start:40, floor:16, ceil:63, hard:.90, easy:1.15, log:true, betterHigh:false, anchors:[50,20], fmt:v=>Math.round(v)+' Hz',
+    Foundation:{type:'D', q:'Which held a tone?', dur:1.4, start:40, floor:16, ceil:63, hard:.90, easy:1.15, log:true, betterHigh:false, anchors:[50,20], physLo:16, fmt:v=>Math.round(v)+' Hz',
       play:(lv,t,on)=>{marker(t); if(on) subTone(lv, t+.12, 1.15, lv<45?.85:.7);}},
-    Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:13000, floor:8000, ceil:20000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[10000,17000], fmt:v=>(v/1000).toFixed(1)+' kHz',
+    Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:13000, floor:8000, ceil:20000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[10000,17000], physHi:20500, fmt:v=>(v/1000).toFixed(1)+' kHz',
       play:(lv,t,on)=>{marker(t); if(on) shimmerBurst(lv, t+.15, .8, .16);}},
     Whisper:{type:'D', q:'Which pad hid a tick?', dur:1.7, start:.04, floor:.002, ceil:.2, hard:.78, easy:1.5, log:true, betterHigh:false, anchors:[.04,.008], fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
       play:(lv,t,on)=>{pad(t,1.6,.2); if(on) tick(t+.5+Math.random()*.7, lv);}},
