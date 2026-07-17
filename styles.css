@@ -270,9 +270,54 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
   .listening .ripple{animation:none !important; opacity:.3}
   .heroDot{animation:none !important}
 }
-/* short screens: relax vertical centring so nothing clips */
+/* ---------- responsive: fit every screen on small, short, and landscape phones ---------- */
+
+/* very narrow phones (small iPhones, older Androids): tighten paddings and controls */
+@media (max-width:360px){
+  .app{padding-left:14px; padding-right:14px}
+  .choices{gap:10px}
+  .choice{min-width:74px; padding:16px 14px; font-size:20px}
+  .chipgrid{gap:6px}
+  .chip{padding:9px 10px 9px}
+  .controls{gap:8px}
+  .replay,.btn{padding:11px 18px}
+  .warnbox,.optrow,.about,.support{max-width:none}
+}
+
+/* short viewports: relax vertical centring AND shrink the field so the controls stay on-screen */
 @media (max-height:680px){
   .screen.on{justify-content:flex-start}
-  .introcard{gap:9px}
-  .ic{padding:10px 13px}
+  #game.on{justify-content:flex-start}
+  .field-wrap{width:min(72vw,300px)}
+  #game .g-top{padding-top:16px}
+  .claim{margin-bottom:4px}
+  .learn{margin-top:6px}
+  #intro .btn{margin-top:18px}
+}
+@media (max-height:600px){
+  .field-wrap{width:min(56vw,240px)}
+  .choice{padding:15px 16px}
+  .status{margin:3px 0 1px}
+}
+
+/* phone held sideways: the tall column would clip, so compress rhythm and cap the field by height */
+@media (orientation:landscape) and (max-height:560px){
+  .screen.on{justify-content:flex-start}
+  .app{padding-top:calc(10px + var(--safe-t)); padding-bottom:calc(10px + var(--safe-b))}
+  h1{font-size:clamp(24px,7vh,36px)}
+  .herofield{width:min(30vw,150px); margin-bottom:2px}
+  #intro .btn{margin-top:12px}
+  .field-wrap{width:auto; height:min(48vh,220px)}
+  .field-wrap.circle{width:auto; height:min(48vh,220px)}
+  #game .g-mid{justify-content:flex-start}
+  #game .g-top{padding-top:12px}
+  .controls{margin-top:6px}
+  .choices{margin:8px auto 4px}
+}
+
+/* roomy desktop / tablet: nudge the base type up a touch for comfortable reading */
+@media (min-width:900px) and (min-height:760px){
+  .app{width:min(92vw,480px)}
+  .lede{font-size:15px}
+  .notice{font-size:13px}
 }

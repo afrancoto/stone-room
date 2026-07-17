@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v14";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v15";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -364,95 +364,95 @@
     {group:'holo',tag:'Stage',title:'Point at the singer',tests:'soundstage width',mode:'locate',
      claim:'A great headphone paints instruments across a stage — you can point at each one.',
      learn:'Your brain places sound by comparing microsecond timing and level differences between your ears. Clean drivers keep those cues intact; sloppy ones blur the map.',
-     notice:'One sound on the stage in front of you. Tap the arc where it sits. It plays tighter as you dial in.'},
+     notice:'One sound sits on the arc ahead. <b>Tap where you hear it</b> — one tap, no dragging. It tightens as you close in.'},
     {group:'holo',tag:'Motion',title:'Track the mover',tests:'imaging precision',mode:'sweep',
      claim:'Pinpoint imaging: when a sound moves, you can follow it like watching it.',
      learn:'Smooth motion means the inter-ear cues update without smearing. A blurry transducer turns a moving point into a travelling cloud.',
-     notice:'The sound glides across the stage, then stops. Tap where it came to rest.'},
+     notice:'A sound glides across the stage, then stops. <b>Tap where it landed.</b>'},
     {group:'holo',tag:'Centre',title:'Lock the vocalist',tests:'channel matching',mode:'stair',
      claim:'A perfectly matched pair nails the voice dead centre — zero drift.',
      learn:'A centre image only forms when left and right drivers match within about 1 dB. Any mismatch drags the vocalist off their stool. B&W hand-match pairs for exactly this.',
-     notice:'The same note twice. One sits exactly between your ears; one drifts a hair to one side. The drift shrinks as you catch it.'},
+     notice:'The same note twice — one dead centre, one pulled aside. <b>Tap the one that stayed centred.</b>'},
     {group:'holo',tag:'Orbit',title:'Around your head',tests:'true holography',mode:'orbit',
      claim:'True holography: the music exists around you, not inside your skull.',
      learn:'Front vs back is the hardest cue — it lives in how your outer ear filters treble. Motion rescues it: your brain tracks the path continuously. A mirrored miss is a famous illusion, not a failure.',
-     notice:'The sound circles your whole head — behind you too — then stops. Tap the ring where it landed. Eyes closed, seriously.'},
+     notice:'It circles your whole head — behind you too — then stops. <b>Tap the ring where it landed.</b> Eyes closed.'},
     {group:'holo',tag:'Depth',title:'Front row, back row',tests:'layering',mode:'depth',
      claim:'Layering: a good mix has a front row and a back row, and you can seat everyone.',
      learn:'Distance is decoded from three cues at once: loudness, treble roll-off, and how much room reverb rides along with the direct sound.',
-     notice:'Tap the <em>inner</em> arc for a near sound, the <em>outer</em> for a far one.'},
+     notice:'A sound plays near or far. <b>Tap the inner ring for near, the outer for far</b> — aimed at its direction.'},
     {group:'holo',tag:'Flyby',title:'How close did it pass?',tests:'distance rendering',mode:'stair',
      claim:'Distance is rendered, not implied — near and far are different physical things.',
      learn:'A pass distance is computed from the Doppler pitch bend plus the loudness swell. The closer the pass, the sharper both curves — action-movie physics, verified.',
-     notice:'Two vehicles cross your stage, pitch bending as they pass. Which came closer? The gap narrows as you catch it.'},
+     notice:'Two vehicles cross your stage, bending pitch as they pass. <b>Tap the one that passed closer.</b>'},
     {group:'holo',tag:'Echo',title:'Hear the walls',tests:'spatial cues',mode:'stair',
      claim:'Good transducers preserve the room’s reflections — you can hear the walls.',
      learn:'Your brain times the gap from click to reflection: roughly 6 ms per metre of wall distance, there and back. You were literally echolocating.',
-     notice:'A click, then its reflection. Longer silence = further wall. Which wall is further?'},
+     notice:'A click, then its echo — twice. A longer gap means a farther wall. <b>Tap the further wall.</b>'},
     {group:'holo',tag:'Duet',title:'Wall to wall',tests:'stereo width',mode:'stair',
      claim:'Width: the mix stretches ear to ear and past your shoulders.',
      learn:'Width is decorrelation — small deliberate differences between channels. Strong channel separation in the headphone keeps them from collapsing back toward mono.',
-     notice:'The same chord twice. One fills the space between your ears; one stays narrow. Which was wide?'},
+     notice:'The same chord twice — one wide, one narrow. <b>Tap the wider one.</b>'},
     {group:'res',tag:'Separation',title:'Pick one voice out',tests:'instrument separation',mode:'separate',
      claim:'Each instrument keeps its own pocket of space — nothing smears together.',
      learn:'Separation is position plus timbre staying stable per source. When drivers distort, sources bleed into each other and the mix turns to porridge.',
-     notice:'Three sounds at once. You hear your target alone first — then tap it out of the crowd.'},
+     notice:'Three sounds at once. You’ll hear your target alone first — then <b>tap it out of the crowd.</b>'},
     {group:'res',tag:'Crowd',title:'Count the ensemble',tests:'no congestion',mode:'count',
      claim:'A busy passage never collapses into mush — the mix stays countable.',
      learn:'Congestion is where cheap gear folds first: as sources stack up, intermodulation smears them together. Countability is the bluntest possible test of it.',
-     notice:'A small ensemble plays at once, spread across the stage. Count the distinct voices. It grows as you keep up.'},
+     notice:'A small ensemble plays together, spread across the stage. <b>Tap how many voices you count.</b>'},
     {group:'res',tag:'Whisper',title:'Details under the music',tests:'detail retrieval',mode:'stair',
      claim:'You hear things in familiar albums you never knew were there.',
      learn:'Low-level detail rides 20–30 dB beneath the music. Low driver distortion and noise keep it audible instead of buried — that’s "detail retrieval".',
-     notice:'A warm pad plays twice; one hides a single faint tick. Which? It sinks deeper each time you catch it.'},
+     notice:'A warm pad plays twice; one hides a faint tick. <b>Tap the one with the tick.</b>'},
     {group:'res',tag:'Silence',title:'The black background',tests:'noise floor',mode:'stair',
      claim:'Between the notes: true black. No hiss, no veil, just nothing.',
      learn:'"Black background" is a low noise floor — nothing added beneath quiet passages. You just resolved near-silence, which is exactly what the phrase means.',
-     notice:'A note, then silence — twice. One silence hides a faint hiss. Which was truly black?'},
+     notice:'A note, then silence — twice. One silence hides a faint hiss. <b>Tap the one that hid it.</b>'},
     {group:'res',tag:'Grain',title:'Spot the impostor',tests:'timbre resolution',mode:'stair',
      claim:'Timbre is texture — and you can hear when a note’s texture is even slightly off.',
      learn:'Timbre lives in the balance of overtones. The impostor carried one stray partial at ~2.8× the fundamental — the sound of texture being subtly wrong.',
-     notice:'The same note twice — one pure, one with a faint stray overtone. Pick the pure one. The impostor gets subtler with every catch.'},
+     notice:'The same note twice — one pure, one with a faint stray overtone. <b>Tap the pure one.</b>'},
     {group:'res',tag:'Halls',title:'How the note dies',tests:'decay resolution',mode:'stair',
      claim:'Notes don’t stop — they fade into a space, and you can hear the size of it.',
      learn:'A reverb tail falls some 60 dB into silence. Resolving where it ends — and how big the room was — is the classic test of low-level linearity.',
-     notice:'The same pluck, in two different rooms. Which room was bigger? The difference narrows as you catch it.'},
+     notice:'The same pluck in two rooms. <b>Tap the bigger room</b> — it rings on longer.'},
     {group:'res',tag:'Composure',title:'Loud stays clean',tests:'low distortion',mode:'stair',
      claim:'Push it hard and it never hardens — composure under pressure.',
      learn:'Overdrive a bad driver and it clips: harmonics appear that were never in the music, heard as hardness or glare. Composure means loud and clean are the same thing.',
-     notice:'The same big chord twice. One version subtly hardens and buzzes. Which stayed clean?'},
+     notice:'The same big chord twice — one hardens and buzzes. <b>Tap the one that stayed clean.</b>'},
     {group:'tone',tag:'Foundation',title:'The floor beneath',tests:'sub-bass extension',mode:'stair',
      claim:'Real extension: bass you feel in your jaw, below what most gear can even produce.',
      learn:'Below ~40 Hz most gear rolls off and you only hear overtones. This room hunts your exact floor: the lowest frequency this chain — headphone plus your ears — still delivers.',
-     notice:'Two intervals; one hides a low tone. Which? Each catch drives the tone deeper until it vanishes — your floor in Hz. Moderate volume.'},
+     notice:'Two intervals; one hides a low tone. <b>Tap the one that held it.</b> Each catch drives it deeper. Moderate volume.'},
     {group:'tone',tag:'Grip',title:'Taut, not flabby',tests:'bass control',mode:'stair',
      claim:'Bass with grip: taut and textured, never a shapeless boom.',
      learn:'Loose bass is an envelope problem: the cone keeps moving after the note should stop. Grip is a fast start AND a fast stop — extension’s stricter sibling.',
-     notice:'Two bass notes. One is clean and controlled; one blooms and wobbles. Which was tighter?'},
+     notice:'Two bass notes — one taut, one blooming. <b>Tap the tighter one.</b>'},
     {group:'tone',tag:'Presence',title:'The voice in the room',tests:'midrange truth',mode:'stair',
      claim:'Honest mids put the singer in the room; scooped mids put them behind glass.',
      learn:'Voices live at 1–3 kHz. Cut that band and a singer steps backward and loses body — the "veiled" sound. Honest mids are why some gear feels intimate.',
-     notice:'The same voice-like tone twice. One has its core hollowed out. Which was in the room with you?'},
+     notice:'The same voice twice — one hollowed out, one full. <b>Tap the one in the room with you.</b>'},
     {group:'tone',tag:'Air',title:'Room to breathe',tests:'treble extension',mode:'stair',
      claim:'Air: the openness above the music, the shimmer that cheap gear shaves off.',
      learn:'The top octave (8 kHz and up) carries shimmer, space and "air". Roll it off and music breathes less — even when you can’t name what went missing.',
-     notice:'Two intervals; one holds a faint high shimmer. Which? It climbs higher each time you catch it — your ceiling in kHz.'},
+     notice:'Two intervals; one holds a faint high shimmer. <b>Tap the one that held it.</b> It climbs higher each catch.'},
     {group:'tone',tag:'Silk',title:'Smooth, never sharp',tests:'sibilance control',mode:'stair',
      claim:'Treble with silk: all the sparkle, none of the needle in the "s".',
      learn:'Sibilance is an energy spike near 6–8 kHz that turns an "s" into a stab. Smooth treble keeps the energy without the pain — the hardest tuning balance there is.',
-     notice:'A voice-like phrase ending in "ss" — twice. One "ss" stabs; one stays silk. Which was smoother?'},
+     notice:'A voice-like phrase ending in "ss" — twice. <b>Tap the one whose "s" stabbed.</b>'},
     {group:'dyn',tag:'Snap',title:'Slam',tests:'transient attack',mode:'stair',
      claim:'Slam: a drum hit arrives instantly, with edges — that’s driver control.',
      learn:'A real transient rises in under a millisecond. Reproducing that edge takes a light, stiff, well-damped driver — exactly what exotic cone materials are for.',
-     notice:'Two drum hits. One strikes instantly; the other eases in by a hair. Which truly <em>hit</em>?'},
+     notice:'Two drum hits — one strikes instantly, one eases in. <b>Tap the one that truly hit.</b>'},
     {group:'dyn',tag:'Pulse',title:'The tight groove',tests:'timing · prat',mode:'stair',
      claim:'Pace, rhythm and timing: the groove locks, and nothing drags.',
      learn:'Humans detect timing errors down to ~10 ms. "PRaT" is gear preserving every attack edge so the groove stays locked instead of shuffling.',
-     notice:'Two short grooves. In one, a beat lands a hair late. Which groove was tight?'},
+     notice:'Two short grooves; in one, a beat lands late. <b>Tap the tight groove.</b>'},
     {group:'dyn',tag:'Shade',title:'Loud and louder',tests:'micro-dynamics',mode:'stair',
      claim:'Micro-dynamics: the difference between loud and slightly louder is where expression lives.',
      learn:'A performer’s expression is 1–2 dB shadings between notes. Any compression in the chain flattens those gradations into sameness.',
-     notice:'The same note twice, at slightly different levels. Which was louder?'},
+     notice:'The same note twice, at slightly different levels. <b>Tap the louder one.</b>'},
   ];
   const ROMANS=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX','XXI','XXII','XXIII'];
   const DEVCOLORS=['#7BA79C','#E27A45','#D9A24B','#B7A6E3'];
@@ -733,9 +733,23 @@
       : 'No rooms selected';
   }
 
+  // interleave the tour so no two adjacent rooms share a domain — round-robin across the four
+  // groups, preserving each group's internal order. This "one around each" ordering breaks the
+  // monotony of a block of near-identical rooms WITHOUT interleaving at the trial level (which
+  // would add task-switching noise and slow every reading). Each room still runs as one clean run.
+  function interleaveByDomain(idxs){
+    const gk=Object.keys(GROUPS);
+    const buckets=gk.map(g=>idxs.filter(i=>CH[i].group===g));
+    const out=[]; let added=true;
+    while(added){ added=false;
+      for(const b of buckets){ if(b.length){ out.push(b.shift()); added=true; } }
+    }
+    return out;
+  }
+
   function startGame(){
     initAudio(); ctx.resume();
-    order = CH.map((_,i)=>i).filter(i=>selected[i]);
+    order = interleaveByDomain(CH.map((_,i)=>i).filter(i=>selected[i]));
     if(!order.length) order=CH.map((_,i)=>i);
     score=0; oi=0; chScore={}; chPct={}; roomThr={}; roomVal={};
     order.forEach(i=>{chScore[i]=0;});
