@@ -50,8 +50,6 @@
       <button class="linkbtn" id="aboutToggle" aria-expanded="false">What is this?</button>
       <span class="sep">·</span>
       <button class="linkbtn" id="demoToggle" aria-expanded="false">What you’ll get</button>
-      <span class="sep" id="cmpsep" style="display:none">·</span>
-      <button class="linkbtn" id="gocompare" style="display:none">Compare pairs</button>
       <span class="sep" id="pfsep" style="display:none">·</span>
       <button class="linkbtn" id="goprofiles" style="display:none">Profiles</button>
     </div>
@@ -208,7 +206,6 @@
     <div class="row">
       <button class="btn ghost" id="reselect">Rooms</button>
       <button class="btn ghost" id="endcurve">Curve</button>
-      <button class="btn ghost" id="endcompare">Compare</button>
       <button class="btn ghost" id="endprofiles">Profiles</button>
       <button class="btn" id="again">Again</button>
     </div>
@@ -223,8 +220,7 @@
     <div class="legend" id="legend"></div>
     <div class="cmpscroll" id="cmpscroll"></div>
     <div class="row">
-      <button class="btn ghost" id="cmpback">Back</button>
-      <button class="btn ghost" id="cmpprofiles">Profiles</button>
+      <button class="btn ghost" id="cmpback">Back to profiles</button>
       <button class="btn" id="cmpnew">New tour</button>
     </div>
   </section>
@@ -240,7 +236,7 @@
       <button id="pf-exportall">Export all</button>
     </div>
     <input type="file" id="pf-file" accept="application/json,.json" style="display:none" />
-    <div class="row"><button class="btn ghost" id="pf-back">Back</button></div>
+    <div class="row"><button class="btn ghost" id="pf-back">Back</button><button class="btn ghost" id="pfcompare" style="display:none">Compare pairs</button></div>
   </section>
 
   <!-- audiogram / hearing curve -->

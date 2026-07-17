@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v27";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v28";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -590,6 +590,7 @@
   let lastPct=0;
   const SCHEMA=3;                 // profile schema version (v3 superset of stoneroom_results_v2)
   let currentRunId=null;          // one id per measurement occasion (tour / standalone curve / single retake)
+  let fromProfile=false;          // true when the room-select was opened from a profile (device preset → skip naming)
   function uid(pre){ const r=(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,12):(Date.now().toString(36)+Math.random().toString(36).slice(2,8)); return (pre||'id')+'_'+r; }
   let st=null;                                    // active stair state
   let sp=null;                                    // active spatial state
@@ -854,10 +855,9 @@
       if(deepRoom>=0){ buildDevice(); show('device'); }
       else { show('cal'); runCal(); }
     });
-    $('gocompare').addEventListener('click',async()=>{await loadDB(); buildCompare(); show('compare');});
     $('goprofiles').addEventListener('click',async()=>{await loadDB(); buildProfiles(); show('profiles');});
     $('endprofiles').addEventListener('click',()=>{buildProfiles(); show('profiles');});
-    $('cmpprofiles').addEventListener('click',()=>{buildProfiles(); show('profiles');});
+    $('pfcompare').addEventListener('click',()=>{ buildCompare(); show('compare'); });   // Compare is reached from Profiles now
     $('pf-back').addEventListener('click',()=>show(order.length?'end':'intro'));
     $('pf-exportall').addEventListener('click',()=>downloadExport());
     $('pf-import').addEventListener('click',()=>$('pf-file').click());
@@ -886,10 +886,10 @@
     });
     $('savecard').addEventListener('click',saveCard);
     $('calreplay').addEventListener('click',runCal);
-    $('calgo').addEventListener('click',()=>{buildSelect(); show('select');});
+    $('calgo').addEventListener('click',()=>{ fromProfile=false; buildSelect(); show('select');});
     $('calback').addEventListener('click',()=>show('intro'));
-    $('selstart').addEventListener('click',()=>{buildDevice(); show('device');});
-    $('selback').addEventListener('click',()=>show('intro'));
+    $('selstart').addEventListener('click',()=>{ if(fromProfile){ fromProfile=false; startGame(); } else { buildDevice(); show('device'); } });
+    $('selback').addEventListener('click',()=>{ if(fromProfile){ fromProfile=false; buildProfiles(); show('profiles'); } else show('intro'); });
     $('devback').addEventListener('click',()=>{ if(deepRoom>=0){ show('intro'); } else { buildSelect(); show('select'); } });
     try{ noiseReset = localStorage.getItem('stoneroom_noise')==='1'; }catch(e){}
     $('optnoise').checked = noiseReset;
@@ -900,10 +900,9 @@
     $('cvredo').addEventListener('click',()=>{ stopCurveAudio(); startCurve(); });
     $('cvsave').addEventListener('click',saveCurveCard);
     $('again').addEventListener('click',startGame);
-    $('reselect').addEventListener('click',()=>{buildSelect(); show('select');});
-    $('endcompare').addEventListener('click',()=>{buildCompare(); show('compare');});
-    $('cmpback').addEventListener('click',()=>{show(order.length?'end':'intro');});
-    $('cmpnew').addEventListener('click',()=>{buildSelect(); show('select');});
+    $('reselect').addEventListener('click',()=>{ fromProfile=false; buildSelect(); show('select');});
+    $('cmpback').addEventListener('click',()=>{ buildProfiles(); show('profiles'); });   // Back → Profiles (Compare lives under it)
+    $('cmpnew').addEventListener('click',()=>{ fromProfile=false; buildSelect(); show('select');});
     $('next').addEventListener('click',nextChapter);
     $('lockbtn').addEventListener('click',redoRoom);        // "↻ Redo" on the result
     $('contbtn').addEventListener('click',sharpenRoom);     // "Sharpen ↑" on the result
@@ -971,10 +970,16 @@
       tog.addEventListener('click',()=>{ const allOn=idxs.every(i=>selected[i]); idxs.forEach(i=>selected[i]=!allOn); paintChips(); });
       head.appendChild(tog); sec.appendChild(head);
       const grid=document.createElement('div'); grid.className='chipgrid';
+      const dv = device && hasDevice(device) ? db.devices[device] : null;   // show this pair's saved scores
       idxs.forEach(i=>{
         const c=CH[i];
-        const b=document.createElement('button'); b.className='chip'; b.dataset.idx=i;
-        b.innerHTML=`<div class="cname">${c.tag}<span class="ctime">${fmtRange(estRoom(c))}</span></div><div class="cq">${c.tests}</div><div class="cclaim">${c.claim}</div>`;
+        const rv = dv && dv.rooms && dv.rooms[c.tag];
+        const pct = rv==null?null:(typeof rv==='number'?rv:rv.pct);
+        const thr = (rv&&typeof rv==='object'&&rv.thr)?rv.thr:null;
+        const b=document.createElement('button'); b.className='chip'+(pct!=null?' taken':''); b.dataset.idx=i;
+        b.innerHTML=`<div class="cname">${c.tag}<span class="ctime">${fmtRange(estRoom(c))}</span></div><div class="cq">${c.tests}</div><div class="cclaim">${c.claim}</div><div class="cscore"></div>`;
+        const sc=b.querySelector('.cscore');
+        if(pct!=null){ sc.textContent = pct+'%'+(thr?' · '+thr:''); }   // textContent: an imported thr can't inject markup
         b.addEventListener('click',()=>{selected[i]=!selected[i]; paintChips();});
         grid.appendChild(b);
       });
@@ -1894,16 +1899,20 @@
   function buildProfiles(){
     const list=$('profileList'); list.innerHTML='';
     const names=deviceNames();
-    if(!names.length){ list.innerHTML='<div class="cmpempty">No saved pairs yet.<br>Finish a room with a headphone name and it lands here — each pair keeps its own results.</div>'; return; }
+    if(!names.length){ list.innerHTML='<div class="cmpempty">No saved pairs yet.<br>Finish a room with a headphone name and it lands here — each pair keeps its own results.</div>'; $('pfcompare').style.display='none'; return; }
     names.forEach(n=>{
       const dev=db.devices[n]||{rooms:{}};
       const tot=deviceTotal(n);
       const done=CH.filter(c=>{const v=dev.rooms&&dev.rooms[c.tag]; return v!=null && (typeof v==='number'||v.pct!=null);}).length;
       const card=document.createElement('div'); card.className='pfcard';
-      const head=document.createElement('div'); head.className='pfhead';
+      const head=document.createElement('button'); head.className='pfhead'; head.title='Choose which tests to run for this pair';
       const nm=document.createElement('span'); nm.className='pfname'; nm.textContent=n;   // textContent: no XSS from a stored/imported name
-      const meta=document.createElement('span'); meta.className='pfmeta'; meta.textContent=(tot!=null?tot+'% · ':'')+done+'/'+CH.length+' rooms'+(dev.curve?' · curve':'');
-      head.appendChild(nm); head.appendChild(meta); card.appendChild(head);
+      const meta=document.createElement('span'); meta.className='pfmeta'; meta.innerHTML='';
+      meta.textContent=(tot!=null?tot+'% · ':'')+done+'/'+CH.length+' rooms'+(dev.curve?' · curve':'');
+      const chev=document.createElement('span'); chev.className='pfchev'; chev.textContent='›';
+      head.appendChild(nm); head.appendChild(meta); head.appendChild(chev);
+      head.addEventListener('click',()=>testPair(n));
+      card.appendChild(head);
       const dots=document.createElement('div'); dots.className='pfdots';
       CH.forEach((c,idx)=>{
         const v=dev.rooms&&dev.rooms[c.tag]; const p=v==null?null:(typeof v==='number'?v:v.pct);
@@ -1915,12 +1924,20 @@
       card.appendChild(dots);
       const acts=document.createElement('div'); acts.className='pfacts';
       const mk=(label,fn)=>{const b=document.createElement('button'); b.textContent=label; b.addEventListener('click',fn); return b;};
+      acts.appendChild(mk('Test ›',()=>testPair(n)));
       acts.appendChild(mk('Rename',()=>{ const nn=prompt('Rename this pair:', n); if(nn && renameDevice(n,nn)) buildProfiles(); }));
       acts.appendChild(mk('Export',()=>downloadExport(n)));
       acts.appendChild(mk('Delete',()=>{ if(confirm('Delete "'+n+'" and all its results?')){ deleteDevice(n); buildProfiles(); } }));
       card.appendChild(acts);
       list.appendChild(card);
     });
+    $('pfcompare').style.display = names.length>=2 ? 'inline-flex' : 'none';   // Compare lives under Profiles
+  }
+  // open a pair for testing: pick which rooms to run in the room-select, with this pair active
+  function testPair(name){
+    initAudio(); ctx.resume();
+    device=safeName(name); fromProfile=true;
+    buildSelect(); show('select');
   }
   // retake (or first-take) a single room for a chosen pair — a fresh occasion (new runId → new history row)
   function retakeRoom(name, chIdx){
@@ -1934,7 +1951,7 @@
 
   // ---------- boot ----------
   buildIntro(); applyCoffeeLinks(); wire();
-  (async()=>{ await loadDB(); if(deviceNames().length){ $('gocompare').style.display='inline'; $('cmpsep').style.display='inline'; $('goprofiles').style.display='inline'; $('pfsep').style.display='inline'; } offerResume(); })();
+  (async()=>{ await loadDB(); if(deviceNames().length){ $('goprofiles').style.display='inline'; $('pfsep').style.display='inline'; } offerResume(); })();
   if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
 
   // storage/profiles API surface (also the future state/store.js module boundary) — lets the app's

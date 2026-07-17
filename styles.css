@@ -113,6 +113,9 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 .chip .ctime{font-size:10px; color:var(--muted); font-weight:400; white-space:nowrap}
 .chip .cq{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--gold); margin-bottom:4px}
 .chip .cclaim{font-family:var(--disp); font-style:italic; font-size:11.5px; line-height:1.35; color:var(--muted)}
+.chip .cscore{font-size:11px; color:var(--sage); margin-top:5px; font-weight:500; letter-spacing:.02em}
+.chip .cscore:empty{display:none}
+.chip.taken .cname{color:var(--sage)}
 .seltools{display:flex; gap:16px; justify-content:center; margin-top:12px; flex-wrap:wrap}
 .seltools button{background:none;border:none;color:var(--muted);font-family:var(--ui);font-size:12px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .seltime{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5}
@@ -265,9 +268,11 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 /* ---- profiles ---- */
 .profilelist{flex:1 1 auto; overflow-y:auto; margin:12px -4px 0; padding:0 4px; text-align:left; min-height:0}
 .pfcard{border:1px solid var(--line); background:var(--surface); border-radius:14px; padding:12px 14px; margin:0 0 10px}
-.pfhead{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
-.pfname{font-family:var(--disp); font-size:16px; color:var(--stone); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pfhead{display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; background:none; border:none; padding:4px 0; text-align:left; cursor:pointer; color:inherit; font-family:inherit}
+.pfhead:active{opacity:.7}
+.pfname{font-family:var(--disp); font-size:16px; color:var(--stone); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0}
 .pfmeta{font-size:11px; letter-spacing:.06em; color:var(--muted); white-space:nowrap; flex:0 0 auto}
+.pfchev{color:var(--sage); font-size:20px; line-height:1; flex:0 0 auto}
 .pfdots{display:flex; flex-wrap:wrap; gap:5px; margin:10px 0 4px}
 .pfdot{width:14px; height:14px; border-radius:50%; border:1px solid var(--line); background:transparent; padding:0; cursor:pointer; transition:transform .1s}
 .pfdot.filled{border-color:transparent}
@@ -275,6 +280,7 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .pfacts{display:flex; gap:16px; margin-top:6px}
 .pfacts button{background:none; border:none; color:var(--sage); font-family:var(--ui); font-size:12px; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; text-decoration:underline; text-underline-offset:3px}
 .pfacts button:last-child{color:var(--ember)}
+.pfacts button:first-child{color:var(--stone); font-weight:600; text-decoration:none}
 #profiles .seltools{margin-top:12px}
 
 /* ---- info modal (science) ---- */
