@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v24";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v25";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1105,11 +1105,14 @@
     advanceUI();
   }
   // ---------- audiogram: a personalised Hz × dB curve (your ears + these headphones) ----------
-  // For each frequency we find the quietest audible level with a 2AFC "which interval held the
-  // tone" track (the proven Ψ-marginal engine, in dBFS). Absolute level is uncalibrated, but the
-  // curve SHAPE — relative to your own 1 kHz — is a real response of ears+headphone together.
+  // For each frequency we find the quietest audible level with a single-interval YES/NO track: one
+  // bounded listen window, "I hear it" vs "Nothing", plus ~20% SILENT catch trials for false-alarm
+  // control. The Ψ-marginal engine runs with gamma=0.03 (near-zero guess floor) so the localised
+  // point is a true detection threshold, not a 2AFC midpoint — and silence becomes an expected,
+  // answerable state instead of the confusing "one interval is always empty" of a 2-interval task.
+  // Absolute level uncalibrated; the curve SHAPE relative to your own 1 kHz is real (ears+headphone).
   const AG_FREQS=[125,250,500,1000,2000,4000,8000,12000,16000];
-  const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, nMin:6, nMax:12, fmt:v=>Math.round(v)+' dBFS'};
+  const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03, nMin:6, nMax:12, fmt:v=>Math.round(v)+' dBFS'};
   let ag=null;
 
   // hearing-curve as a tour room: launch the curve screen, then rejoin the tour on "Continue →"
@@ -1151,35 +1154,52 @@
   function agFreq(){
     const f=AG_FREQS[ag.fi];
     ag.eng=window.SR_PSI.forRoom(AG_ROOM); ag.trial=0;
+    ag.catchCount=0; ag.fa=0; ag.faShown=0;
+    ag.catchCap=Math.max(2, Math.round((ag.eng.nMax||12)*0.35));   // ≤ ~4 silent trials per frequency
     $('cvTitle').textContent = f>=1000?(f/1000)+' kHz':f+' Hz';
     $('cvprog').textContent = `Tone ${ag.fi+1} of ${AG_FREQS.length}`;
     agTrial();
   }
   function agTrial(){
-    ag.curX=ag.eng.z.next(); ag.curLevel=ag.eng.levelOf(ag.curX); ag.side=Math.random()<.5?0:1;
+    ag.curX=ag.eng.z.next(); ag.curLevel=ag.eng.levelOf(ag.curX);
+    // ~20% SILENT catch trials — never the first of a frequency (need one real reference), capped —
+    // so "I heard nothing" is a normal, expected answer and false alarms can be measured.
+    ag.catch = ag.trial>0 && (ag.catchCount||0)<ag.catchCap && Math.random()<0.2;
+    if(ag.catch) ag.catchCount=(ag.catchCount||0)+1;
     const f=AG_FREQS[ag.fi];
     const box=$('cvChoices'); box.innerHTML='';
-    const mk=(lab,i)=>{const b=document.createElement('button');b.className='choice';b.innerHTML=lab+'<small>interval</small>';b.onclick=()=>agPick(i);box.appendChild(b);return b;};
-    const btns=[mk('1st',0),mk('2nd',1)];
+    const hear=document.createElement('button'); hear.className='choice'; hear.innerHTML='I hear it<small>tap the moment you do</small>'; hear.onclick=()=>agAnswer('hear');
+    const none=document.createElement('button'); none.className='choice'; none.innerHTML='Nothing<small>silence this time</small>'; none.onclick=()=>agAnswer('none');
+    box.appendChild(hear); box.appendChild(none);
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.replay)ag.replay(); }; box.appendChild(rep);
-    const setEnabled=on=>btns.forEach(b=>b.disabled=!on);
     const play=()=>{
-      clearTimers(); setEnabled(false);
-      if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // constant reference for the curve (also resets a prior stop-on-pick)
-      $('cvNote').textContent='Which interval held the faint tone — 1st or 2nd?';
-      const dur=.7, gap=.5, t=ctx.currentTime+.25;
-      detTone(f, t+ag.side*(dur+gap)+.06, dur-.12, ag.curLevel);
-      for(let i=0;i<2;i++) choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(0.25+i*(dur+gap))*1000));
-      choiceTimers.push(setTimeout(()=>{setEnabled(true);},(0.25+(dur+gap))*1000));   // answerable once the 2nd interval starts
-      choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing'));},(0.25+2*dur+gap)*1000));
+      clearTimers(); hear.disabled=true; none.disabled=true; hear.classList.remove('playing');
+      if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // constant reference each trial
+      $('cvNote').textContent='Listen…';
+      const lead=.18, win=1.30, t0=ctx.currentTime+lead;
+      if(!ag.catch) detTone(f, t0, win-.10, ag.curLevel);             // real trial: tone fills the window; catch: silence
+      // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
+      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ hear.disabled=false; hear.classList.add('playing'); $('cvNote').innerHTML='Now — tap <b>I hear it</b> the instant you notice it.'; } }, lead*1000));
+      // "Nothing" answerable only AFTER the window has fully passed
+      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ none.disabled=false; hear.classList.remove('playing'); $('cvNote').innerHTML='Heard it, or nothing?'; } }, Math.max((lead+win)*1000, 260)));
     };
-    ag.replay=play; ag._setEnabled=setEnabled; ag._btns=btns; play();
+    ag.replay=play; play();
   }
-  function agPick(i){
+  function agAnswer(ans){
     if(!ag||ag.phase!=='run')return;
-    killStim();                            // stop the tone the instant you pick
-    ag._setEnabled(false);
-    const hit=i===ag.side; ag.eng.z.record(ag.curX,hit); ag.trial++;
+    killStim();                            // stop the tone the instant you answer
+    [...$('cvChoices').querySelectorAll('.choice')].forEach(b=>b.disabled=true);
+    const heard = ans==='hear';
+    if(ag.catch){
+      // catch trial: EXCLUDED from the threshold estimate — only tallies false alarms and, capped, nudges
+      if(heard){ ag.fa=(ag.fa||0)+1;
+        if((ag.faShown||0)<2){ ag.faShown=(ag.faShown||0)+1; $('cvNote').innerHTML='That one was <b>silent</b> — listen carefully for the tone.'; }
+        else $('cvNote').textContent='That one was silent.';
+      } else $('cvNote').textContent='Right — silence.';
+      choiceTimers.push(setTimeout(agTrial,700));
+      return;
+    }
+    ag.eng.z.record(ag.curX, heard); ag.trial++;
     const st=ag.eng.z.stats();
     if(st.usable||st.forceStop){ ag.thr[AG_FREQS[ag.fi]]=ag.eng.levelOf(st.mean); ag.fi++;
       if(ag.fi>=AG_FREQS.length) finishCurve(); else choiceTimers.push(setTimeout(agFreq,320)); return; }
@@ -1195,7 +1215,7 @@
     window.SR_FP.renderCurve($('cvcard'), { device, curve });
     // persist
     await loadDB(); const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
-    dev.curve = curve; dev.date=new Date().toISOString(); db.devices[device]=dev; await saveDB();
+    dev.curve = curve; dev.curveMethod='yesno'; dev.date=new Date().toISOString(); db.devices[device]=dev; await saveDB();
   }
 
   // ---------- adaptive spatial ----------

@@ -12,7 +12,7 @@
 
   function makePsi(cfg){
     const nA = cfg.nA || 50;
-    const gamma = 0.5;                              // 2AFC guess rate
+    const gamma = (cfg.gamma!=null) ? cfg.gamma : 0.5;   // lower asymptote: 0.5 for 2AFC, ~0.03 for yes/no detection
     const span0 = cfg.xHi - cfg.xLo;               // initial span — anchors conf/slope so widening is stable
     const priorSDabs = cfg.priorSD || span0*0.5;
     // slope β in units of 1/x, fixed (absolute) so the psychometric shape survives widening.
@@ -153,7 +153,7 @@
     const cfg = {
       nA: 50, xLo: xLo - span*0.05, xHi: xHi + span*0.05,
       slope: 7, priorMean: anchMid, priorSD: span*0.55,
-      nMin: P.nMin || 8, nMax: P.nMax || 16,
+      nMin: P.nMin || 8, nMax: P.nMax || 16, gamma: P.gamma,   // undefined for 2AFC rooms → makePsi default 0.5
       ciUsable: span*0.28, ciSolid: span*0.16
     };
     const eng = makePsi(cfg);
