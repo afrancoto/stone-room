@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v28";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v29";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1271,8 +1271,18 @@
   // answerable state instead of the confusing "one interval is always empty" of a 2-interval task.
   // Absolute level uncalibrated; the curve SHAPE relative to your own 1 kHz is real (ears+headphone).
   const AG_FREQS=[125,250,500,1000,2000,4000,8000,12000,16000];
-  // per-ear plan walks OUTWARD from 1 kHz so every new frequency is seeded by a measured neighbour
-  const AG_PLAN=[1000,2000,4000,8000,12000,16000,500,250,125];
+  // base pass (both modes) walks OUTWARD from 1 kHz so every new frequency is seeded by a measured neighbour
+  const AG_BASE_PLAN=[1000,2000,4000,8000,12000,16000,500,250,125];
+  // Phase-B inter-octave infill: always-add 3k/6k (the fast-moving 2–8 kHz roll-off band); adaptively
+  // add 1.5k/750/10k only where the measured bracket slope is steep, so resolution is spent on knees.
+  const AG_INFILL=[
+    {f:3000, lo:2000, hi:4000, always:true},  {f:6000, lo:4000, hi:8000, always:true},
+    {f:1500, lo:1000, hi:2000, always:false}, {f:750, lo:500, hi:1000, always:false},
+    {f:10000,lo:8000, hi:12000,always:false},
+  ];
+  const AG_SLOPE_TRIG=8;                         // dB/octave bracket slope that triggers an adaptive insert
+  const AG_INFILL_CAP={both:5, perear:3};        // per-ear cap (per-ear path is 2× the work → tighter)
+  const AG_TRIAL_BUDGET={both:95, perear:70};    // skip further ADAPTIVE inserts once this ear's real trials pass this
   const EAR_PAN={R:1, L:-1, B:0}, EAR_NAME={R:'Right ear', L:'Left ear', B:'Both ears'};
   const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03, nMin:6, nMax:12, fmt:v=>Math.round(v)+' dBFS'};
   let ag=null;
@@ -1289,7 +1299,7 @@
     initAudio(); ctx.resume(); stopVoices(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
     if(!device) device=suggestName();
     if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
-    ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}};
+    ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}};
     $('cvsave').style.display='none';
     show('curve'); agCal();
   }
@@ -1311,8 +1321,70 @@
     const play=document.createElement('button'); play.className='btn'; play.textContent='▶ Play 1 kHz';
     const go=document.createElement('button'); go.className='btn ghost'; go.textContent='Volume set — begin'; go.style.display='none'; go.style.marginLeft='8px';
     play.onclick=()=>{ stopCurveAudio(); const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18, 0); ag.calTimer=setTimeout(step,720); }; step(); play.textContent='↺ Again'; go.style.display='inline-block'; };
-    go.onclick=()=>{ stopCurveAudio(); agMode(); };
+    go.onclick=()=>{ stopCurveAudio(); killStim(); agPrecheck(); };
     box.appendChild(play); box.appendChild(go);
+  }
+  // PRE-CHECK — prove the signal chain before measuring. This is what stops the test from reading a
+  // phone SPEAKER's bass roll-off or a fan's masking instead of the listener's ears: (1) a VERIFIABLE
+  // left/right tone check (headphones on, sides not swapped), then (2) a quiet-room listen.
+  function agPrecheck(){ ag.phase='pre'; $('cvwrap').style.display='none'; agPcChannel('L'); }
+  function agPcChannel(side){
+    ag.phase='pre'; ag.pcSide=side; $('cvprog').textContent='Check · headphones';
+    $('cvTitle').textContent='Headphone check';
+    $('cvNote').innerHTML='Headphones on. A short tone is playing in <b>one</b> ear — which side do you hear it on?';
+    const box=$('cvChoices'); box.innerHTML='';
+    const mk=(lbl,val,sub)=>{ const b=document.createElement('button'); b.className='choice'; b.innerHTML=lbl+(sub?`<small>${sub}</small>`:''); b.onclick=()=>agPcAnswer(val); return b; };
+    box.appendChild(mk('Left','L')); box.appendChild(mk('Right','R'));
+    box.appendChild(mk('Both / not sure','B','or no sound'));
+    const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.pcPlay)ag.pcPlay(); }; box.appendChild(rep);
+    const play=()=>{ stopCurveAudio(); clearTimers();
+      if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
+      const pan = side==='L'?-1:1;
+      const step=()=>{ if(!ag||ag.phase!=='pre')return; detTone(1000, ctx.currentTime+.02, .45, -20, pan); ag.calTimer=setTimeout(step,760); };
+      step(); };
+    ag.pcPlay=play; play();
+  }
+  function agPcAnswer(val){
+    if(!ag||ag.phase!=='pre')return;
+    stopCurveAudio(); killStim();
+    if(val==='B'){ agPcFail('speaker'); return; }          // both ears / silent → speaker or mono blend
+    if(val!==ag.pcSide){ agPcFail('swapped'); return; }     // heard in the other ear → L/R reversed
+    if(ag.pcSide==='L'){ agPcChannel('R'); return; }        // left ok → verify right
+    agPcQuiet();                                            // both sides correct → quiet check
+  }
+  function agPcFail(kind){
+    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Check · headphones';
+    $('cvTitle').textContent = kind==='swapped' ? 'Channels look swapped' : 'Sounds like a speaker';
+    $('cvNote').innerHTML = kind==='swapped'
+      ? 'That tone was in your <b>other</b> ear — your left/right channels look reversed, so a per-ear result would be mislabelled. Check the L/R on your headphones, or run the both-ears test instead.'
+      : 'It seemed to come from both sides (or not at all). This test needs <b>headphones</b> — on a speaker it measures the speaker, not your ears, and can’t tell left from right.';
+    const box=$('cvChoices'); box.innerHTML='';
+    const retry=document.createElement('button'); retry.className='choice'; retry.innerHTML='Try again<small>re-check headphones</small>'; retry.onclick=()=>agPcChannel('L');
+    const anyway=document.createElement('button'); anyway.className='choice'; anyway.innerHTML='Continue anyway<small>results may be off</small>'; anyway.onclick=()=>agPcQuiet();
+    box.appendChild(retry); box.appendChild(anyway);
+  }
+  function agPcQuiet(){
+    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Check · quiet room';
+    $('cvTitle').textContent='Quiet check';
+    $('cvNote').innerHTML='Headphones confirmed. Now the room — <b>stop and listen</b> for a few seconds with nothing playing. Background sound (a fan, traffic, a hum) hides the quietest tones and bends the curve.';
+    const box=$('cvChoices'); box.innerHTML='';
+    const listen=document.createElement('button'); listen.className='btn'; listen.textContent='▶ Listen (4s)';
+    const silent=document.createElement('button'); silent.className='choice'; silent.innerHTML='It was silent<small>ready to test</small>'; silent.style.display='none';
+    const noisy=document.createElement('button'); noisy.className='choice'; noisy.innerHTML='I heard noise<small>quieter spot is better</small>'; noisy.style.display='none';
+    listen.onclick=()=>{ stopCurveAudio(); clearTimers(); if(master) master.gain.setValueAtTime(0.0001, ctx.currentTime);
+      $('cvNote').innerHTML='Listening… stay still.'; let n=4; $('cvprog').textContent='Quiet check · '+n+'s';
+      const tick=()=>{ if(!ag||ag.phase!=='pre')return; n--;
+        if(n>0){ $('cvprog').textContent='Quiet check · '+n+'s'; ag.calTimer=setTimeout(tick,1000); }
+        else { $('cvprog').textContent='Check · quiet room'; $('cvNote').innerHTML='In that quiet, did you hear any background noise (a fan, traffic, a hum)?';
+          silent.style.display=''; noisy.style.display=''; listen.textContent='↺ Listen again'; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime); } };
+      ag.calTimer=setTimeout(tick,1000); };
+    silent.onclick=()=>agMode();
+    noisy.onclick=()=>{ $('cvNote').innerHTML='A quieter spot gives a truer curve — but you can carry on. Just treat the very quietest tones as rough.';
+      const b=$('cvChoices'); b.innerHTML='';
+      const go=document.createElement('button'); go.className='choice'; go.innerHTML='Test anyway<small>continue</small>'; go.onclick=()=>agMode();
+      const again=document.createElement('button'); again.className='choice'; again.innerHTML='Re-check<small>listen again</small>'; again.onclick=()=>agPcQuiet();
+      b.appendChild(go); b.appendChild(again); };
+    box.appendChild(listen); box.appendChild(silent); box.appendChild(noisy);
   }
   // per-ear (the only way to see a left/right difference) vs both-ears quick
   function agMode(){
@@ -1326,19 +1398,43 @@
   }
   function agStartRun(mode){
     ag.mode=mode; ag.ears = mode==='perear'?['R','L']:['B']; ag.ei=0;
-    ag.pts={R:{},L:{},B:{}}; ag.faTot={R:0,L:0,B:0}; ag.phase='run';
+    ag.pts={R:{},L:{},B:{}}; ag.ptsMeta={R:{},L:{},B:{}}; ag.faTot={R:0,L:0,B:0}; ag.phase='run';
     $('cvwrap').style.display='block'; agLiveDraw();       // reveal the curve canvas; it fills in as we go
     agEar();
   }
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.fi=0; ag.prevThr=null;
-    ag.plan = ag.mode==='perear' ? AG_PLAN.slice() : AG_FREQS.slice();
+    ag.earTrials=0; ag.phaseB=false;                       // per-ear real-trial tally + infill-pass flag
+    ag.plan = AG_BASE_PLAN.slice();                         // base octaves; Phase-B appends inter-octaves
     agFreq();
+  }
+  // Phase-B: after the base octaves lock, pick inter-octave infill points for this ear — always the
+  // half-octaves (3k/6k), plus adaptive knees (1.5k/750/10k) where the bracket slope is steep. Each
+  // infill point sits between two LOCKED neighbours, so agFreq interpolation-seeds it → ~3–4 trials.
+  function agPlanInfill(ear){
+    const pts=ag.pts[ear], key=ag.mode==='perear'?'perear':'both';
+    const cap=AG_INFILL_CAP[key], budget=AG_TRIAL_BUDGET[key], out=[];
+    for(const c of AG_INFILL){
+      if(pts[c.lo]==null||pts[c.hi]==null) continue;
+      const slope=Math.abs(pts[c.hi]-pts[c.lo])/Math.log2(c.hi/c.lo);   // level units are dB here
+      if(c.always||slope>=AG_SLOPE_TRIG) out.push({f:c.f,slope,always:c.always});
+    }
+    out.sort((a,b)=>(b.always-a.always)||(b.slope-a.slope));            // always-adds first, then steepest
+    const chosen=[];
+    for(const c of out){ if(chosen.length>=cap) break;
+      if(!c.always && (ag.earTrials||0)>=budget) continue; chosen.push(c.f); }
+    return chosen.sort((a,b)=>a-b);
   }
   function agFreq(){
     const f=ag.plan[ag.fi];
-    // neighbour-seed the prior from the previous locked threshold of THIS ear → fewer trials
-    const seed = ag.prevThr!=null ? {priorSeed:ag.prevThr, priorSDscale:0.5, nMin:4} : {};
+    // seed the prior: an infill point interpolates BOTH its locked brackets; a base point uses the
+    // previous locked threshold of THIS ear. Either way → a tight informed prior → fewer trials.
+    const pts=ag.pts[ag.curEar], spec=AG_INFILL.find(c=>c.f===f);
+    let seed={};
+    if(spec && pts[spec.lo]!=null && pts[spec.hi]!=null){
+      const w=Math.log2(f/spec.lo)/Math.log2(spec.hi/spec.lo);
+      seed={priorSeed: pts[spec.lo]+w*(pts[spec.hi]-pts[spec.lo]), priorSDscale:0.4, nMin:3};
+    } else if(ag.prevThr!=null){ seed={priorSeed:ag.prevThr, priorSDscale:0.5, nMin:4}; }
     ag.eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, seed)); ag.trial=0;
     ag.catchCount=0; ag.fa=0; ag.faShown=0;
     ag.catchCap=Math.max(2, Math.round((ag.eng.nMax||12)*0.35));   // ≤ ~4 silent trials per frequency
@@ -1386,14 +1482,20 @@
       choiceTimers.push(setTimeout(agTrial,700));
       return;
     }
-    ag.eng.z.record(ag.curX, heard); ag.trial++;
+    ag.eng.z.record(ag.curX, heard); ag.trial++; ag.earTrials=(ag.earTrials||0)+1;
     const st=ag.eng.z.stats();
     if(st.usable||st.forceStop){
       const f=ag.plan[ag.fi];
       ag.pts[ag.curEar][f]=ag.eng.levelOf(st.mean); ag.prevThr=ag.pts[ag.curEar][f];
+      const loL=ag.eng.levelOf(st.ci[0]), hiL=ag.eng.levelOf(st.ci[1]);
+      ag.ptsMeta[ag.curEar][f]={ ci: Math.abs(hiL-loL)/2 };   // Ψ CI half-width → GP noise + honest band
       agLiveDraw();                                        // redraw the curve as each point locks
       ag.fi++;
-      if(ag.fi>=ag.plan.length){                           // this ear done → next ear or finish
+      if(ag.fi>=ag.plan.length){                           // base pass done → Phase-B infill, next ear, or finish
+        if(!ag.phaseB){
+          ag.phaseB=true; const add=agPlanInfill(ag.curEar);
+          if(add.length){ ag.plan=ag.plan.concat(add); choiceTimers.push(setTimeout(agFreq,320)); return; }
+        }
         ag.ei++;
         if(ag.ei>=ag.ears.length){ finishCurve(); return; }
         choiceTimers.push(setTimeout(agEar,650)); return;
@@ -1402,12 +1504,14 @@
     }
     choiceTimers.push(setTimeout(agTrial,340));
   }
-  // build one ear's curve, dB re that ear's OWN 1 kHz (so the equal-power pan offset cancels)
+  // build one ear's curve, dB re that ear's OWN 1 kHz (so the equal-power pan offset cancels).
+  // each point carries its Ψ CI half-width so the render GP can weight it and draw an honest band.
   function agBuildCurve(ear){
     const pts=ag.pts[ear]; const fs=Object.keys(pts).map(Number).sort((a,b)=>a-b);
     if(!fs.length) return [];
     const ref = pts[1000]!=null ? pts[1000] : pts[fs[0]];
-    return fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10 }));
+    const meta=(ag.ptsMeta&&ag.ptsMeta[ear])||{};
+    return fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci)||null }));
   }
   // L−R asymmetry in the high band (≥2 kHz, where a sensorineural loss shows). +ve = left worse.
   function agAsym(R,L){
