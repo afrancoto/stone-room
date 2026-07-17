@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v16";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v17";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -630,7 +630,10 @@
     $('savecard').addEventListener('click',saveCard);
     $('calreplay').addEventListener('click',runCal);
     $('calgo').addEventListener('click',()=>{buildSelect(); show('select');});
+    $('calback').addEventListener('click',()=>show('intro'));
     $('selstart').addEventListener('click',()=>{buildDevice(); show('device');});
+    $('selback').addEventListener('click',()=>show('intro'));
+    $('devback').addEventListener('click',()=>{ if(pendingCurve){ pendingCurve=false; show('intro'); } else if(deepRoom>=0){ show('intro'); } else { buildSelect(); show('select'); } });
     try{ noiseReset = localStorage.getItem('stoneroom_noise')==='1'; }catch(e){}
     $('optnoise').checked = noiseReset;
     $('optnoise').addEventListener('change',e=>{ noiseReset=e.target.checked; try{ localStorage.setItem('stoneroom_noise', noiseReset?'1':'0'); }catch(_){} });
@@ -658,6 +661,11 @@
     $('infobtn').addEventListener('click',()=>openInfo(chap().tag));
     $('infoclose').addEventListener('click',closeInfo);
     $('modal').addEventListener('click',e=>{ if(e.target===$('modal')) closeInfo(); });
+    $('roomsbtn').addEventListener('click',openRoomNav);
+    $('navclose').addEventListener('click',closeRoomNav);
+    $('navskip').addEventListener('click',()=>{ closeRoomNav(); skipRoom(); });
+    $('roomnav').addEventListener('click',e=>{ if(e.target===$('roomnav')) closeRoomNav(); });
+    $('skipbtn').addEventListener('click',skipRoom);
     $('sharelink').addEventListener('click',shareResults);
     $('copyres').addEventListener('click',copyResults);
     document.querySelectorAll('.coffee').forEach(b=>b.addEventListener('click',e=>{
@@ -763,7 +771,7 @@
     $('timeleft').textContent = order.length>1 ? ` · ~${fmtMin(remQ)} min left` : '';
     $('chapno').textContent=ROMANS[oi]; $('chaptag').textContent=c.tag; $('chaptitle').textContent=c.title;
     $('claim').textContent=c.claim; $('notice').innerHTML=c.notice;
-    const cd=$('chapdots'); cd.innerHTML=''; order.forEach((_,i)=>{const d=document.createElement('div');d.className='cdot'+(i<oi?' done':i===oi?' now':'');cd.appendChild(d);});
+    const cd=$('chapdots'); cd.innerHTML=''; order.forEach((ci,i)=>{const d=document.createElement('div');d.className='cdot'+(i===oi?' now':chPct[ci]!=null?' done':'');cd.appendChild(d);});
     $('learn').classList.remove('on'); $('next').classList.remove('on'); hideCheckpointBtns();
     setPrecision(0,''); $('precision').classList.remove('on');
     startChapter();
@@ -806,7 +814,7 @@
   function startChapter(){
     guessLocked=false; st=null; sp=null; cnt=null; stopVoices();
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
-    setReplay(true);
+    setReplay(true); $('skipbtn').classList.add('on');
     const c=chap();
     const isStair=c.mode==='stair', isOrbit=c.mode==='orbit', isCount=c.mode==='count';
     const isField = c.mode==='locate'||c.mode==='sweep'||c.mode==='depth'||c.mode==='separate';
@@ -914,11 +922,22 @@
 
   // ---------- adaptive count (Crowd) ----------
   function setupCount(c){
-    cnt={n:3, best:3, trial:0, minR:4, maxR:8, wrong:0, done:false, history:[]};
+    cnt={ability:3.4, n:3, prevN:0, best:3, trial:0, minR:4, maxR:8, wrong:0, done:false, history:[]};
     showPrecisionUI();
     countTrial();
   }
+  // pick the next ensemble size near the running ability, jittered ±1 so the count is NEVER a
+  // predictable "one more than last time" ladder — you have to actually count each ensemble,
+  // not just add one to your last answer. Ability rises on a hit, falls harder on a miss.
+  function nextCountLevel(){
+    const c=Math.round(clamp(cnt.ability,3,7));
+    let n, tries=0;
+    do { n = clamp(c + (Math.floor(Math.random()*3)-1), 3, 7); tries++; }
+    while(n===cnt.prevN && tries<6);
+    cnt.prevN=n; cnt.n=n;
+  }
   function countTrial(){
+    nextCountLevel();
     const n=cnt.n;
     // shuffle the three options so the true count isn't always the middle button (a positional tell)
     const vals=[n-1,n,n+1];
@@ -945,8 +964,8 @@
     [...$('choices').children].forEach((b,k)=>{ if(k===cnt.answerIdx) b.classList.add('correct'); else if(k===i) b.classList.add('wrong'); });
     cnt.trial++; cnt.history.push({n:cnt.n,hit});
     const cont=contentOf('Crowd');
-    if(hit){ cnt.best=Math.max(cnt.best,cnt.n); cnt.n=Math.min(7,cnt.n+1); }
-    else { cnt.wrong++; cnt.n=Math.max(3,cnt.n-1); }
+    if(hit){ cnt.best=Math.max(cnt.best,cnt.n); cnt.ability=Math.min(7.4, cnt.ability + (cnt.n>=cnt.ability?0.7:0.3)); }
+    else { cnt.wrong++; cnt.ability=Math.max(3, cnt.ability-0.9); }
     // confidence: proportion of run done + convergence of best
     const frac=clamp(cnt.trial/cnt.maxR,0,1);
     setPrecision(frac, `top count ${cnt.best}`);
@@ -1267,6 +1286,7 @@
 
   function advanceUI(){
     $('hint').textContent='';                        // room done — clear the interaction hint
+    $('skipbtn').classList.remove('on');             // finished — no skipping now, press Next
     const lastC=oi>=order.length-1;
     $('next').textContent=lastC?'See result':'Next'; $('next').classList.add('on');
   }
@@ -1288,6 +1308,38 @@
   }
   function closeInfo(){ $('modal').classList.remove('on'); }
 
+  // ---------- room navigator + skip ----------
+  function openRoomNav(){ buildRoomNav(); $('roomnav').classList.add('on'); }
+  function closeRoomNav(){ $('roomnav').classList.remove('on'); }
+  function buildRoomNav(){
+    const list=$('navlist'); list.innerHTML='';
+    order.forEach((ci,pos)=>{
+      const c=CH[ci], done=chPct[ci]!=null, isNow=pos===oi;
+      const row=document.createElement('button');
+      row.className='navrow'+(isNow?' now':done?' done':' pending');
+      let right;
+      if(isNow) right='<span class="nstate">now</span>';
+      else if(done) right=`<span class="ntrack"><span class="nfill" style="width:${chPct[ci]}%"></span></span><span class="npct">${chPct[ci]}%${roomThr[c.tag]?' · '+roomThr[c.tag]:''}</span>`;
+      else right='<span class="nstate">—</span>';
+      row.innerHTML=`<span class="nnum">${ROMANS[pos]}</span><span class="nmain"><span class="nname">${c.tag}</span><span class="nsub">${c.tests}</span></span><span class="nright">${right}</span>`;
+      row.addEventListener('click',()=>jumpToRoom(pos));
+      list.appendChild(row);
+    });
+  }
+  // jump straight to any room in the tour (re-running a finished room re-measures it — recordRoom
+  // replaces rather than accumulates, so the score stays correct)
+  function jumpToRoom(pos){
+    if(pos===oi){ closeRoomNav(); return; }
+    closeRoomNav(); stopVoices(); hideCheckpointBtns(); $('skipbtn').classList.remove('on');
+    oi=pos; loadChapter();
+  }
+  // leave the current room unscored (it's excluded from the total) and move on, or finish
+  function skipRoom(){
+    stopVoices(); hideCheckpointBtns(); guessLocked=true; $('skipbtn').classList.remove('on');
+    if(oi<order.length-1){ oi++; loadChapter(); }
+    else finish();
+  }
+
   // ---------- share / copy ----------
   function flashSaved(msg){ const el=$('saved'), keep=el.textContent; el.textContent=msg; setTimeout(()=>{el.textContent=keep;},1700); }
   async function shareResults(){
@@ -1298,7 +1350,7 @@
   }
   async function copyResults(){
     const lines=[`Stone Room — ${device} · ${score} pts (${Math.round(lastPct*100)}%)`];
-    order.forEach(i=>{const c=CH[i]; lines.push(`  ${c.tag} (${c.tests}): ${roomThr[c.tag]||chPct[i]+'%'} · ${chPct[i]}%`);});
+    order.forEach(i=>{ if(chPct[i]==null) return; const c=CH[i]; lines.push(`  ${c.tag} (${c.tests}): ${roomThr[c.tag]||chPct[i]+'%'} · ${chPct[i]}%`);});
     lines.push(shareURL());
     try{ await navigator.clipboard.writeText(lines.join('\n')); flashSaved('results copied'); }
     catch(e){ flashSaved('could not copy'); }
@@ -1307,9 +1359,12 @@
   // ---------- end ----------
   async function finish(){
     stopVoices(); show('end');
-    const max=order.length*100; $('finalnum').textContent=score;
+    // only rooms that produced a reading count toward the total — skipped rooms are excluded
+    const nDone=order.filter(i=>chPct[i]!=null).length, skipped=order.length-nDone;
+    const max=nDone*100; $('finalnum').textContent=score;
     const pct=max?score/max:0; lastPct=pct; const pctR=Math.round(pct*100);
-    $('finalout').innerHTML=`of <b>${max}</b> · <b>${pctR}%</b> across ${order.length} room${order.length>1?'s':''}`;
+    $('finalout').innerHTML=`of <b>${max}</b> · <b>${pctR}%</b> across ${nDone} room${nDone!==1?'s':''}`
+      + (skipped?` <span style="color:var(--muted)">· ${skipped} skipped</span>`:'');
     let rank,verdict;
     if(pct>=.85){rank='Golden ear'; verdict=`Every claim verified on the ${device} — holography, slam, air, silk, the lot. The reviews weren’t poetry after all.`;}
     else if(pct>=.6){rank='Tuned in'; verdict='Most claims verified. Whatever scored lowest below is the quality worth hunting for in your next album.';}
@@ -1328,7 +1383,7 @@
       : worst ? `Your lowest room was ${worst} — mostly down to the headphones and practice.` : '';
     $('benchnote').innerHTML = `${pctR}% is ${where}. ${drive} To separate your ears from the gear, run the same rooms on a second pair — your ears stay constant, so the difference is the headphones.`;
     const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
-    order.forEach(i=>{ const tag=CH[i].tag;
+    order.forEach(i=>{ if(chPct[i]==null) return; const tag=CH[i].tag;   // don't persist skipped rooms
       dev.rooms[tag] = Object.assign({pct:chPct[i], thr:roomThr[tag]}, roomVal[tag]||{});
     });
     dev.date=new Date().toISOString(); db.devices[device]=dev; await saveDB();
@@ -1337,7 +1392,7 @@
       : 'storage unavailable — results kept for this session only';
     const bd=$('breakdown'); bd.innerHTML='';
     Object.keys(GROUPS).forEach(gk=>{
-      const idxs=order.filter(i=>CH[i].group===gk);
+      const idxs=order.filter(i=>CH[i].group===gk && chPct[i]!=null);   // skipped rooms don't show
       if(!idxs.length) return;
       const h=document.createElement('div'); h.className='bghead'; h.textContent=GROUPS[gk].name; bd.appendChild(h);
       idxs.forEach(i=>{

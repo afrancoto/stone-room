@@ -113,11 +113,13 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 #select .row{margin-top:14px}
 
 /* ---- device ---- */
-#device input{
+/* target the text field by id — NOT `#device input`, which would also style the noise
+   checkbox (id-specificity beats `.optrow input`, blowing the checkbox up to 300px). */
+#devinput{
   width:min(80vw,300px); background:var(--surface); border:1px solid var(--line); border-radius:12px;
   color:var(--stone); font-family:var(--ui); font-size:16px; padding:13px 16px; text-align:center; margin-top:14px;
 }
-#device input:focus{outline:2px solid var(--sage); outline-offset:2px}
+#devinput:focus{outline:2px solid var(--sage); outline-offset:2px}
 .optrow{display:flex; align-items:flex-start; gap:9px; max-width:34ch; margin:16px auto 0; text-align:left; font-size:12.5px; line-height:1.45; color:var(--muted); cursor:pointer}
 .optrow input{margin-top:2px; width:16px; height:16px; accent-color:var(--sage); flex:0 0 auto}
 .optrow em{color:var(--muted); font-style:italic; opacity:.8}
@@ -265,6 +267,29 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .sheet .m-models{font-size:12.5px; color:var(--muted); line-height:1.5}
 .sheet .m-models b{color:var(--stone); font-weight:600}
 
+/* ---- room navigator + skip ---- */
+.navopen{background:none; border:none; color:var(--muted); font-family:var(--ui); font-size:11px; letter-spacing:.14em; text-transform:uppercase; cursor:pointer; margin-top:10px; text-decoration:underline; text-underline-offset:3px}
+.navopen:active{opacity:.6}
+.skipbtn{display:none}
+.skipbtn.on{display:inline-flex}
+.navsheet .navlist{margin-top:8px; max-height:60vh; overflow-y:auto}
+.navrow{display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid var(--line); padding:11px 2px; cursor:pointer; color:var(--stone); font-family:var(--ui)}
+.navrow:last-child{border-bottom:none}
+.navrow:disabled{cursor:default}
+.navrow .nnum{font-family:var(--disp); font-size:12px; color:var(--gold); width:30px; flex:0 0 auto}
+.navrow .nmain{flex:1 1 auto; min-width:0}
+.navrow .nname{display:block; font-size:14px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.navrow .nsub{display:block; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.navrow .nright{width:88px; flex:0 0 auto; display:flex; flex-direction:column; align-items:flex-end; gap:3px}
+.navrow .ntrack{width:100%; height:5px; background:var(--line); border-radius:3px; overflow:hidden}
+.navrow .nfill{height:100%; border-radius:3px; background:var(--sage)}
+.navrow .npct{font-size:10px; color:var(--stone)}
+.navrow .nstate{font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+.navrow.now{background:rgba(217,162,75,.08); border-radius:8px}
+.navrow.now .nnum{color:var(--stone)}
+.navrow.now .nstate{color:var(--gold)}
+.navrow.pending{opacity:.55}
+
 @media (prefers-reduced-motion: reduce){
   *{animation-duration:.001s !important; transition-duration:.001s !important}
   .listening .ripple{animation:none !important; opacity:.3}
@@ -284,18 +309,22 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
   .warnbox,.optrow,.about,.support{max-width:none}
 }
 
-/* short viewports: relax vertical centring AND shrink the field so the controls stay on-screen */
+/* short viewports: relax vertical centring AND shrink the field so the controls stay on-screen.
+   Size by HEIGHT so BOTH the frontal field and the Orbit circle shrink — the circle's own
+   selector `.field-wrap.circle` (styles.css above) out-specifies a bare `.field-wrap`, so we
+   must name `.field-wrap.circle` explicitly or the circle keeps its full size and overflows. */
 @media (max-height:680px){
   .screen.on{justify-content:flex-start}
   #game.on{justify-content:flex-start}
-  .field-wrap{width:min(72vw,300px)}
-  #game .g-top{padding-top:16px}
-  .claim{margin-bottom:4px}
+  .field-wrap, .field-wrap.circle{width:auto; height:min(30vh,190px)}
+  #game .g-top{padding-top:14px}
+  #game .claim{margin-bottom:3px}
   .learn{margin-top:6px}
   #intro .btn{margin-top:18px}
 }
 @media (max-height:600px){
-  .field-wrap{width:min(56vw,240px)}
+  .field-wrap, .field-wrap.circle{height:min(28vh,150px)}
+  #game .chaptitle{font-size:22px}
   .choice{padding:15px 16px}
   .status{margin:3px 0 1px}
 }

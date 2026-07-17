@@ -72,6 +72,7 @@
       <span class="end" style="text-align:right">Right ▶</span>
     </div>
     <div class="row">
+      <button class="btn ghost" id="calback">Back</button>
       <button class="btn ghost" id="calreplay">↺ Again</button>
       <button class="btn" id="calgo">It moves — continue</button>
     </div>
@@ -88,7 +89,7 @@
       <button id="selnone">Clear</button>
     </div>
     <div class="seltime" id="seltime"></div>
-    <div class="row"><button class="btn" id="selstart">Continue</button></div>
+    <div class="row"><button class="btn ghost" id="selback">Back</button><button class="btn" id="selstart">Continue</button></div>
   </section>
 
   <!-- device -->
@@ -100,7 +101,7 @@
     <input id="devinput" maxlength="24" placeholder="e.g. HD 600, AirPods Pro…" />
     <div class="devchips" id="devchips"></div>
     <label class="optrow"><input type="checkbox" id="optnoise" /><span>Soft noise wash between A and B — resets your ear between samples <em>(experimental)</em></span></label>
-    <div class="row"><button class="btn" id="devgo">Start the tour</button></div>
+    <div class="row"><button class="btn ghost" id="devback">Back</button><button class="btn" id="devgo">Start the tour</button></div>
   </section>
 
   <!-- game -->
@@ -165,10 +166,12 @@
     <div class="g-bot">
       <div class="controls">
         <button class="replay" id="replay"><span>↺</span> Replay</button>
+        <button class="btn ghost skipbtn" id="skipbtn">Skip →</button>
         <button class="btn ghost contbtn" id="contbtn">Sharpen ↑</button>
         <button class="btn ghost lockbtn" id="lockbtn">↻ Redo</button>
         <button class="btn next" id="next">Next</button>
       </div>
+      <button class="navopen" id="roomsbtn" aria-haspopup="dialog">☰ Rooms &amp; progress</button>
       <div class="chapdots" id="chapdots"></div>
     </div>
   </section>
@@ -232,6 +235,17 @@
     </div>
   </section>
 
+</div>
+
+<!-- room navigator: jump between rooms, see which are done + their score -->
+<div class="modal" id="roomnav">
+  <div class="sheet navsheet">
+    <button class="close" id="navclose" aria-label="Close">×</button>
+    <div class="m-tag">Your tour · tap a room to jump to it</div>
+    <h2>Rooms &amp; progress</h2>
+    <div class="navlist" id="navlist"></div>
+    <div class="row"><button class="btn ghost" id="navskip">Skip this room →</button></div>
+  </div>
 </div>
 
 <!-- info sheet (science per room) -->
