@@ -14,7 +14,7 @@
 
   const INTRO = {
     hook: "Test your headphones. Train your ears.",
-    line: "Twenty-three rooms. Each proves one thing the reviews claim — then measures it on your pair, in real Hz and dB.",
+    line: "Twenty-four rooms. Each proves one thing the reviews claim — then measures it on your pair, in real Hz and dB.",
     what: "Each room plays a sound and asks one simple question. Answer, and it hunts your exact limit — telling you, in real numbers, where your headphones and your hearing actually land. You learn what the words mean by hearing them.",
     gap: "Other free tools do half the job: they train your ears with no number for your gear, or they publish lab readings of a unit that isn't on your head. This one measures your pair, through your ears, and saves it — so you can set one headphone against another.",
     tips: "Best in a quiet room, at a moderate volume, with any phone spatializer, Dolby Atmos and EQ switched off.",
@@ -207,6 +207,11 @@
       hit: ["You caught the swell.", "Heard the shading.", "Louder — and you knew."],
       miss: ["Widened the gap.", "Made the step bigger.", "Easier to hear."],
       tiers: { reference: "The faintest 1 dB swell reads clearly — fully alive.", strong: "Reads most shadings; the subtlest slip past.", fair: "Big moves land, small ones blur.", weak: "Loud and soft flatten together — no shading." }
+    },
+    Hearing: {
+      benchmark: "Young ears span ~20 Hz–20 kHz; the top end falls with age, and every headphone rolls off somewhere of its own.",
+      science: "A browser has no absolute SPL reference, so the loudness isn't calibrated — but the SHAPE is real: the combined response of these headphones and your own ears, the same idea behind Samsung's Adapt Sound. Dips are bands this chain renders quieter; the high end also shows your own hearing's ceiling.",
+      models: "Any pair — the curve is specific to this headphone on your ears, not a lab reading of the model."
     }
   };
 

@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v17";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v18";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -441,6 +441,10 @@
      claim:'Treble with silk: all the sparkle, none of the needle in the "s".',
      learn:'Sibilance is an energy spike near 6–8 kHz that turns an "s" into a stab. Smooth treble keeps the energy without the pain — the hardest tuning balance there is.',
      notice:'A voice-like phrase ending in "ss" — twice. <b>Tap the one whose "s" stabbed.</b>'},
+    {group:'tone',tag:'Hearing',title:'Your hearing curve',tests:'hz × db response',mode:'curve',
+     claim:'Your ears and these headphones share one frequency response — and you can measure its shape.',
+     learn:'This is the idea behind Samsung’s Adapt Sound: at nine pitches from deep bass to high treble it finds the quietest tone you can hear, then plots the shape relative to 1 kHz. Dips are bands this pair — or your own ears, up high — render quieter.',
+     notice:'Nine pitches, low to high. For each, <b>tap the interval that held the faint tone.</b> Set volume on the 1 kHz tone first.'},
     {group:'dyn',tag:'Snap',title:'Slam',tests:'transient attack',mode:'stair',
      claim:'Slam: a drum hit arrives instantly, with edges — that’s driver control.',
      learn:'A real transient rises in under a millisecond. Reproducing that edge takes a light, stiff, well-damped driver — exactly what exotic cone materials are for.',
@@ -511,7 +515,7 @@
 
   // ---------- state ----------
   let order=[], oi=0, score=0, voices=[], target=null, guessLocked=false, replayFn=()=>{};
-  let chScore={}, chPct={}, roomThr={}, roomVal={};   // per-room score, readout text, numeric measurement
+  let chScore={}, chPct={}, roomThr={}, roomVal={}, roomDone={};   // per-room score, readout, measurement; roomDone marks unscored rooms (curve) as completed
   let choiceTimers=[], orbitInt=null;
   // curated default tour (~11 non-redundant rooms across all four domains) — keeps the set
   // short. Every other room stays available on the select screen, just off by default.
@@ -536,7 +540,7 @@
 
   const $=id=>document.getElementById(id);
   const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve')};
-  let pendingCurve=false;
+  let curveInTour=false;     // true while the hearing-curve room runs inside a tour
   const show=n=>{Object.values(scr).forEach(s=>s&&s.classList.remove('on')); scr[n].classList.add('on'); window.scrollTo(0,0);};
   const jit=(v,j)=>v+(Math.random()*2-1)*j;
   const chap=()=>CH[order[oi]];
@@ -555,6 +559,7 @@
       return {q:9*t, f:16*t};
     }
     if(c.mode==='count') return {q:5*7.5, f:8*7.5};
+    if(c.mode==='curve') return {q:9*6*1.6+16, f:9*12*1.6+16};   // 9 pitches × trials + volume calibration
     const per={locate:7,sweep:8.5,depth:7.5,separate:10,orbit:11}[c.mode]||8;
     const S=SPATIAL[c.tag]||{minR:4,maxR:8};
     return {q:(S.minR+1)*per, f:S.maxR*per};
@@ -615,17 +620,23 @@
       else { show('cal'); runCal(); }
     });
     $('gocompare').addEventListener('click',async()=>{await loadDB(); buildCompare(); show('compare');});
+    // the two intro panels are mutually exclusive: opening one closes the other, so "What
+    // you'll get" replaces "What is this?" (and vice versa) rather than stacking beneath it.
+    const closeAbout=()=>{ $('introAbout').setAttribute('hidden',''); $('aboutToggle').setAttribute('aria-expanded','false'); $('aboutToggle').textContent='What is this?'; };
+    const closeDemo =()=>{ $('introDemo').setAttribute('hidden',''); $('demoToggle').setAttribute('aria-expanded','false'); $('demoToggle').textContent='What you’ll get'; };
     $('aboutToggle').addEventListener('click',()=>{
-      const a=$('introAbout'), t=$('aboutToggle'), opening=a.hasAttribute('hidden');
-      if(opening){ a.removeAttribute('hidden'); t.setAttribute('aria-expanded','true'); t.textContent='Less'; }
-      else { a.setAttribute('hidden',''); t.setAttribute('aria-expanded','false'); t.textContent='What is this?'; }
+      const opening=$('introAbout').hasAttribute('hidden');
+      closeDemo();
+      if(opening){ $('introAbout').removeAttribute('hidden'); $('aboutToggle').setAttribute('aria-expanded','true'); $('aboutToggle').textContent='Less'; }
+      else closeAbout();
     });
     $('demoToggle').addEventListener('click',()=>{
-      const d=$('introDemo'), t=$('demoToggle'), opening=d.hasAttribute('hidden');
+      const d=$('introDemo'), opening=d.hasAttribute('hidden');
+      closeAbout();
       if(opening){
-        d.removeAttribute('hidden'); t.setAttribute('aria-expanded','true'); t.textContent='Hide';
+        d.removeAttribute('hidden'); $('demoToggle').setAttribute('aria-expanded','true'); $('demoToggle').textContent='Hide';
         if(!d.dataset.built){ window.SR_FP.render($('fpDemo'), window.SR_FP.SAMPLE); d.dataset.built='1'; }
-      } else { d.setAttribute('hidden',''); t.setAttribute('aria-expanded','false'); t.textContent='What you’ll get'; }
+      } else closeDemo();
     });
     $('savecard').addEventListener('click',saveCard);
     $('calreplay').addEventListener('click',runCal);
@@ -633,15 +644,13 @@
     $('calback').addEventListener('click',()=>show('intro'));
     $('selstart').addEventListener('click',()=>{buildDevice(); show('device');});
     $('selback').addEventListener('click',()=>show('intro'));
-    $('devback').addEventListener('click',()=>{ if(pendingCurve){ pendingCurve=false; show('intro'); } else if(deepRoom>=0){ show('intro'); } else { buildSelect(); show('select'); } });
+    $('devback').addEventListener('click',()=>{ if(deepRoom>=0){ show('intro'); } else { buildSelect(); show('select'); } });
     try{ noiseReset = localStorage.getItem('stoneroom_noise')==='1'; }catch(e){}
     $('optnoise').checked = noiseReset;
     $('optnoise').addEventListener('change',e=>{ noiseReset=e.target.checked; try{ localStorage.setItem('stoneroom_noise', noiseReset?'1':'0'); }catch(_){} });
-    $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName()); if(pendingCurve){ pendingCurve=false; startCurve(); } else startGame(); });
-    // audiogram entry: name the pair first (from intro), or reuse the current one (from end)
-    $('gocurve').addEventListener('click',()=>{ initAudio(); ctx.resume(); pendingCurve=true; buildDevice(); show('device'); });
-    $('endcurve').addEventListener('click',()=>{ startCurve(); });
-    $('cvexit').addEventListener('click',()=>{ stopCurveAudio(); show(order.length?'end':'intro'); });
+    $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName()); startGame(); });
+    $('endcurve').addEventListener('click',()=>{ startCurve(); });    // post-tour shortcut: re-measure the curve for this pair
+    $('cvexit').addEventListener('click',()=>{ if(curveInTour){ finishCurveRoom(); } else { stopCurveAudio(); show(order.length?'end':'intro'); } });
     $('cvredo').addEventListener('click',()=>{ stopCurveAudio(); startCurve(); });
     $('cvsave').addEventListener('click',saveCurveCard);
     $('again').addEventListener('click',startGame);
@@ -759,7 +768,7 @@
     initAudio(); ctx.resume();
     order = interleaveByDomain(CH.map((_,i)=>i).filter(i=>selected[i]));
     if(!order.length) order=CH.map((_,i)=>i);
-    score=0; oi=0; chScore={}; chPct={}; roomThr={}; roomVal={};
+    score=0; oi=0; chScore={}; chPct={}; roomThr={}; roomVal={}; roomDone={};
     order.forEach(i=>{chScore[i]=0;});
     $('score').textContent='0'; $('devlabel').textContent=device;
     show('game'); loadChapter();
@@ -771,7 +780,7 @@
     $('timeleft').textContent = order.length>1 ? ` · ~${fmtMin(remQ)} min left` : '';
     $('chapno').textContent=ROMANS[oi]; $('chaptag').textContent=c.tag; $('chaptitle').textContent=c.title;
     $('claim').textContent=c.claim; $('notice').innerHTML=c.notice;
-    const cd=$('chapdots'); cd.innerHTML=''; order.forEach((ci,i)=>{const d=document.createElement('div');d.className='cdot'+(i===oi?' now':chPct[ci]!=null?' done':'');cd.appendChild(d);});
+    const cd=$('chapdots'); cd.innerHTML=''; order.forEach((ci,i)=>{const d=document.createElement('div');d.className='cdot'+(i===oi?' now':(chPct[ci]!=null||roomDone[ci])?' done':'');cd.appendChild(d);});
     $('learn').classList.remove('on'); $('next').classList.remove('on'); hideCheckpointBtns();
     setPrecision(0,''); $('precision').classList.remove('on');
     startChapter();
@@ -816,11 +825,19 @@
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
     setReplay(true); $('skipbtn').classList.add('on');
     const c=chap();
-    const isStair=c.mode==='stair', isOrbit=c.mode==='orbit', isCount=c.mode==='count';
+    const isStair=c.mode==='stair', isOrbit=c.mode==='orbit', isCount=c.mode==='count', isCurve=c.mode==='curve';
     const isField = c.mode==='locate'||c.mode==='sweep'||c.mode==='depth'||c.mode==='separate';
     $('fieldwrap').classList.toggle('hidden', !(isField));
     $('fieldwrapO').classList.toggle('hidden', !isOrbit);
-    $('choices').classList.toggle('on', isStair||isCount);
+    $('choices').classList.toggle('on', isStair||isCount||isCurve);
+    // the hearing-curve room is a self-contained measurement on its own screen — offer one
+    // button to launch it (Skip still available); the rest run inline here.
+    if(isCurve){
+      $('precision').classList.remove('on'); $('status').textContent=''; setReplay(false);
+      $('hint').textContent='Nine pitches from deep bass to high treble.';
+      buildChoices(['▶ Measure my curve'], null, startCurveRoom);
+      return;
+    }
     $('hint').textContent = isStair ? '👆 Tap A or B below'
       : isCount ? '👆 Tap how many voices you count'
       : '👆 Tap the field where you hear it — one tap, no dragging';
@@ -993,6 +1010,14 @@
   const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, nMin:6, nMax:12, fmt:v=>Math.round(v)+' dBFS'};
   let ag=null;
 
+  // hearing-curve as a tour room: launch the curve screen, then rejoin the tour on "Continue →"
+  function startCurveRoom(){ curveInTour=true; $('skipbtn').classList.remove('on'); $('cvexit').textContent='Continue →'; startCurve(); }
+  function finishCurveRoom(){
+    curveInTour=false; $('cvexit').textContent='Done'; stopCurveAudio();
+    roomDone[order[oi]]=true;                       // mark the curve room complete (unscored)
+    show('game');
+    if(oi<order.length-1){ oi++; loadChapter(); } else finish();
+  }
   function startCurve(){
     initAudio(); ctx.resume(); stopVoices(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
     if(!device) device=suggestName();
@@ -1314,12 +1339,13 @@
   function buildRoomNav(){
     const list=$('navlist'); list.innerHTML='';
     order.forEach((ci,pos)=>{
-      const c=CH[ci], done=chPct[ci]!=null, isNow=pos===oi;
+      const c=CH[ci], scored=chPct[ci]!=null, done=scored||roomDone[ci], isNow=pos===oi;
       const row=document.createElement('button');
       row.className='navrow'+(isNow?' now':done?' done':' pending');
       let right;
       if(isNow) right='<span class="nstate">now</span>';
-      else if(done) right=`<span class="ntrack"><span class="nfill" style="width:${chPct[ci]}%"></span></span><span class="npct">${chPct[ci]}%${roomThr[c.tag]?' · '+roomThr[c.tag]:''}</span>`;
+      else if(scored) right=`<span class="ntrack"><span class="nfill" style="width:${chPct[ci]}%"></span></span><span class="npct">${chPct[ci]}%${roomThr[c.tag]?' · '+roomThr[c.tag]:''}</span>`;
+      else if(roomDone[ci]) right='<span class="nstate">✓ measured</span>';
       else right='<span class="nstate">—</span>';
       row.innerHTML=`<span class="nnum">${ROMANS[pos]}</span><span class="nmain"><span class="nname">${c.tag}</span><span class="nsub">${c.tests}</span></span><span class="nright">${right}</span>`;
       row.addEventListener('click',()=>jumpToRoom(pos));
@@ -1359,12 +1385,18 @@
   // ---------- end ----------
   async function finish(){
     stopVoices(); show('end');
-    // only rooms that produced a reading count toward the total — skipped rooms are excluded
-    const nDone=order.filter(i=>chPct[i]!=null).length, skipped=order.length-nDone;
+    // only scored rooms count toward the total; skipped rooms are excluded, and the hearing
+    // curve is "measured" (unscored) rather than skipped.
+    const nDone=order.filter(i=>chPct[i]!=null).length;
+    const skipped=order.filter(i=>chPct[i]==null && !roomDone[i]).length;
+    const curveDone=order.some(i=>roomDone[i]);
     const max=nDone*100; $('finalnum').textContent=score;
     const pct=max?score/max:0; lastPct=pct; const pctR=Math.round(pct*100);
-    $('finalout').innerHTML=`of <b>${max}</b> · <b>${pctR}%</b> across ${nDone} room${nDone!==1?'s':''}`
-      + (skipped?` <span style="color:var(--muted)">· ${skipped} skipped</span>`:'');
+    $('finalout').innerHTML = nDone
+      ? `of <b>${max}</b> · <b>${pctR}%</b> across ${nDone} room${nDone!==1?'s':''}`
+        + (skipped?` <span style="color:var(--muted)">· ${skipped} skipped</span>`:'')
+        + (curveDone?` <span style="color:var(--muted)">· curve measured</span>`:'')
+      : (curveDone ? 'Hearing curve measured' : 'No rooms completed');
     let rank,verdict;
     if(pct>=.85){rank='Golden ear'; verdict=`Every claim verified on the ${device} — holography, slam, air, silk, the lot. The reviews weren’t poetry after all.`;}
     else if(pct>=.6){rank='Tuned in'; verdict='Most claims verified. Whatever scored lowest below is the quality worth hunting for in your next album.';}
