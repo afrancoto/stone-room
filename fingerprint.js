@@ -107,11 +107,14 @@
       g+=`<text x="${W-PAD}" y="${cy+12}" fill="${COL.dim}" font-size="9" text-anchor="end" font-family="${FONT}">of the 20 Hz–20 kHz audible range</text>`;
       const ay=cy+36;
       g+=round1({x:PAD,y:ay,w:IW,h:8,r:4,fill:COL.track});      // full 20–20k reference
-      const lo=has('Foundation')?rooms.Foundation.val:20, hi=has('Air')?rooms.Air.val:20000;
+      // guard missing/NaN val (imported or legacy profiles may carry pct/thr but no numeric val)
+      const foundV = (has('Foundation') && isFinite(rooms.Foundation.val)) ? rooms.Foundation.val : null;
+      const airV   = (has('Air') && isFinite(rooms.Air.val)) ? rooms.Air.val : null;
+      const lo = foundV!=null ? foundV : 20, hi = airV!=null ? airV : 20000;
       const x1=x(lo), x2=x(hi);
       g+=round1({x:x1,y:ay,w:Math.max(4,x2-x1),h:8,r:4,fill:COL.sage});
-      if(has('Foundation')) g+=`<text x="${x1}" y="${ay-6}" fill="${COL.stone}" font-size="11.5" font-weight="600" text-anchor="start" font-family="${FONT}">${Math.round(lo)} Hz</text>`;
-      if(has('Air')) g+=`<text x="${x2}" y="${ay-6}" fill="${COL.stone}" font-size="11.5" font-weight="600" text-anchor="end" font-family="${FONT}">${(hi/1000).toFixed(1)} kHz</text>`;
+      if(foundV!=null) g+=`<text x="${x1}" y="${ay-6}" fill="${COL.stone}" font-size="11.5" font-weight="600" text-anchor="start" font-family="${FONT}">${Math.round(lo)} Hz</text>`;
+      if(airV!=null) g+=`<text x="${x2}" y="${ay-6}" fill="${COL.stone}" font-size="11.5" font-weight="600" text-anchor="end" font-family="${FONT}">${(hi/1000).toFixed(1)} kHz</text>`;
       // ticks
       [[20,'20'],[100,'100'],[1000,'1k'],[10000,'10k'],[20000,'20k']].forEach(([f,l],i,arr)=>{
         g+=`<text x="${x(f)}" y="${ay+22}" fill="${COL.dim}" font-size="8.5" text-anchor="${i===0?'start':i===arr.length-1?'end':'middle'}" font-family="${FONT}">${l}</text>`;

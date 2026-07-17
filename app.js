@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v25";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v26";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -585,6 +585,9 @@
   let device='';
   let db={devices:{}}, storageOK=false, cmpVisible={};
   let lastPct=0;
+  const SCHEMA=3;                 // profile schema version (v3 superset of stoneroom_results_v2)
+  let currentRunId=null;          // one id per measurement occasion (tour / standalone curve / single retake)
+  function uid(pre){ const r=(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,12):(Date.now().toString(36)+Math.random().toString(36).slice(2,8)); return (pre||'id')+'_'+r; }
   let st=null;                                    // active stair state
   let sp=null;                                    // active spatial state
   let cnt=null;                                   // active count state
@@ -604,7 +607,7 @@
   function killStim(){ if(master){ const now=ctx.currentTime; master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(master.gain.value, now); master.gain.linearRampToValueAtTime(0, now+0.035); } }
 
   const $=id=>document.getElementById(id);
-  const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve')};
+  const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve'),profiles:$('profiles')};
   let curveInTour=false;     // true while the hearing-curve room runs inside a tour
   const show=n=>{Object.values(scr).forEach(s=>s&&s.classList.remove('on')); scr[n].classList.add('on'); window.scrollTo(0,0);};
   const jit=(v,j)=>v+(Math.random()*2-1)*j;
@@ -633,28 +636,165 @@
   const fmtRange=e=>{const a=fmtMin(e.q), b=fmtMin(e.f); return a===b?`~${a} min`:`~${a}–${b} min`;};
 
   // ---- persistent storage (per-device results, localStorage) ----
-  const STORE_KEY='stoneroom_results_v2';
+  const STORE_KEY='stoneroom_results_v2';   // key kept for back-compat; content is now schema-versioned
+  // v3 is a strict SUPERSET of v2: the flat rooms[tag] latest projection stays exactly where every
+  // read site expects it; we ADD id/name/createdAt/history[]/meta. migrate is additive + idempotent,
+  // treats a missing schema as v2, and seeds a 1-entry history from the flat rooms — it NEVER rewrites
+  // rooms[tag] and NEVER persists (the next write persists it, so loadDB stays non-destructive).
+  function migrate(dbo){
+    if(!dbo || typeof dbo!=='object') return {schema:SCHEMA, devices:{}};
+    if(!dbo.devices || typeof dbo.devices!=='object') dbo.devices={};
+    dbo.schema=SCHEMA;
+    Object.keys(dbo.devices).forEach(name=>{
+      let d=dbo.devices[name];
+      if(!d || typeof d!=='object'){ d={rooms:{}}; dbo.devices[name]=d; }
+      if(!d.id) d.id=uid('dev');
+      d.name=name;
+      d.createdAt = d.createdAt || d.date || new Date().toISOString();
+      d.date = d.date || d.createdAt;
+      if(!d.rooms || typeof d.rooms!=='object') d.rooms={};
+      if(!d.meta) d.meta={};
+      if(!Array.isArray(d.history)){                       // seed a snapshot WITHOUT touching d.rooms
+        const snap={};
+        Object.keys(d.rooms).forEach(tag=>{ const r=d.rooms[tag]; snap[tag]=(typeof r==='number')?{pct:r}:Object.assign({},r); });
+        const e={ runId:'legacy-'+d.id, at:d.date, app:'v2', rooms:snap };
+        if(Array.isArray(d.curve)) e.curve=d.curve;
+        if(d.curveMethod) e.curveMethod=d.curveMethod;
+        d.history=[e];
+      }
+    });
+    return dbo;
+  }
   async function loadDB(){
     try{ const r=localStorage.getItem(STORE_KEY); if(r) db=JSON.parse(r); storageOK=true; }
     catch(e){ storageOK=false; }
     if(!db || typeof db!=='object' || !db.devices) db={devices:{}};
+    db=migrate(db);
   }
-  // read-modify-write so a second tab (or an 'again' run on a stale cache) can't clobber
-  // devices saved elsewhere: reload the stored map, overlay ours, persist.
+  // read-modify-write so a second tab (or an 'again' run on a stale cache) can't clobber devices
+  // saved elsewhere: reload the stored map, overlay ours, persist. (Additive only — it can't DELETE
+  // a key; delete/rename/import use persistFull instead.)
   async function saveDB(){
     try{
-      let stored={devices:{}};
+      let stored={schema:SCHEMA, devices:{}};
       try{ const r=localStorage.getItem(STORE_KEY); if(r){ const p=JSON.parse(r); if(p&&p.devices) stored=p; } }catch(e){}
+      stored.schema=SCHEMA;
       Object.keys(db.devices).forEach(k=>{ stored.devices[k]=db.devices[k]; });
       db=stored;
       localStorage.setItem(STORE_KEY, JSON.stringify(db)); storageOK=true;
     }catch(e){ storageOK=false; }
   }
+  // authoritative whole-DB write with NO reload-overlay — the only write that can actually remove a
+  // key, so delete/rename/import go through here. Last-writer-wins across tabs (fine for explicit
+  // foreground management actions).
+  function persistFull(){
+    try{ db.schema=SCHEMA; localStorage.setItem(STORE_KEY, JSON.stringify(db)); storageOK=true; return true; }
+    catch(e){ storageOK=false; return false; }
+  }
+  // ---- single reading sink: everything writes through here, keyed by currentRunId, so one occasion
+  // = one history entry (idempotent re-writes), and the flat rooms[tag] latest projection stays live.
+  function ensureProfile(name){
+    let d = hasDevice(name) && db.devices[name];
+    if(!d){ d={rooms:{}}; db.devices[name]=d; }
+    if(!d.id) d.id=uid('dev');
+    d.name=name; d.createdAt=d.createdAt||new Date().toISOString();
+    if(!d.rooms) d.rooms={}; if(!d.meta) d.meta={}; if(!Array.isArray(d.history)) d.history=[];
+    return d;
+  }
+  function curHist(d){
+    let e=d.history.find(h=>h.runId===currentRunId);
+    if(!e){ e={runId:currentRunId||uid('r'), at:new Date().toISOString(), app:APP_VERSION, rooms:{}}; d.history.push(e); }
+    return e;
+  }
+  function upsertRoomReading(name, tag, reading){
+    const d=ensureProfile(name), e=curHist(d), now=new Date().toISOString();
+    e.rooms[tag]=reading; e.at=now; d.rooms[tag]=reading; d.date=now;
+  }
+  function upsertCurve(name, curve, method){
+    const d=ensureProfile(name), e=curHist(d), now=new Date().toISOString();
+    e.curve=curve; e.curveMethod=method; e.at=now; d.curve=curve; d.curveMethod=method; d.date=now;
+  }
+  // rebuild the flat rooms/curve projection from history (newest-by-at wins per tag) — used after a merge
+  function projectFromHistory(d){
+    const rooms={}; let curve=null, method=null;
+    (d.history||[]).slice().sort((a,b)=>(a.at||'').localeCompare(b.at||'')).forEach(h=>{
+      Object.keys(h.rooms||{}).forEach(t=>{ rooms[t]=h.rooms[t]; });
+      if(h.curve){ curve=h.curve; method=h.curveMethod; }
+    });
+    d.rooms=rooms; if(curve){ d.curve=curve; d.curveMethod=method; }
+  }
+  // ---- profile management (delete/rename need persistFull; saveDB can't remove a key) ----
+  function deleteDevice(name){ if(hasDevice(name)){ delete db.devices[name]; if(!persistFull()) flashSaved('storage full — nothing saved'); } }
+  function renameDevice(oldN,newN){
+    newN=safeName(String(newN||'').trim()); if(!newN||newN===oldN) return false;
+    if(hasDevice(newN)){ flashSaved('name already used'); return false; }
+    if(!hasDevice(oldN)) return false;
+    const d=db.devices[oldN]; d.name=newN; db.devices[newN]=d; delete db.devices[oldN];
+    if(device===oldN) device=newN;
+    if(!persistFull()){ flashSaved('storage full — nothing saved'); return false; }
+    return true;
+  }
+  // ---- export / import (wrapped JSON; merge by id, union history by (runId,at); sanitize on the way in) ----
+  const sanitizeStr = s => String(s==null?'':s).replace(/[<>]/g,'').slice(0,48);
+  function sanitizeReading(r){
+    if(typeof r==='number') return {pct:Number(r)||0};
+    if(!r||typeof r!=='object') return {pct:0};
+    const o={}; if(r.pct!=null) o.pct=Number(r.pct)||0;
+    if(r.thr!=null) o.thr=sanitizeStr(r.thr);
+    ['val','lo','hi'].forEach(k=>{ if(r[k]!=null && isFinite(r[k])) o[k]=Number(r[k]); });
+    return o;
+  }
+  function exportBlob(name){
+    const payload = name
+      ? { kind:'stoneroom_profile', schema:SCHEMA, app:APP_VERSION, exportedAt:new Date().toISOString(), device:db.devices[name] }
+      : { kind:'stoneroom_db', schema:SCHEMA, app:APP_VERSION, exportedAt:new Date().toISOString(), devices:db.devices };
+    return JSON.stringify(payload, null, 2);
+  }
+  function downloadExport(name){
+    try{
+      const blob=new Blob([exportBlob(name)],{type:'application/json'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download='stone-room-'+(name?name.replace(/[^\w-]+/g,'_'):'all')+'-'+new Date().toISOString().slice(0,10)+'.json';
+      document.body.appendChild(a); a.click(); a.remove();
+    }catch(e){ flashSaved('could not export'); }
+  }
+  function importText(text){
+    let inc; try{ inc=JSON.parse(text); }catch(e){ return {error:'not valid JSON'}; }
+    const incDevices = inc.device ? { [inc.device.name||'Imported']: inc.device } : inc.devices;
+    if(!incDevices || typeof incDevices!=='object') return {error:'not a Stone Room export'};
+    if(inc.schema && inc.schema>SCHEMA) return {error:'from a newer version'};
+    const norm = migrate({schema:inc.schema||2, devices:JSON.parse(JSON.stringify(incDevices))});
+    const byId={}; Object.keys(db.devices).forEach(n=>{ if(db.devices[n].id) byId[db.devices[n].id]=n; });
+    const sum={added:0, merged:0, readings:0};
+    Object.keys(norm.devices).forEach(iname=>{
+      const ip=norm.devices[iname];
+      ip.name = sanitizeStr(ip.name||iname);
+      (ip.history||[]).forEach(h=>{ if(h.rooms){ Object.keys(h.rooms).forEach(t=>{ h.rooms[t]=sanitizeReading(h.rooms[t]); }); } });
+      if(ip.rooms){ Object.keys(ip.rooms).forEach(t=>{ ip.rooms[t]=sanitizeReading(ip.rooms[t]); }); }
+      const localName = ip.id && byId[ip.id];
+      if(!localName){
+        let nm=safeName(ip.name||iname);
+        if(hasDevice(nm)){ let k=2; while(hasDevice(nm+' '+k)) k++; nm=nm+' '+k; }
+        ip.name=nm; db.devices[nm]=ip; byId[ip.id]=nm; sum.added++;
+        sum.readings += (ip.history||[]).reduce((a,h)=>a+Object.keys(h.rooms||{}).length,0);
+        return;
+      }
+      const lp=db.devices[localName]; sum.merged++; if(!Array.isArray(lp.history)) lp.history=[];
+      const seen=new Set(lp.history.map(h=>h.runId+'|'+h.at));
+      (ip.history||[]).forEach(h=>{ const key=h.runId+'|'+h.at; if(!seen.has(key)){ lp.history.push(h); seen.add(key); sum.readings+=Object.keys(h.rooms||{}).length; } });
+      lp.history.sort((a,b)=>(a.at||'').localeCompare(b.at||''));
+      projectFromHistory(lp);
+      if(ip.createdAt && (!lp.createdAt || ip.createdAt<lp.createdAt)) lp.createdAt=ip.createdAt;
+      if(ip.date && (!lp.date || ip.date>lp.date)) lp.date=ip.date;
+    });
+    if(!persistFull()) return {error:'storage full — nothing saved'};
+    return sum;
+  }
   // ---- in-progress run persistence (resume after a page refresh, or start anew) ----
   const RUN_KEY='stoneroom_run_v1';
   function saveRun(){
     if(!order.length) return;
-    try{ localStorage.setItem(RUN_KEY, JSON.stringify({v:APP_VERSION, device, order, oi, score, chScore, chPct, roomThr, roomVal, roomDone, ts:Date.now()})); }catch(e){}
+    try{ localStorage.setItem(RUN_KEY, JSON.stringify({v:APP_VERSION, device, order, oi, score, chScore, chPct, roomThr, roomVal, roomDone, runId:currentRunId, ts:Date.now()})); }catch(e){}
   }
   function clearRun(){ try{ localStorage.removeItem(RUN_KEY); }catch(e){} }
   // only offer a resume for the SAME app version — CH indices could shift between releases
@@ -669,6 +809,7 @@
   function restoreRun(run){
     initAudio(); ctx.resume();
     device=run.device||suggestName();
+    currentRunId=run.runId||uid('r');    // keep the resumed tour on ONE history entry
     order=run.order.slice(); score=run.score||0;
     chScore=run.chScore||{}; chPct=run.chPct||{}; roomThr=run.roomThr||{}; roomVal=run.roomVal||{}; roomDone=run.roomDone||{};
     oi=Math.max(0, Math.min(run.oi||0, order.length-1));
@@ -711,6 +852,15 @@
       else { show('cal'); runCal(); }
     });
     $('gocompare').addEventListener('click',async()=>{await loadDB(); buildCompare(); show('compare');});
+    $('goprofiles').addEventListener('click',async()=>{await loadDB(); buildProfiles(); show('profiles');});
+    $('endprofiles').addEventListener('click',()=>{buildProfiles(); show('profiles');});
+    $('cmpprofiles').addEventListener('click',()=>{buildProfiles(); show('profiles');});
+    $('pf-back').addEventListener('click',()=>show(order.length?'end':'intro'));
+    $('pf-exportall').addEventListener('click',()=>downloadExport());
+    $('pf-import').addEventListener('click',()=>$('pf-file').click());
+    $('pf-file').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader();
+      rd.onload=()=>{ const res=importText(String(rd.result)); if(res.error) flashSaved(res.error); else { flashSaved(res.added+' added · '+res.merged+' merged'); buildProfiles(); } $('pf-file').value=''; };
+      rd.readAsText(f); });
     $('resumebtn').addEventListener('click',()=>{ const run=loadRun(); if(run) restoreRun(run); });
     $('freshbtn').addEventListener('click',()=>{ clearRun(); $('resumebar').setAttribute('hidden',''); });
     // the two intro panels are mutually exclusive: opening one closes the other, so "What
@@ -862,6 +1012,7 @@
     order = interleaveByDomain(CH.map((_,i)=>i).filter(i=>selected[i]));
     if(!order.length) order=CH.map((_,i)=>i);
     score=0; oi=0; chScore={}; chPct={}; roomThr={}; roomVal={}; roomDone={};
+    currentRunId=uid('r');           // one measurement occasion for this whole tour
     order.forEach(i=>{chScore[i]=0;});
     $('score').textContent='0'; $('devlabel').textContent=device;
     show('game'); loadChapter();
@@ -1126,6 +1277,7 @@
   function startCurve(){
     initAudio(); ctx.resume(); stopVoices(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
     if(!device) device=suggestName();
+    if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
     ag={fi:0, thr:{}, phase:'cal', calTimer:null};
     $('cvsave').style.display='none';
     show('curve'); agCal();
@@ -1214,8 +1366,7 @@
     $('cvwrap').style.display='block'; $('cvsave').style.display='inline-block';
     window.SR_FP.renderCurve($('cvcard'), { device, curve });
     // persist
-    await loadDB(); const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
-    dev.curve = curve; dev.curveMethod='yesno'; dev.date=new Date().toISOString(); db.devices[device]=dev; await saveDB();
+    await loadDB(); upsertCurve(device, curve, 'yesno'); await saveDB();
   }
 
   // ---------- adaptive spatial ----------
@@ -1432,10 +1583,8 @@
     // accumulate this reading onto the headphone's saved profile RIGHT AWAY, so partial tours and
     // rooms done across different sessions all add up on the same pair (not only completed tours).
     if(device){
-      const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
-      if(!dev.rooms) dev.rooms={};
-      dev.rooms[tag] = Object.assign({pct, thr:readout}, roomVal[tag]||{});
-      dev.date = new Date().toISOString(); db.devices[device]=dev; saveDB();
+      upsertRoomReading(device, tag, Object.assign({pct, thr:readout}, roomVal[tag]||{}));
+      saveDB();
     }
   }
   function tierLine(tag,pct){
@@ -1555,11 +1704,10 @@
     const drive = worst && hearingRooms[worst] ? `Your lowest room, ${worst}, leans on ${hearingRooms[worst]}.`
       : worst ? `Your lowest room was ${worst} — mostly down to the headphones and practice.` : '';
     $('benchnote').innerHTML = `${pctR}% is ${where}. ${drive} To separate your ears from the gear, run the same rooms on a second pair — your ears stay constant, so the difference is the headphones.`;
-    const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
-    order.forEach(i=>{ if(chPct[i]==null) return; const tag=CH[i].tag;   // don't persist skipped rooms
-      dev.rooms[tag] = Object.assign({pct:chPct[i], thr:roomThr[tag]}, roomVal[tag]||{});
+    order.forEach(i=>{ if(chPct[i]==null) return; const tag=CH[i].tag;   // re-upsert under the SAME runId — idempotent, no dup history entry
+      upsertRoomReading(device, tag, Object.assign({pct:chPct[i], thr:roomThr[tag]}, roomVal[tag]||{}));
     });
-    dev.date=new Date().toISOString(); db.devices[device]=dev; await saveDB();
+    const dev = db.devices[device] || ensureProfile(device); await saveDB();
     renderCard(dev);
     $('saved').textContent = storageOK ? `saved · ${device}` + (deviceNames().length>1 ? ' · compare available' : '')
       : 'storage unavailable — results kept for this session only';
@@ -1571,7 +1719,9 @@
       idxs.forEach(i=>{
         const c=CH[i], p=chPct[i], val=roomThr[c.tag]||`${p}%`;
         const row=document.createElement('div'); row.className='brow';
-        row.innerHTML=`<span class="bname">${c.tag}</span><div class="btrack"><div class="bfill"></div></div><span class="bpct">${val}</span>`;
+        row.innerHTML='<span class="bname"></span><div class="btrack"><div class="bfill"></div></div><span class="bpct"></span>';
+        row.querySelector('.bname').textContent=c.tag;
+        row.querySelector('.bpct').textContent=val;      // textContent: an imported reading can't inject markup
         bd.appendChild(row);
         requestAnimationFrame(()=>requestAnimationFrame(()=>{row.querySelector('.bfill').style.width=p+'%';}));
       });
@@ -1653,9 +1803,11 @@
           const label = v==null ? '—' : (typeof v==='object' && v.thr ? v.thr : p+'%');
           const col=DEVCOLORS[names.indexOf(n)%DEVCOLORS.length];
           const bar=document.createElement('div'); bar.className='cmpbar';
-          bar.innerHTML = p!=null
-            ? `<div class="track"><div class="fill" style="width:${p}%;background:${col}"></div></div><span class="pct">${label}</span>`
-            : `<div class="track"></div><span class="pct">—</span>`;
+          if(p!=null){
+            bar.innerHTML='<div class="track"><div class="fill"></div></div><span class="pct"></span>';
+            const f=bar.querySelector('.fill'); f.style.width=p+'%'; f.style.background=col;
+            bar.querySelector('.pct').textContent=label;   // textContent: imported thr can't inject markup
+          } else bar.innerHTML='<div class="track"></div><span class="pct">—</span>';
           row.appendChild(bar);
         });
         box.appendChild(row);
@@ -1663,8 +1815,60 @@
     });
   }
 
+  // ---------- profiles (manage headphone pairs: retake a room, rename, delete, export, import) ----------
+  function buildProfiles(){
+    const list=$('profileList'); list.innerHTML='';
+    const names=deviceNames();
+    if(!names.length){ list.innerHTML='<div class="cmpempty">No saved pairs yet.<br>Finish a room with a headphone name and it lands here — each pair keeps its own results.</div>'; return; }
+    names.forEach(n=>{
+      const dev=db.devices[n]||{rooms:{}};
+      const tot=deviceTotal(n);
+      const done=CH.filter(c=>{const v=dev.rooms&&dev.rooms[c.tag]; return v!=null && (typeof v==='number'||v.pct!=null);}).length;
+      const card=document.createElement('div'); card.className='pfcard';
+      const head=document.createElement('div'); head.className='pfhead';
+      const nm=document.createElement('span'); nm.className='pfname'; nm.textContent=n;   // textContent: no XSS from a stored/imported name
+      const meta=document.createElement('span'); meta.className='pfmeta'; meta.textContent=(tot!=null?tot+'% · ':'')+done+'/'+CH.length+' rooms'+(dev.curve?' · curve':'');
+      head.appendChild(nm); head.appendChild(meta); card.appendChild(head);
+      const dots=document.createElement('div'); dots.className='pfdots';
+      CH.forEach((c,idx)=>{
+        const v=dev.rooms&&dev.rooms[c.tag]; const p=v==null?null:(typeof v==='number'?v:v.pct);
+        const d=document.createElement('button'); d.className='pfdot'+(p!=null?' filled':''); d.title=c.tag+(p!=null?' · '+p+'% — tap to retake':' · not taken — tap to measure');
+        if(p!=null) d.style.background = p>=70?'var(--sage)':p>=45?'var(--gold)':'var(--ember)';
+        d.addEventListener('click',()=>retakeRoom(n, idx));
+        dots.appendChild(d);
+      });
+      card.appendChild(dots);
+      const acts=document.createElement('div'); acts.className='pfacts';
+      const mk=(label,fn)=>{const b=document.createElement('button'); b.textContent=label; b.addEventListener('click',fn); return b;};
+      acts.appendChild(mk('Rename',()=>{ const nn=prompt('Rename this pair:', n); if(nn && renameDevice(n,nn)) buildProfiles(); }));
+      acts.appendChild(mk('Export',()=>downloadExport(n)));
+      acts.appendChild(mk('Delete',()=>{ if(confirm('Delete "'+n+'" and all its results?')){ deleteDevice(n); buildProfiles(); } }));
+      card.appendChild(acts);
+      list.appendChild(card);
+    });
+  }
+  // retake (or first-take) a single room for a chosen pair — a fresh occasion (new runId → new history row)
+  function retakeRoom(name, chIdx){
+    initAudio(); ctx.resume();
+    device=name; currentRunId=uid('r');
+    order=[chIdx]; oi=0; score=0; chScore={}; chPct={}; roomThr={}; roomVal={}; roomDone={};
+    chScore[chIdx]=0;
+    $('score').textContent='0'; $('devlabel').textContent=device;
+    show('game'); loadChapter();
+  }
+
   // ---------- boot ----------
   buildIntro(); applyCoffeeLinks(); wire();
-  (async()=>{ await loadDB(); if(deviceNames().length){ $('gocompare').style.display='inline'; $('cmpsep').style.display='inline'; } offerResume(); })();
+  (async()=>{ await loadDB(); if(deviceNames().length){ $('gocompare').style.display='inline'; $('cmpsep').style.display='inline'; $('goprofiles').style.display='inline'; $('pfsep').style.display='inline'; } offerResume(); })();
   if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
+
+  // storage/profiles API surface (also the future state/store.js module boundary) — lets the app's
+  // own tooling exercise migration/import/merge directly, and keeps the seam explicit for the decompose.
+  window.SR_STORE = {
+    migrate, loadDB, saveDB, persistFull, importText, exportBlob, downloadExport,
+    deleteDevice, renameDevice, upsertRoomReading, upsertCurve, projectFromHistory, SCHEMA,
+    get db(){ return db; }, set db(v){ db=v; },
+    get device(){ return device; }, set device(v){ device=v; },
+    get runId(){ return currentRunId; }, set runId(v){ currentRunId=v; }
+  };
 })();

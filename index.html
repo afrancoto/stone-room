@@ -52,6 +52,8 @@
       <button class="linkbtn" id="demoToggle" aria-expanded="false">What you’ll get</button>
       <span class="sep" id="cmpsep" style="display:none">·</span>
       <button class="linkbtn" id="gocompare" style="display:none">Compare pairs</button>
+      <span class="sep" id="pfsep" style="display:none">·</span>
+      <button class="linkbtn" id="goprofiles" style="display:none">Profiles</button>
     </div>
     <div class="about" id="introAbout" hidden>
       <p id="introWhat"></p>
@@ -207,6 +209,7 @@
       <button class="btn ghost" id="reselect">Rooms</button>
       <button class="btn ghost" id="endcurve">Curve</button>
       <button class="btn ghost" id="endcompare">Compare</button>
+      <button class="btn ghost" id="endprofiles">Profiles</button>
       <button class="btn" id="again">Again</button>
     </div>
     <div class="ver" id="verEnd"></div>
@@ -221,8 +224,23 @@
     <div class="cmpscroll" id="cmpscroll"></div>
     <div class="row">
       <button class="btn ghost" id="cmpback">Back</button>
+      <button class="btn ghost" id="cmpprofiles">Profiles</button>
       <button class="btn" id="cmpnew">New tour</button>
     </div>
+  </section>
+
+  <!-- profiles: manage each headphone pair (retake a room, rename, delete, export, import) -->
+  <section id="profiles" class="screen">
+    <div class="eyebrow">Your headphones</div>
+    <h2>Profiles</h2>
+    <p class="lede">Each pair keeps its own results — retake any room whenever, and they add up here. Back up a pair or import one.</p>
+    <div class="profilelist" id="profileList"></div>
+    <div class="seltools">
+      <button id="pf-import">Import a file</button>
+      <button id="pf-exportall">Export all</button>
+    </div>
+    <input type="file" id="pf-file" accept="application/json,.json" style="display:none" />
+    <div class="row"><button class="btn ghost" id="pf-back">Back</button></div>
   </section>
 
   <!-- audiogram / hearing curve -->
