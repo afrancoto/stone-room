@@ -81,6 +81,14 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 .warnbox b{color:var(--gold); font-weight:600}
 .deepnote{display:none; margin-top:10px; color:var(--gold); font-size:13.5px}
 
+/* resume-on-refresh banner */
+.resumebar{max-width:34ch; margin:16px auto 0; border:1px solid var(--sage); border-radius:14px; padding:12px 14px; background:rgba(123,167,156,.07); animation:fade .35s ease both}
+.resumebar[hidden]{display:none}
+.resumetext{font-size:13px; color:var(--stone); line-height:1.45; margin-bottom:10px}
+.resumetext b{color:var(--sage); font-weight:600}
+.resumebtns{display:flex; align-items:center; gap:14px; justify-content:center; flex-wrap:wrap}
+.btn.small{font-size:13.5px; padding:9px 22px}
+
 /* ---- calibration ---- */
 #cal .lede{margin-bottom:16px}
 .calbar{display:flex; justify-content:space-between; align-items:center; width:min(80vw,320px); margin:8px auto 4px; height:56px; position:relative}
@@ -118,6 +126,7 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 #devinput{
   width:min(80vw,300px); background:var(--surface); border:1px solid var(--line); border-radius:12px;
   color:var(--stone); font-family:var(--ui); font-size:16px; padding:13px 16px; text-align:center; margin-top:14px;
+  align-self:center;   /* flex item with a fixed width would sit left otherwise */
 }
 #devinput:focus{outline:2px solid var(--sage); outline-offset:2px}
 .optrow{display:flex; align-items:flex-start; gap:9px; max-width:34ch; margin:16px auto 0; text-align:left; font-size:12.5px; line-height:1.45; color:var(--muted); cursor:pointer}

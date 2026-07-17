@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v19";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v20";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -604,6 +604,32 @@
       localStorage.setItem(STORE_KEY, JSON.stringify(db)); storageOK=true;
     }catch(e){ storageOK=false; }
   }
+  // ---- in-progress run persistence (resume after a page refresh, or start anew) ----
+  const RUN_KEY='stoneroom_run_v1';
+  function saveRun(){
+    if(!order.length) return;
+    try{ localStorage.setItem(RUN_KEY, JSON.stringify({v:APP_VERSION, device, order, oi, score, chScore, chPct, roomThr, roomVal, roomDone, ts:Date.now()})); }catch(e){}
+  }
+  function clearRun(){ try{ localStorage.removeItem(RUN_KEY); }catch(e){} }
+  // only offer a resume for the SAME app version — CH indices could shift between releases
+  function loadRun(){ try{ const r=localStorage.getItem(RUN_KEY); if(!r) return null; const o=JSON.parse(r);
+    return (o && o.v===APP_VERSION && Array.isArray(o.order) && o.order.length) ? o : null; }catch(e){ return null; } }
+  function offerResume(){
+    const run=loadRun(); if(!run) return;
+    const done=run.order.filter(i=>(run.chPct&&run.chPct[i]!=null)||(run.roomDone&&run.roomDone[i])).length;
+    $('resumetext').innerHTML=`Resume your last run? <b>${(run.device||'Headphones').replace(/</g,'&lt;')}</b> · room ${Math.min((run.oi||0)+1,run.order.length)} of ${run.order.length}${done?` · ${done} done`:''}`;
+    $('resumebar').removeAttribute('hidden');
+  }
+  function restoreRun(run){
+    initAudio(); ctx.resume();
+    device=run.device||suggestName();
+    order=run.order.slice(); score=run.score||0;
+    chScore=run.chScore||{}; chPct=run.chPct||{}; roomThr=run.roomThr||{}; roomVal=run.roomVal||{}; roomDone=run.roomDone||{};
+    oi=Math.max(0, Math.min(run.oi||0, order.length-1));
+    $('score').textContent=score; $('devlabel').textContent=device;
+    show('game'); loadChapter();
+  }
+
   function deviceNames(){ return Object.keys(db.devices).sort((a,b)=>(db.devices[b].date||'').localeCompare(db.devices[a].date||'')); }
   const hasDevice=n=>Object.prototype.hasOwnProperty.call(db.devices,n);
   // a name that never collides with Object.prototype keys, and a fresh unique default
@@ -639,6 +665,8 @@
       else { show('cal'); runCal(); }
     });
     $('gocompare').addEventListener('click',async()=>{await loadDB(); buildCompare(); show('compare');});
+    $('resumebtn').addEventListener('click',()=>{ const run=loadRun(); if(run) restoreRun(run); });
+    $('freshbtn').addEventListener('click',()=>{ clearRun(); $('resumebar').setAttribute('hidden',''); });
     // the two intro panels are mutually exclusive: opening one closes the other, so "What
     // you'll get" replaces "What is this?" (and vice versa) rather than stacking beneath it.
     const closeAbout=()=>{ $('introAbout').setAttribute('hidden',''); $('aboutToggle').setAttribute('aria-expanded','false'); $('aboutToggle').textContent='What is this?'; };
@@ -802,6 +830,7 @@
     const cd=$('chapdots'); cd.innerHTML=''; order.forEach((ci,i)=>{const d=document.createElement('div');d.className='cdot'+(i===oi?' now':(chPct[ci]!=null||roomDone[ci])?' done':'');cd.appendChild(d);});
     $('learn').classList.remove('on'); $('next').classList.remove('on'); hideCheckpointBtns();
     setPrecision(0,''); $('precision').classList.remove('on');
+    saveRun();                                       // checkpoint the tour so a refresh can resume here
     startChapter();
   }
   function clearTimers(){ choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[]; }
@@ -943,7 +972,7 @@
     const loT=Math.min(b1,b2), hiT=Math.max(b1,b2);
     recordRoom(pct, A.fmt(thr), {val:thr, lo:loT, hi:hiT});
     const conf=Math.round(stt.conf*100);
-    $('status').innerHTML=`Your reading: <span class="pts">${A.fmt(thr)}</span> · +${pct} <span style="color:var(--muted)">· ${conf}% confident</span>`;
+    $('status').innerHTML=`Your reading: <span class="pts">${A.fmt(thr)}</span> · +${pct} <span style="color:var(--muted)">· ${conf}% locked in</span>`;
     setPrecision(stt.conf, `${A.fmt(thr)}  ·  ${bandStr(A,loT,hiT)}`);
     showLearn(); appendTier(tierLine(st.tag,pct));
     showResultBtns(!stt.solid);      // Sharpen stays available (it now extends the trial budget)
@@ -1278,14 +1307,20 @@
     afterSpatialRound();
   }
   function acuityStats(){
-    // robust central error and a confidence from spread & count
     const e=sp.errs.slice().sort((a,b)=>a-b);
     const med = e.length%2 ? e[(e.length-1)/2] : (e[e.length/2-1]+e[e.length/2])/2;
     const mean=e.reduce((a,b)=>a+b,0)/e.length;
     const varr=e.reduce((a,b)=>a+(b-mean)*(b-mean),0)/e.length;
     const se=Math.sqrt(varr/e.length);
-    const conf=clamp(1 - se/ (sp.S.weak*0.5), 0, 1) * clamp(sp.errs.length/sp.maxR,0,1);
-    return {med,mean,se,conf};
+    // confidence reflects how CONSISTENT your taps are — not how many rounds you've done (the old
+    // formula multiplied by rounds/maxRounds, so it always climbed). Use the median absolute
+    // deviation about the median (robust to one stray miss) vs the room's reference acuity:
+    // erratic taps stay low even at the last round; tight taps rise early. It can go DOWN.
+    const dev=e.map(v=>Math.abs(v-med)).sort((a,b)=>a-b);
+    const mad = dev.length%2 ? dev[(dev.length-1)/2] : (dev[dev.length/2-1]+dev[dev.length/2])/2;
+    let conf = clamp(1 - mad/(sp.S.ref*1.3), 0, 1);
+    if(e.length < sp.minR) conf *= e.length/sp.minR;   // a couple of taps can't be fully certain yet
+    return {med,mean,se,mad,conf};
   }
   function afterSpatialRound(){
     sp.round++;
@@ -1303,7 +1338,7 @@
     const lw=Math.log(S.weak), lb=Math.log(S.ref), lt=Math.log(clamp(a.med,S.ref,S.weak));
     const pct=Math.round(clamp((lw-lt)/(lw-lb),0,1)*100);
     recordRoom(pct, `${Math.round(a.med)}° acuity`, {val:a.med, lo:Math.max(1,a.med-1.96*a.se), hi:a.med+1.96*a.se});
-    $('status').innerHTML=`Your acuity: <span class="pts">${Math.round(a.med)}°</span> · +${pct} <span style="color:var(--muted)">· ${Math.round(a.conf*100)}% confident</span>`;
+    $('status').innerHTML=`Your acuity: <span class="pts">${Math.round(a.med)}°</span> · +${pct} <span style="color:var(--muted)">· ${Math.round(a.conf*100)}% locked in</span>`;
     setPrecision(a.conf, `${Math.round(a.med)}° · ${sp.round} rounds`);
     showLearn(); appendTier(tierLine(sp.c.tag,pct));
     showResultBtns(a.conf < 0.9);    // offer Sharpen unless already highly confident (it extends rounds)
@@ -1317,6 +1352,7 @@
     chScore[i]=pct; chPct[i]=pct; roomThr[tag]=readout;
     if(extra && extra.val!=null) roomVal[tag]={val:extra.val, lo:extra.lo, hi:extra.hi};
     score+=pct; $('score').textContent=score;
+    saveRun();                                       // persist the new reading for resume
   }
   function tierLine(tag,pct){
     const T=contentOf(tag).tiers||{};
@@ -1405,7 +1441,7 @@
 
   // ---------- end ----------
   async function finish(){
-    stopVoices(); show('end');
+    stopVoices(); clearRun(); show('end');      // tour complete — nothing left to resume
     // only scored rooms count toward the total; skipped rooms are excluded, and the hearing
     // curve is "measured" (unscored) rather than skipped.
     const nDone=order.filter(i=>chPct[i]!=null).length;
@@ -1545,6 +1581,6 @@
 
   // ---------- boot ----------
   buildIntro(); applyCoffeeLinks(); wire();
-  (async()=>{ await loadDB(); if(deviceNames().length){ $('gocompare').style.display='inline'; $('cmpsep').style.display='inline'; } })();
+  (async()=>{ await loadDB(); if(deviceNames().length){ $('gocompare').style.display='inline'; $('cmpsep').style.display='inline'; } offerResume(); })();
   if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
 })();
