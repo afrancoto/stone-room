@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v21";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v22";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1391,7 +1391,15 @@
     chScore[i]=pct; chPct[i]=pct; roomThr[tag]=readout;
     if(extra && extra.val!=null) roomVal[tag]={val:extra.val, lo:extra.lo, hi:extra.hi};
     score+=pct; $('score').textContent=score;
-    saveRun();                                       // persist the new reading for resume
+    saveRun();                                       // persist the in-progress tour for resume
+    // accumulate this reading onto the headphone's saved profile RIGHT AWAY, so partial tours and
+    // rooms done across different sessions all add up on the same pair (not only completed tours).
+    if(device){
+      const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
+      if(!dev.rooms) dev.rooms={};
+      dev.rooms[tag] = Object.assign({pct, thr:readout}, roomVal[tag]||{});
+      dev.date = new Date().toISOString(); db.devices[device]=dev; saveDB();
+    }
   }
   function tierLine(tag,pct){
     const T=contentOf(tag).tiers||{};
