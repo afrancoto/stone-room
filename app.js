@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v23";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v24";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -50,7 +50,10 @@
     for(let c=0;c<2;c++){const d=buf.getChannelData(c);
       for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);}
     cv.buffer=buf;
-    const inG=ctx.createGain(), outG=ctx.createGain(); outG.gain.value=0.9;
+    // energy-normalize: a longer impulse (bigger room) has energy ∝ sec, which made the "bigger"
+    // Halls pluck genuinely LOUDER — a level tell you could pick without judging the decay tail.
+    // Scaling out by 1/√sec keeps loudness constant so the only cue is reverb time.
+    const inG=ctx.createGain(), outG=ctx.createGain(); outG.gain.value=0.9/Math.sqrt(sec);
     inG.connect(cv); cv.connect(outG); outG.connect(master);
     return {in:inG};
   }
@@ -139,7 +142,9 @@
   }
   function tick(when,gain){
     const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=2200;
-    const g=ctx.createGain(); g.gain.setValueAtTime(gain,when); g.gain.exponentialRampToValueAtTime(.0005,when+.05);
+    // 5 ms attack (not an instantaneous onset) so a faint tick isn't a broadband CLICK you can
+    // detect far below where the intended level threshold sits.
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.005); g.gain.exponentialRampToValueAtTime(.0005,when+.055);
     hp.connect(g); g.connect(master);
     const o=ctx.createOscillator(); o.type='square'; o.frequency.value=3000; o.connect(hp); o.start(when); o.stop(when+.07);
   }
@@ -313,8 +318,11 @@
   function presenceVoice(when,cutDb){
     const peak=ctx.createBiquadFilter(); peak.type='peaking'; peak.frequency.value=1800; peak.Q.value=.9; peak.gain.value=cutDb;
     const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=3800;
-    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.3,when+.06);
-    g.gain.setValueAtTime(.3,when+1.2); g.gain.linearRampToValueAtTime(0,when+1.5);
+    // compensate the energy the scoop removes, so the scooped voice isn't simply QUIETER — the cue
+    // should be the veiled timbre, not a ~0.5 dB level difference you could pick on instead.
+    const lvl=.3*Math.pow(10, Math.abs(cutDb)*0.08/20);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(lvl,when+.06);
+    g.gain.setValueAtTime(lvl,when+1.2); g.gain.linearRampToValueAtTime(0,when+1.5);
     peak.connect(lp); lp.connect(g); g.connect(master);
     const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=196;
     const vib=ctx.createOscillator(); vib.frequency.value=5; const vg=ctx.createGain(); vg.gain.value=3;
@@ -500,36 +508,36 @@
       play:(lv,t,on)=>{marker(t); if(on) subTone(lv, t+.12, 1.15, lv<45?.85:.7);}},
     Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:13000, floor:8000, ceil:20000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[10000,17000], physHi:20500, fmt:v=>(v/1000).toFixed(1)+' kHz',
       play:(lv,t,on)=>{marker(t); if(on) shimmerBurst(lv, t+.15, .8, .16);}},
-    Whisper:{type:'D', q:'Which pad hid a tick?', dur:1.7, start:.04, floor:.002, ceil:.2, hard:.78, easy:1.5, log:true, betterHigh:false, anchors:[.04,.008], fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
+    Whisper:{type:'D', q:'Which pad hid a tick?', dur:1.7, start:.04, floor:.002, ceil:.2, hard:.78, easy:1.5, log:true, betterHigh:false, anchors:[.04,.008], physLo:0.00002, fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
       play:(lv,t,on)=>{pad(t,1.6,.2); if(on) tick(t+.5+Math.random()*.7, lv);}},
-    Silence:{type:'X', q:'Which hid a hiss?', dur:2.4, answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.05,.006], fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
+    Silence:{type:'X', q:'Which hid a hiss?', dur:2.4, answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.05,.006], physLo:0.000045, fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
       play:(lv,t,alt)=>silenceTail(t, alt?lv:0)},
-    Grain:{type:'X', q:'Which was pure?', dur:1.15, answerAltered:false, start:.1, floor:.008, ceil:.35, hard:.78, easy:1.4, log:true, betterHigh:false, anchors:[.15,.02], fmt:v=>'partial '+Math.round(v*100)+'%',
+    Grain:{type:'X', q:'Which was pure?', dur:1.15, answerAltered:false, start:.1, floor:.008, ceil:.35, hard:.78, easy:1.4, log:true, betterHigh:false, anchors:[.15,.02], physLo:0.005, fmt:v=>'partial '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>grainNote(t, alt, lv)},
-    Composure:{type:'X', q:'Which stayed clean?', dur:1.8, answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], fmt:v=>'drive '+v.toFixed(1),
+    Composure:{type:'X', q:'Which stayed clean?', dur:1.8, answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], physLo:0.15, fmt:v=>'drive '+v.toFixed(1),
       play:(lv,t,alt)=>composureChord(t, alt?lv:0)},
-    Grip:{type:'X', q:'Which was tighter?', dur:1.7, answerAltered:false, start:.15, floor:.02, ceil:.5, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[.35,.06], fmt:v=>'bloom '+Math.round(v*100)+'%',
+    Grip:{type:'X', q:'Which was tighter?', dur:1.7, answerAltered:false, start:.15, floor:.02, ceil:.5, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[.35,.06], physLo:0.02, fmt:v=>'bloom '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>bassNote(t, alt, lv)},
-    Presence:{type:'X', q:'Which was in the room?', dur:1.7, answerAltered:false, start:2.5, floor:.5, ceil:6, hard:.8, easy:1.35, log:false, betterHigh:false, anchors:[5,1], fmt:v=>v.toFixed(1)+' dB scoop',
+    Presence:{type:'X', q:'Which was in the room?', dur:1.7, answerAltered:false, start:2.5, floor:.5, ceil:6, hard:.8, easy:1.35, log:false, betterHigh:false, anchors:[5,1], physLo:0.5, fmt:v=>v.toFixed(1)+' dB scoop',
       play:(lv,t,alt)=>presenceVoice(t, alt?-lv:0)},
-    Silk:{type:'X', q:'Which "s" stabbed?', dur:1.5, answerAltered:true, start:.1, floor:.005, ceil:.35, hard:.78, easy:1.4, log:true, betterHigh:false, anchors:[.15,.02], fmt:v=>'+'+Math.round(20*Math.log10((0.05+v)/0.05))+' dB sib',
+    Silk:{type:'X', q:'Which "s" stabbed?', dur:1.5, answerAltered:true, start:.1, floor:.005, ceil:.35, hard:.78, easy:1.4, log:true, betterHigh:false, anchors:[.15,.02], physLo:0.005, fmt:v=>'+'+Math.round(20*Math.log10((0.05+v)/0.05))+' dB sib',
       play:(lv,t,alt)=>silkPhrase(t, .05+(alt?lv:0))},
-    Snap:{type:'X', q:'Which truly hit?', dur:.9, answerAltered:false, start:.035, floor:.004, ceil:.08, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.04,.006], fmt:v=>Math.round(v*1000)+' ms attack',
+    Snap:{type:'X', q:'Which truly hit?', dur:.9, answerAltered:false, start:.035, floor:.004, ceil:.08, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.04,.006], physLo:0.002, fmt:v=>Math.round(v*1000)+' ms attack',
       play:(lv,t,alt)=>snapHit(t, alt?lv:.001)},
-    Pulse:{type:'X', q:'Which groove was tight?', dur:2.15, answerAltered:false, start:40, floor:5, ceil:80, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[45,8], fmt:v=>Math.round(v)+' ms',
+    Pulse:{type:'X', q:'Which groove was tight?', dur:2.15, answerAltered:false, start:40, floor:5, ceil:80, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[45,8], physLo:6, fmt:v=>Math.round(v)+' ms',
       play:(lv,t,alt)=>pulsePattern(t, 3, alt?lv:0)},
-    Shade:{type:'X', q:'Which was louder?', dur:.95, answerAltered:true, start:1.5, floor:.3, ceil:4, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[3,.5], fmt:v=>v.toFixed(2)+' dB',
+    Shade:{type:'X', q:'Which was louder?', dur:.95, answerAltered:true, start:1.5, floor:.3, ceil:4, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[3,.5], physLo:0.25, fmt:v=>v.toFixed(2)+' dB',
       play:(lv,t,alt)=>dynNote(t, alt?lv:0)},
-    Centre:{type:'X', q:'Which sat dead centre?', dur:1.5, answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], fmt:v=>Math.round(v*100)+'% off',
+    Centre:{type:'X', q:'Which sat dead centre?', dur:1.5, answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], physLo:0.02, fmt:v=>Math.round(v*100)+'% off',
       play:(lv,t,alt)=>centreNote(t, alt?(Math.random()<.5?1:-1)*lv:0)},
-    Duet:{type:'X', q:'Which felt wider?', dur:2.0, answerAltered:true, start:.8, floor:.1, ceil:1, hard:.72, easy:1.5, log:true, betterHigh:false, anchors:[.9,.15], fmt:v=>'width '+Math.round(v*100)+'%',
+    Duet:{type:'X', q:'Which felt wider?', dur:2.0, answerAltered:true, start:.8, floor:.1, ceil:1, hard:.72, easy:1.5, log:true, betterHigh:false, anchors:[.9,.15], physLo:0.04, fmt:v=>'width '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>duetChord(t, alt, 12*lv, .9*lv)},
-    Echo:{type:'X', q:'Which wall was further?', dur:.85, answerAltered:true, start:.1, floor:.012, ceil:.3, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.12,.02], fmt:v=>'+'+Math.round(v*1000)+' ms',
+    Echo:{type:'X', q:'Which wall was further?', dur:.85, answerAltered:true, start:.1, floor:.012, ceil:.3, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.12,.02], physLo:0.006, fmt:v=>'+'+Math.round(v*1000)+' ms',
       play:(lv,t,alt)=>clickEcho(t, .12+(alt?lv:0))},
     // newly-adaptive 2AFC rooms
-    Flyby:{type:'X', q:'Which passed closer?', answerAltered:true, start:2.2, floor:1.06, ceil:6, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[3.2,1.2], fmt:v=>v.toFixed(1)+'× gap', dur:2.6,
+    Flyby:{type:'X', q:'Which passed closer?', answerAltered:true, start:2.2, floor:1.06, ceil:6, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[3.2,1.2], physLo:1.0, fmt:v=>v.toFixed(1)+'× gap', dur:2.6,
       play:(lv,t,alt)=>{const far=5.5; flyby(t, Math.random()<.5?1:-1, alt?far/lv:far, 2.4);}},
-    Halls:{type:'X', q:'Which room was bigger?', answerAltered:true, start:.55, floor:.12, ceil:1.1, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[.9,.3], fmt:v=>Math.round(v*100)+'% larger', dur:2.7,
+    Halls:{type:'X', q:'Which room was bigger?', answerAltered:true, start:.55, floor:.12, ceil:1.1, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[.9,.3], physLo:0.05, fmt:v=>Math.round(v*100)+'% larger', dur:2.7,
       play:(lv,t,alt)=>hallPluckSec(t, alt?1.1*(1+lv):1.1)},
   };
 
