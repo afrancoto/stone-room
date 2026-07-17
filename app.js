@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v20";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v21";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -261,21 +261,24 @@
     }
   }
   function bassNote(when,dirty,amt){
+    // amt (bloom, 0..~.5) scales EVERY cue so the room measures the real bloom threshold instead of
+    // a fixed on/off envelope. a=0 → tight note that stops dead; larger a → longer overhang, a
+    // level wobble, and low overtones. At threshold (tiny a) it's barely distinguishable from tight.
+    const a = dirty ? amt : 0;
+    const end = when + .7 + a*1.3;                     // more bloom = longer ring-on (stays inside the slot)
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.85,when+.02);
-    if(dirty){
-      g.gain.setValueAtTime(.85,when+.25);
-      g.gain.linearRampToValueAtTime(.5,when+.5);
-      g.gain.linearRampToValueAtTime(.65,when+.7);
-      g.gain.exponentialRampToValueAtTime(.001,when+1.5);
-    } else {
-      g.gain.setValueAtTime(.85,when+.2); g.gain.exponentialRampToValueAtTime(.001,when+.8);
+    g.gain.setValueAtTime(.85,when+.2);
+    if(a>0.001){
+      g.gain.linearRampToValueAtTime(.85-a*0.6, when+.42);    // sag...
+      g.gain.linearRampToValueAtTime(.85-a*0.25, when+.62);   // ...partial recovery (the wobble)
     }
+    g.gain.exponentialRampToValueAtTime(.001, end);
     g.connect(master);
-    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=55*rvF; o.connect(g); o.start(when); o.stop(when+1.6);
-    if(dirty){
-      [110,165].forEach((f,i)=>{const hg=ctx.createGain(); hg.gain.setValueAtTime(0,when); hg.gain.linearRampToValueAtTime(amt/(i+1),when+.03);
-        hg.gain.exponentialRampToValueAtTime(.0006,when+1.2); hg.connect(master);
-        const ho=ctx.createOscillator(); ho.type='sine'; ho.frequency.value=f*rvF; ho.connect(hg); ho.start(when); ho.stop(when+1.3);});
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=55*rvF; o.connect(g); o.start(when); o.stop(end+.1);
+    if(a>0.001){
+      [110,165].forEach((f,i)=>{const hg=ctx.createGain(); hg.gain.setValueAtTime(0,when); hg.gain.linearRampToValueAtTime(a/(i+1),when+.03);
+        hg.gain.exponentialRampToValueAtTime(.0006,end); hg.connect(master);
+        const ho=ctx.createOscillator(); ho.type='sine'; ho.frequency.value=f*rvF; ho.connect(hg); ho.start(when); ho.stop(end+.1);});
     }
   }
   function centreNote(when,panOff){
@@ -521,6 +524,28 @@
       play:(lv,t,alt)=>hallPluckSec(t, alt?1.1*(1+lv):1.1)},
   };
 
+  // crisp "what to listen for" per A/B room — shown right above the buttons, in different words
+  // from the scene-setting notice at the top, so it's the ONE line you read to know what to tap.
+  const ASK={
+    Foundation:'Tap the interval where you caught the deep tone',
+    Air:'Tap the interval with the faint high shimmer',
+    Whisper:'Tap the pad that hid a faint tick',
+    Silence:'Tap the silence that wasn’t truly black',
+    Grain:'Tap the cleaner, purer of the two notes',
+    Composure:'Tap the one that stayed clean under load',
+    Grip:'Tap the tighter bass — the one that stops dead',
+    Presence:'Tap the voice that felt closer, in the room',
+    Silk:'Tap the harsher, more piercing “s”',
+    Snap:'Tap the hit with the sharper, faster attack',
+    Pulse:'Tap the groove that stayed in time',
+    Shade:'Tap the very slightly louder note',
+    Centre:'Tap the one pinned dead centre',
+    Duet:'Tap the wider, more spread-out chord',
+    Echo:'Tap the one with the longer gap to its echo',
+    Flyby:'Tap the vehicle that swept closer',
+    Halls:'Tap the pluck ringing in the bigger room'
+  };
+
   // ---------- adaptive spatial specs (acuity in degrees) ----------
   // score maps median angular error to pct via [weakDeg, refDeg]; stops when the running
   // acuity estimate is confident (SE small) after a minimum, else at maxRounds.
@@ -556,6 +581,10 @@
     rvF = Math.pow(2, (Math.random()*6-3)/12);     // ±3 semitones base transpose
     if(master) master.gain.setValueAtTime(0.85*(0.62+Math.random()*0.38), ctx.currentTime); // −4..0 dB
   }
+  // silence the currently-playing A/B stimulus the instant the listener answers (stop-on-pick).
+  // Safe because every trial re-anchors master.gain at its start (roveTrial / agTrial), so this
+  // only mutes the leftover tail; it never leaves the output stuck at zero.
+  function killStim(){ if(master){ const now=ctx.currentTime; master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(master.gain.value, now); master.gain.linearRampToValueAtTime(0, now+0.035); } }
 
   const $=id=>document.getElementById(id);
   const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve')};
@@ -888,7 +917,7 @@
       buildChoices(['▶ Measure my curve'], null, startCurveRoom);
       return;
     }
-    $('hint').textContent = isStair ? '👆 Tap A or B below'
+    $('hint').textContent = isStair ? '👆 '+(ASK[c.tag]||'Tap A or B below')
       : isCount ? '👆 Tap how many voices you count'
       : '👆 Tap the field where you hear it — one tap, no dragging';
     if(isStair) setupStair(c);
@@ -927,20 +956,26 @@
       choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
       setChoicesEnabled(false); setReplay(false); roveTrial();
       $('status').innerHTML=`Trial ${st.trial+1} <span style="color:var(--muted)">of ≤${st.eng.nMax}</span> · <span class="pts">honing in…</span>`;
-      const g2 = noiseReset ? gap+0.25 : gap;         // widen the gap to fit the noise wash
-      const t=ctx.currentTime+.25;
+      const wash = noiseReset ? 0.32 : 0;             // symmetric noise wash: before A and between A/B
+      const g2 = gap + wash;
+      const t0 = 0.25 + wash;                          // pre-roll leaves room for the before-A wash
+      const t = ctx.currentTime + t0;
+      if(noiseReset) interNoise(ctx.currentTime + 0.04, wash);     // wash BEFORE A
       for(let i=0;i<2;i++){
         const flag=(i===st.side);
         A.play(st.curLevel, t+i*(dur+g2), flag);
-        choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(0.25+i*(dur+g2))*1000));
+        choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(t0+i*(dur+g2))*1000));
       }
-      if(noiseReset) interNoise(t+dur+0.1, g2-0.2);
-      choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); $('status').innerHTML=`${A.q} <span style="color:var(--muted)">· ${A.type==='D'?'first or second':'A or B'}</span>`; setChoicesEnabled(true); setReplay(true);},(0.25+2*dur+g2)*1000));
+      if(noiseReset) interNoise(t+dur+0.06, wash);                 // wash BETWEEN A and B
+      // enable answering as soon as the SECOND sample begins — pick early if the difference is obvious
+      choiceTimers.push(setTimeout(()=>{ $('status').innerHTML=`${A.q} <span style="color:var(--muted)">· tap as soon as you know</span>`; setChoicesEnabled(true); setReplay(true); },(t0+(dur+g2))*1000));
+      choiceTimers.push(setTimeout(()=>{ btns.forEach(b=>b.classList.remove('playing')); },(t0+2*dur+g2)*1000));
     };
     replayFn=play; play();
   }
   function stairPick(i){
     if(!st || st.done) return;
+    killStim();                            // stop the tones the instant you pick
     setChoicesEnabled(false); setReplay(false);
     const A=st.A;
     const answer = A.type==='D' ? st.side : (A.answerAltered ? st.side : 1-st.side);
@@ -1112,16 +1147,20 @@
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.replay)ag.replay(); }; box.appendChild(rep);
     const setEnabled=on=>btns.forEach(b=>b.disabled=!on);
     const play=()=>{
-      clearTimers(); setEnabled(false); $('cvNote').textContent='Which interval held the faint tone — 1st or 2nd?';
+      clearTimers(); setEnabled(false);
+      if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // constant reference for the curve (also resets a prior stop-on-pick)
+      $('cvNote').textContent='Which interval held the faint tone — 1st or 2nd?';
       const dur=.7, gap=.5, t=ctx.currentTime+.25;
       detTone(f, t+ag.side*(dur+gap)+.06, dur-.12, ag.curLevel);
       for(let i=0;i<2;i++) choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(0.25+i*(dur+gap))*1000));
-      choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); setEnabled(true);},(0.25+2*dur+gap)*1000));
+      choiceTimers.push(setTimeout(()=>{setEnabled(true);},(0.25+(dur+gap))*1000));   // answerable once the 2nd interval starts
+      choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing'));},(0.25+2*dur+gap)*1000));
     };
     ag.replay=play; ag._setEnabled=setEnabled; ag._btns=btns; play();
   }
   function agPick(i){
     if(!ag||ag.phase!=='run')return;
+    killStim();                            // stop the tone the instant you pick
     ag._setEnabled(false);
     const hit=i===ag.side; ag.eng.z.record(ag.curX,hit); ag.trial++;
     const st=ag.eng.z.stats();

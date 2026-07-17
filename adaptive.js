@@ -56,7 +56,7 @@
       const lik=LIK[xi]; for(let c=0;c<nC;c++) P[c]*= r?lik[c]:(1-lik[c]); normalize(P);
     }
 
-    let t=0, lastXi=0, prevExpH=0, dryRuns=0, widenLo=0, widenHi=0, hardStreak=0, easyStreak=0;
+    let t=0, lastXi=0, prevExpH=0, dryRuns=0, widenLo=0, widenHi=0, hardStreak=0, easyStreak=0, boldProbe=0, bracketed=false;
     const history=[];
     const priorH = entropy(marginalAlpha(P));
     prevExpH = priorH;
@@ -64,17 +64,25 @@
     // if the placer keeps landing at the hardest cell and the listener still passes (or the
     // easiest cell and they still fail), the true threshold is off the grid — extend that side
     // and replay history, so a listener better than the starting range gets a real threshold.
+    // boldProbe (-1 hard / +1 easy) then tells next() to jump straight to that edge to find where
+    // the listener finally crosses, instead of inching toward it one entropy-min step at a time.
     function maybeWiden(){
-      if(t<3) return;
+      if(t<3 || bracketed) return;    // once bracketed, stop widening — localise instead
       const mn=meanX(), nearLo = mn < xLo + span*0.12, nearHi = mn > xHi - span*0.12;
-      if(widenLo<2 && (hardStreak>=2 || nearLo)){ build(xLo - span0*0.5, xHi); for(const h of history) applyLik(h.x,h.r); widenLo++; hardStreak=0; }
-      else if(widenHi<2 && (easyStreak>=2 || nearHi)){ build(xLo, xHi + span0*0.5); for(const h of history) applyLik(h.x,h.r); widenHi++; easyStreak=0; }
+      if(widenLo<4 && (hardStreak>=2 || nearLo)){ build(xLo - span0*0.6, xHi); for(const h of history) applyLik(h.x,h.r); widenLo++; hardStreak=0; boldProbe=-1; }
+      else if(widenHi<4 && (easyStreak>=2 || nearHi)){ build(xLo, xHi + span0*0.6); for(const h of history) applyLik(h.x,h.r); widenHi++; easyStreak=0; boldProbe=1; }
+      else if(hardStreak>=2){ boldProbe=-1; }    // grid maxed but still passing hard — keep probing the extreme
+      else if(easyStreak>=2){ boldProbe=1; }
     }
 
     // choose next stimulus: argmin expected marginal-α entropy. First 2 trials deliberately easy.
     function next(){
       if(t===0){ lastXi=nA-1-Math.round(nA*0.06); return ALPHA[lastXi]; }
       if(t===1){ lastXi=nA-1-Math.round(nA*0.18); return ALPHA[lastXi]; }
+      // BOLD BRACKET: threshold is off the grid — jump to the extreme (index 1 / nA-2, which still
+      // counts as an edge for the streak logic) to find where the listener crosses, then localise.
+      if(boldProbe<0){ boldProbe=0; lastXi=1; return ALPHA[1]; }
+      if(boldProbe>0){ boldProbe=0; lastXi=nA-2; return ALPHA[nA-2]; }
       let bestXi=0, bestH=Infinity;
       for(let xi=0; xi<nA; xi++){
         const lik=LIK[xi];
@@ -100,6 +108,9 @@
       // edge-placement streaks (uses the placement index from next(), before applyLik remaps)
       if(lastXi<=1 && correct) hardStreak++; else hardStreak=0;
       if(lastXi>=nA-2 && !correct) easyStreak++; else easyStreak=0;
+      // the listener finally FAILING at the hard edge (or PASSING at the easy edge) brackets the
+      // threshold — from here, stop the bold drive and let entropy-min localise between the edges.
+      if((lastXi<=2 && !correct) || (lastXi>=nA-3 && correct)){ bracketed=true; boldProbe=0; }
       applyLik(x, correct?1:0);
       t++;
       const hNow = entropy(marginalAlpha(P));
@@ -115,7 +126,7 @@
       let cum=0, lo=ALPHA[0], hi=ALPHA[nA-1], gotLo=false;
       for(let i=0;i<nA;i++){ cum+=m[i]; if(!gotLo && cum>=0.025){ lo=ALPHA[i]; gotLo=true; } if(cum>=0.975){ hi=ALPHA[i]; break; } }
       const ciW=Math.abs(hi-lo);
-      const conf=Math.max(0,Math.min(1, 1 - ciW/(span0*0.5)));   // conf vs the ORIGINAL span
+      const conf=Math.max(0,Math.min(1, 1 - ciW/(span*0.5)));   // vs the CURRENT (possibly widened) span, so a localised-but-widened reading isn't stuck at 0
       return {
         mean, sd, ci:[lo,hi], ciW, conf, trial:t, widened:widenLo+widenHi,
         usable: t>=cfg.nMin && (ciW<=cfg.ciUsable || dryRuns>=3),
