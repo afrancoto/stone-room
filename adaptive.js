@@ -124,7 +124,8 @@
         forceStop: t >= cfg.nMax + (widenLo+widenHi)*4    // extra trials to localise a widened grid
       };
     }
-    return { next, record, stats, bounds:()=>({lo:xLo, hi:xHi}) };
+    // raise the trial ceiling so a "Sharpen" request can keep adding trials past the initial cap
+    return { next, record, stats, bumpMax(d){ cfg.nMax += d; }, bounds:()=>({lo:xLo, hi:xHi}) };
   }
 
   // Build a Ψ-marginal estimator from a room's staircase params (ADAPT entry).

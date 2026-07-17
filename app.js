@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v18";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v19";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -96,7 +96,15 @@
     }
     function playOnce(start){let t=start; T.motif.forEach(s=>{note(semis(T.base*rvF,s),t); t+=T.len*1.02;}); return t;}
     function loop(){stopped=false; const step=()=>{if(stopped)return; const end=playOnce(ctx.currentTime+.02); timer=setTimeout(step,(end-ctx.currentTime+.32)*1000);}; step();}
-    function stop(){stopped=true; if(timer){clearTimeout(timer);timer=null;}}
+    function stop(){
+      stopped=true; if(timer){clearTimeout(timer);timer=null;}
+      // a looped motif schedules up to ~1s of oscillators ahead; clearing the timer only stops
+      // FUTURE notes, so ramp this voice's outputs to silence to kill whatever is already playing
+      // the instant the listener answers — otherwise the sound "doesn't stop" and bleeds into the next round.
+      try{ const now=ctx.currentTime;
+        [dry,send].forEach(gn=>{ gn.gain.cancelScheduledValues(now); gn.gain.setValueAtTime(gn.gain.value, now); gn.gain.linearRampToValueAtTime(0, now+0.04); });
+      }catch(e){}
+    }
     function setAz(az2){const {x,z}=pos(az2,dist); panner.positionX.value=x; panner.positionZ.value=z;}
     function glide(fromAz,toAz,dur){
       const t=ctx.currentTime, a=pos(fromAz,dist), b=pos(toAz,dist);
@@ -355,6 +363,17 @@
     g.gain.exponentialRampToValueAtTime(.0008,when+.35);
     g.connect(dry); g.connect(send);
     const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=440*rvF; o.connect(g); o.start(when); o.stop(when+.5);
+  }
+  // short HRTF-placed ping marking the true position after a spatial guess — a single ~0.4s tone
+  // instead of a full 2-3s motif, so the confirmation can't overlap the next round's stimulus.
+  function landingPing(az,dist,when){
+    const p=makePanner(az,dist);
+    const out=ctx.createGain(); out.gain.value=.5; p.connect(out); out.connect(master);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.6,when+.02); g.gain.exponentialRampToValueAtTime(.0006,when+.4);
+    g.connect(p);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=560; o.connect(g); o.start(when); o.stop(when+.45);
+    const g2=ctx.createGain(); g2.gain.setValueAtTime(0,when); g2.gain.linearRampToValueAtTime(.14,when+.02); g2.gain.exponentialRampToValueAtTime(.0004,when+.3);
+    g2.connect(p); const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=1120; o2.connect(g2); o2.start(when); o2.stop(when+.35);
   }
 
   // ---------- room table (behaviour) ----------
@@ -806,10 +825,12 @@
   // ---- result-screen actions: the room finishes on its own; you may Sharpen or Redo ----
   function showResultBtns(canSharpen){ $('contbtn').classList.toggle('on', !!canSharpen); $('lockbtn').classList.add('on'); }
   function hideCheckpointBtns(){ $('lockbtn').classList.remove('on'); $('contbtn').classList.remove('on'); }
+  // "Sharpen" grants more trials/rounds and keeps going — so a reading stuck at a low confidence
+  // at the cap can always be pushed further, instead of dead-ending with only Redo/Next.
   function sharpenRoom(){
     hideCheckpointBtns(); $('next').classList.remove('on'); $('learn').classList.remove('on');
-    if(st && st.done){ st.done=false; st.sharpen=true; guessLocked=false; stairTrial(); }
-    else if(sp && sp._finished){ sp._finished=false; sp.done=false; sp.sharpen=true; guessLocked=false; spatialRound(); }
+    if(st && st.done){ st.eng.z.bumpMax(6); st.eng.nMax+=6; st.done=false; st._shown=false; st.sharpen=true; guessLocked=false; stairTrial(); }
+    else if(sp && sp._finished){ sp.maxR=sp.round+3; sp._finished=false; sp.done=false; sp.sharpen=true; guessLocked=false; spatialRound(); }
   }
   function redoRoom(){
     const i=order[oi], tag=CH[i].tag;
@@ -925,7 +946,7 @@
     $('status').innerHTML=`Your reading: <span class="pts">${A.fmt(thr)}</span> · +${pct} <span style="color:var(--muted)">· ${conf}% confident</span>`;
     setPrecision(stt.conf, `${A.fmt(thr)}  ·  ${bandStr(A,loT,hiT)}`);
     showLearn(); appendTier(tierLine(st.tag,pct));
-    showResultBtns(!stt.solid && stt.trial < st.eng.nMax);
+    showResultBtns(!stt.solid);      // Sharpen stays available (it now extends the trial budget)
     advanceUI();
   }
   const pctFromThreshold=(A,thr)=>{
@@ -1178,7 +1199,7 @@
       lockField(az,rad);
     }
   }
-  function confirmNote(key,az,dist){ choiceTimers.push(setTimeout(()=>{ const tv=makeVoice(key,az,dist,0.6); tv.playOnce(ctx.currentTime+.05); },200)); }
+  function confirmNote(key,az,dist){ choiceTimers.push(setTimeout(()=>{ landingPing(az,dist,ctx.currentTime+.03); },180)); }
 
   // keyboard guess cursor for spatial rooms (accessibility): arrows move, Enter locks
   function showKbCursor(){
@@ -1285,7 +1306,7 @@
     $('status').innerHTML=`Your acuity: <span class="pts">${Math.round(a.med)}°</span> · +${pct} <span style="color:var(--muted)">· ${Math.round(a.conf*100)}% confident</span>`;
     setPrecision(a.conf, `${Math.round(a.med)}° · ${sp.round} rounds`);
     showLearn(); appendTier(tierLine(sp.c.tag,pct));
-    showResultBtns(sp.round < sp.maxR);
+    showResultBtns(a.conf < 0.9);    // offer Sharpen unless already highly confident (it extends rounds)
     advanceUI();
   }
 
