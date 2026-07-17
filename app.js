@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v13";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v14";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -328,6 +328,15 @@
     g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=880; o.connect(g); o.start(t); o.stop(t+.06);
   }
+  // pure sine at an absolute digital level (dBFS) — the audiogram detection stimulus
+  function detTone(freq, when, dur, dbfs){
+    const amp=Math.pow(10, dbfs/20);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when);
+    g.gain.linearRampToValueAtTime(amp,when+.03);
+    g.gain.setValueAtTime(amp,when+dur-.06); g.gain.linearRampToValueAtTime(0,when+dur);
+    g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=freq; o.connect(g); o.start(when); o.stop(when+dur+.05);
+  }
   // short neutral noise wash between the two intervals — a "palate cleanser" that resets
   // the ear (releases forward masking) so A and B are judged fresh. Optional.
   function interNoise(when, dur){
@@ -526,7 +535,8 @@
   }
 
   const $=id=>document.getElementById(id);
-  const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare')};
+  const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve')};
+  let pendingCurve=false;
   const show=n=>{Object.values(scr).forEach(s=>s&&s.classList.remove('on')); scr[n].classList.add('on'); window.scrollTo(0,0);};
   const jit=(v,j)=>v+(Math.random()*2-1)*j;
   const chap=()=>CH[order[oi]];
@@ -624,7 +634,13 @@
     try{ noiseReset = localStorage.getItem('stoneroom_noise')==='1'; }catch(e){}
     $('optnoise').checked = noiseReset;
     $('optnoise').addEventListener('change',e=>{ noiseReset=e.target.checked; try{ localStorage.setItem('stoneroom_noise', noiseReset?'1':'0'); }catch(_){} });
-    $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName()); startGame(); });
+    $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName()); if(pendingCurve){ pendingCurve=false; startCurve(); } else startGame(); });
+    // audiogram entry: name the pair first (from intro), or reuse the current one (from end)
+    $('gocurve').addEventListener('click',()=>{ initAudio(); ctx.resume(); pendingCurve=true; buildDevice(); show('device'); });
+    $('endcurve').addEventListener('click',()=>{ startCurve(); });
+    $('cvexit').addEventListener('click',()=>{ stopCurveAudio(); show(order.length?'end':'intro'); });
+    $('cvredo').addEventListener('click',()=>{ stopCurveAudio(); startCurve(); });
+    $('cvsave').addEventListener('click',saveCurveCard);
     $('again').addEventListener('click',startGame);
     $('reselect').addEventListener('click',()=>{buildSelect(); show('select');});
     $('endcompare').addEventListener('click',()=>{buildCompare(); show('compare');});
@@ -936,6 +952,88 @@
     showResultBtns(false);   // Redo only (no "sharpen" for a counting task)
     advanceUI();
   }
+  // ---------- audiogram: a personalised Hz × dB curve (your ears + these headphones) ----------
+  // For each frequency we find the quietest audible level with a 2AFC "which interval held the
+  // tone" track (the proven Ψ-marginal engine, in dBFS). Absolute level is uncalibrated, but the
+  // curve SHAPE — relative to your own 1 kHz — is a real response of ears+headphone together.
+  const AG_FREQS=[125,250,500,1000,2000,4000,8000,12000,16000];
+  const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, nMin:6, nMax:12, fmt:v=>Math.round(v)+' dBFS'};
+  let ag=null;
+
+  function startCurve(){
+    initAudio(); ctx.resume(); stopVoices(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
+    if(!device) device=suggestName();
+    ag={fi:0, thr:{}, phase:'cal', calTimer:null};
+    $('cvsave').style.display='none';
+    show('curve'); agCal();
+  }
+  async function saveCurveCard(){
+    const svg=$('cvcard').querySelector('svg'); if(!svg) return;
+    try{
+      const blob=await window.SR_FP.toPNG(svg,3);
+      const file=new File([blob], `stone-room-curve-${device.replace(/[^\w-]+/g,'_')}.png`, {type:'image/png'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:CONFIG.SHARE_TITLE}); }
+      else{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name; document.body.appendChild(a); a.click(); a.remove(); }
+    }catch(e){ flashSaved('could not save curve'); }
+  }
+  function stopCurveAudio(){ if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
+  function agCal(){
+    $('cvTitle').textContent='Set your volume';
+    $('cvNote').innerHTML='A steady <b>1 kHz</b> tone will play. Turn your device volume until it’s clearly but comfortably present — then leave it there. That’s your reference for the whole test.';
+    $('cvprog').textContent=''; $('cvwrap').style.display='none';
+    const box=$('cvChoices'); box.innerHTML='';
+    const play=document.createElement('button'); play.className='btn'; play.textContent='▶ Play 1 kHz';
+    const go=document.createElement('button'); go.className='btn ghost'; go.textContent='Volume set — begin'; go.style.display='none'; go.style.marginLeft='8px';
+    play.onclick=()=>{ stopCurveAudio(); const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18); ag.calTimer=setTimeout(step,720); }; step(); play.textContent='↺ Again'; go.style.display='inline-block'; };
+    go.onclick=()=>{ stopCurveAudio(); ag.phase='run'; ag.fi=0; agFreq(); };
+    box.appendChild(play); box.appendChild(go);
+  }
+  function agFreq(){
+    const f=AG_FREQS[ag.fi];
+    ag.eng=window.SR_PSI.forRoom(AG_ROOM); ag.trial=0;
+    $('cvTitle').textContent = f>=1000?(f/1000)+' kHz':f+' Hz';
+    $('cvprog').textContent = `Tone ${ag.fi+1} of ${AG_FREQS.length}`;
+    agTrial();
+  }
+  function agTrial(){
+    ag.curX=ag.eng.z.next(); ag.curLevel=ag.eng.levelOf(ag.curX); ag.side=Math.random()<.5?0:1;
+    const f=AG_FREQS[ag.fi];
+    const box=$('cvChoices'); box.innerHTML='';
+    const mk=(lab,i)=>{const b=document.createElement('button');b.className='choice';b.innerHTML=lab+'<small>interval</small>';b.onclick=()=>agPick(i);box.appendChild(b);return b;};
+    const btns=[mk('1st',0),mk('2nd',1)];
+    const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.replay)ag.replay(); }; box.appendChild(rep);
+    const setEnabled=on=>btns.forEach(b=>b.disabled=!on);
+    const play=()=>{
+      clearTimers(); setEnabled(false); $('cvNote').textContent='Which interval held the faint tone — 1st or 2nd?';
+      const dur=.7, gap=.5, t=ctx.currentTime+.25;
+      detTone(f, t+ag.side*(dur+gap)+.06, dur-.12, ag.curLevel);
+      for(let i=0;i<2;i++) choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); btns[i].classList.add('playing');},(0.25+i*(dur+gap))*1000));
+      choiceTimers.push(setTimeout(()=>{btns.forEach(b=>b.classList.remove('playing')); setEnabled(true);},(0.25+2*dur+gap)*1000));
+    };
+    ag.replay=play; ag._setEnabled=setEnabled; ag._btns=btns; play();
+  }
+  function agPick(i){
+    if(!ag||ag.phase!=='run')return;
+    ag._setEnabled(false);
+    const hit=i===ag.side; ag.eng.z.record(ag.curX,hit); ag.trial++;
+    const st=ag.eng.z.stats();
+    if(st.usable||st.forceStop){ ag.thr[AG_FREQS[ag.fi]]=ag.eng.levelOf(st.mean); ag.fi++;
+      if(ag.fi>=AG_FREQS.length) finishCurve(); else choiceTimers.push(setTimeout(agFreq,320)); return; }
+    choiceTimers.push(setTimeout(agTrial,340));
+  }
+  async function finishCurve(){
+    ag.phase='done'; clearTimers();
+    const ref = ag.thr[1000]!=null ? ag.thr[1000] : -40;
+    const curve = AG_FREQS.map(f=>({ f, rel: Math.round((ref - ag.thr[f])*10)/10 }));  // dB re 1 kHz; <0 = rolled off
+    $('cvTitle').textContent='Your curve'; $('cvprog').textContent=''; $('cvChoices').innerHTML='';
+    $('cvNote').innerHTML='How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or by your own hearing up high). Shape is real; the absolute level isn’t calibrated.';
+    $('cvwrap').style.display='block'; $('cvsave').style.display='inline-block';
+    window.SR_FP.renderCurve($('cvcard'), { device, curve });
+    // persist
+    await loadDB(); const dev = (hasDevice(device) && db.devices[device]) || {rooms:{}};
+    dev.curve = curve; dev.date=new Date().toISOString(); db.devices[device]=dev; await saveDB();
+  }
+
   // ---------- adaptive spatial ----------
   // force reflow on the wrapping HTML div (offsetWidth is undefined on <svg> in Firefox)
   function listen(){$('fieldwrap').classList.remove('listening'); void $('fieldwrap').offsetWidth; $('fieldwrap').classList.add('listening');}

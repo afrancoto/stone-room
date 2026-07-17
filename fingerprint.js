@@ -181,6 +181,39 @@ ${g}${mark}
     });
   }
 
+  // ---- audiogram: Hz × dB relative-response line chart ----
+  function renderCurve(el, data){
+    const W=372, H=232, L=36, R=16, T=40, B=32;
+    const curve=(data.curve||[]).filter(p=>p&&isFinite(p.rel));
+    const fmin=125, fmax=16000, yMax=6, yMin=-54;
+    const x=f=>L + (Math.log10(Math.max(fmin,Math.min(fmax,f))/fmin)/Math.log10(fmax/fmin))*(W-L-R);
+    const y=v=>T + (yMax-Math.max(yMin,Math.min(yMax,v)))/(yMax-yMin)*(H-T-B);
+    let g='';
+    g+=`<text x="${L}" y="20" fill="${COL.muted}" font-size="9.5" letter-spacing="2" font-family="${FONT}">HEARING + HEADPHONE CURVE</text>`;
+    g+=`<text x="${L}" y="34" fill="${COL.gold}" font-size="14" font-weight="600" font-family="${FONT}">${esc(data.device||'')}</text>`;
+    // dB grid + labels
+    [0,-20,-40].forEach(v=>{
+      g+=`<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="${COL.line}" opacity="${v===0?0.9:0.4}"${v===0?' stroke-dasharray="4 4"':''}/>`;
+      g+=`<text x="${L-6}" y="${y(v)+3}" fill="${COL.dim}" font-size="9" text-anchor="end" font-family="${FONT}">${v}</text>`;
+    });
+    g+=`<text x="${L}" y="${T-6}" fill="${COL.muted}" font-size="9" font-family="${FONT}">dB vs your 1 kHz →</text>`;
+    // freq ticks
+    [[125,'125'],[500,'500'],[1000,'1k'],[2000,'2k'],[4000,'4k'],[8000,'8k'],[16000,'16k']].forEach(([f,l],i,arr)=>{
+      g+=`<text x="${x(f)}" y="${H-B+18}" fill="${COL.dim}" font-size="8.5" text-anchor="${i===0?'start':i===arr.length-1?'end':'middle'}" font-family="${FONT}">${l}</text>`;
+    });
+    if(curve.length){
+      const pts=curve.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ');
+      g+=`<polyline points="${pts}" fill="none" stroke="${COL.sage}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      curve.forEach(p=>{ const c=p.rel>=-6?COL.good:p.rel>=-20?COL.gold:COL.ember;
+        g+=`<circle cx="${x(p.f).toFixed(1)}" cy="${y(p.rel).toFixed(1)}" r="3.4" fill="${c}" stroke="${COL.bg}" stroke-width="1"/>`; });
+    }
+    g+=`<text x="${W-R}" y="${H-4}" fill="${COL.dim}" font-size="8.5" text-anchor="end" font-family="${FONT}">flat = even response · dips = rolled off</text>`;
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="14" fill="${COL.bg}" stroke="${COL.line}"/>${g}</svg>`;
+    el.innerHTML=svg;
+    return el.firstChild;
+  }
+
   // watermarked sample for the landing demo
   const SAMPLE={
     device:'Sample pair', sample:true, score:71, date:'',
@@ -194,5 +227,5 @@ ${g}${mark}
     }
   };
 
-  window.SR_FP={ render, toPNG, SAMPLE };
+  window.SR_FP={ render, renderCurve, toPNG, SAMPLE };
 })();

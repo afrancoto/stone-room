@@ -43,6 +43,8 @@
       <button class="linkbtn" id="aboutToggle" aria-expanded="false">What is this?</button>
       <span class="sep">·</span>
       <button class="linkbtn" id="demoToggle" aria-expanded="false">What you’ll get</button>
+      <span class="sep">·</span>
+      <button class="linkbtn" id="gocurve">Hearing curve</button>
       <span class="sep" id="cmpsep" style="display:none">·</span>
       <button class="linkbtn" id="gocompare" style="display:none">Compare pairs</button>
     </div>
@@ -195,6 +197,7 @@
     </div>
     <div class="row">
       <button class="btn ghost" id="reselect">Rooms</button>
+      <button class="btn ghost" id="endcurve">Curve</button>
       <button class="btn ghost" id="endcompare">Compare</button>
       <button class="btn" id="again">Again</button>
     </div>
@@ -211,6 +214,21 @@
     <div class="row">
       <button class="btn ghost" id="cmpback">Back</button>
       <button class="btn" id="cmpnew">New tour</button>
+    </div>
+  </section>
+
+  <!-- audiogram / hearing curve -->
+  <section id="curve" class="screen">
+    <div class="eyebrow">Hearing + headphone curve</div>
+    <div class="chaptitle" id="cvTitle">Set your volume</div>
+    <div class="cvprog" id="cvprog"></div>
+    <p class="notice" id="cvNote"></p>
+    <div class="fpwrap" id="cvwrap" style="display:none"><div class="fpbox" id="cvcard"></div></div>
+    <div class="choices on" id="cvChoices"></div>
+    <div class="row">
+      <button class="btn ghost" id="cvexit">Done</button>
+      <button class="btn ghost" id="cvredo">Redo</button>
+      <button class="btn" id="cvsave">Save curve</button>
     </div>
   </section>
 

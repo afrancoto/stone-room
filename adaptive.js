@@ -145,9 +145,11 @@
       ciUsable: span*0.28, ciSolid: span*0.16
     };
     const eng = makePsi(cfg);
-    // clamp only to a generous absolute range (4× past each anchor) so an auto-widened grid
-    // can report a threshold beyond the original floor/ceil — that's the whole point.
-    const loB = Math.min(P.floor, P.ceil)/4, hiB = Math.max(P.floor, P.ceil)*4;
+    // clamp to a generous range that extends 1.5× the span past each end (sign-agnostic — works
+    // for Hz, dB, and negative dBFS) so an auto-widened grid can report a threshold beyond the
+    // original floor/ceil. That's the whole point of widening.
+    const rLo=Math.min(P.floor,P.ceil), rHi=Math.max(P.floor,P.ceil), rSpan=rHi-rLo;
+    const loB=rLo-1.5*rSpan, hiB=rHi+1.5*rSpan;
     return {
       z: eng, dir, span, nMin: cfg.nMin, nMax: cfg.nMax,
       levelOf(x){ return Math.max(loB, Math.min(hiB, inv(dir*x))); }
