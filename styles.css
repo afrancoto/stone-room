@@ -300,19 +300,31 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
   .status{margin:3px 0 1px}
 }
 
-/* phone held sideways: the tall column would clip, so compress rhythm and cap the field by height */
+/* phone held sideways: vertical room is scarce, so compress rhythm and cap the field by height */
 @media (orientation:landscape) and (max-height:560px){
   .screen.on{justify-content:flex-start}
-  .app{padding-top:calc(10px + var(--safe-t)); padding-bottom:calc(10px + var(--safe-b))}
+  .app{padding-top:calc(6px + var(--safe-t)); padding-bottom:calc(6px + var(--safe-b))}
   h1{font-size:clamp(24px,7vh,36px)}
   .herofield{width:min(30vw,150px); margin-bottom:2px}
   #intro .btn{margin-top:12px}
-  .field-wrap{width:auto; height:min(48vh,220px)}
-  .field-wrap.circle{width:auto; height:min(48vh,220px)}
-  #game .g-mid{justify-content:flex-start}
-  #game .g-top{padding-top:12px}
-  .controls{margin-top:6px}
-  .choices{margin:8px auto 4px}
+  /* game: let the three bands take their natural height (no squish) so the field can never
+     overlap the controls; compress the header hard and cap the field so the whole stack —
+     header + field + status + controls — fits inside ~360px without scrolling. */
+  #game .g-mid{flex:0 0 auto; justify-content:flex-start}
+  #game .g-top{padding-top:6px}
+  #game .claim{display:none}            /* decorative quote — drop it to reclaim height sideways */
+  #game .hint{display:none}             /* the notice already carries the action in landscape */
+  #game .chaptitle{font-size:19px; margin:1px 0}
+  #game .notice{font-size:11.5px; min-height:0; margin-bottom:2px}
+  .field-wrap{width:auto; height:min(32vh,108px)}
+  .field-wrap.circle{width:auto; height:min(32vh,108px)}
+  .field-wrap svg.field{overflow:hidden}  /* clip the expanding "listening" ripple to the box */
+  .status{margin:2px 0}
+  .precision{margin-top:2px}
+  .choices{margin:5px auto 3px}
+  .choice{padding:10px 15px; font-size:18px}
+  .controls{margin-top:4px}
+  .chapdots{margin-top:3px}
 }
 
 /* roomy desktop / tablet: nudge the base type up a touch for comfortable reading */
