@@ -204,11 +204,23 @@ ${g}${mark}
     [[125,'125'],[500,'500'],[1000,'1k'],[2000,'2k'],[4000,'4k'],[8000,'8k'],[16000,'16k']].forEach(([f,l],i,arr)=>{
       g+=`<text x="${x(f)}" y="${H-B+18}" fill="${COL.dim}" font-size="8.5" text-anchor="${i===0?'start':i===arr.length-1?'end':'middle'}" font-family="${FONT}">${l}</text>`;
     });
-    if(curve.length){
-      const pts=curve.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ');
-      g+=`<polyline points="${pts}" fill="none" stroke="${COL.sage}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-      curve.forEach(p=>{ const c=p.rel>=-6?COL.good:p.rel>=-20?COL.gold:COL.ember;
-        g+=`<circle cx="${x(p.f).toFixed(1)}" cy="${y(p.rel).toFixed(1)}" r="3.4" fill="${c}" stroke="${COL.bg}" stroke-width="1"/>`; });
+    const drawSeries=(c,stroke,byVal)=>{
+      if(!c.length) return '';
+      let s=`<polyline points="${c.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      c.forEach(p=>{ const col=byVal?(p.rel>=-6?COL.good:p.rel>=-20?COL.gold:COL.ember):stroke;
+        s+=`<circle cx="${x(p.f).toFixed(1)}" cy="${y(p.rel).toFixed(1)}" r="3.4" fill="${col}" stroke="${COL.bg}" stroke-width="1"/>`; });
+      return s;
+    };
+    if(data.ears){
+      const Rc=(data.ears.R||[]).filter(p=>p&&isFinite(p.rel)), Lc=(data.ears.L||[]).filter(p=>p&&isFinite(p.rel));
+      const rmap={}; Rc.forEach(p=>{ rmap[p.f]=p.rel; });
+      Lc.forEach(p=>{ if(rmap[p.f]!=null && Math.abs(rmap[p.f]-p.rel)>=12){   // shade where the ears diverge
+        g+=`<line x1="${x(p.f).toFixed(1)}" y1="${y(rmap[p.f]).toFixed(1)}" x2="${x(p.f).toFixed(1)}" y2="${y(p.rel).toFixed(1)}" stroke="${COL.ember}" stroke-width="1" opacity="0.35"/>`; } });
+      g+=drawSeries(Rc, COL.sage, false)+drawSeries(Lc, COL.gold, false);
+      g+=`<circle cx="${W-R-70}" cy="18" r="3.2" fill="${COL.sage}"/><text x="${W-R-62}" y="21" fill="${COL.muted}" font-size="9" font-family="${FONT}">Right</text>`;
+      g+=`<circle cx="${W-R-34}" cy="18" r="3.2" fill="${COL.gold}"/><text x="${W-R-26}" y="21" fill="${COL.muted}" font-size="9" font-family="${FONT}">Left</text>`;
+    } else {
+      g+=drawSeries(curve, COL.sage, true);
     }
     g+=`<text x="${W-R}" y="${H-4}" fill="${COL.dim}" font-size="8.5" text-anchor="end" font-family="${FONT}">flat = even response · dips = rolled off</text>`;
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">

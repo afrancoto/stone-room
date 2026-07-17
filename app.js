@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v26";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v27";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -356,13 +356,16 @@
     g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=880; o.connect(g); o.start(t); o.stop(t+.06);
   }
-  // pure sine at an absolute digital level (dBFS) — the audiogram detection stimulus
-  function detTone(freq, when, dur, dbfs){
+  // pure sine at an absolute digital level (dBFS) — the audiogram detection stimulus. pan:
+  // -1 = left ear only, +1 = right ear only (equal-power StereoPanner → the off-ear gets zero),
+  // 0/undefined = both. Per-ear isolation is what lets the test see a left/right difference.
+  function detTone(freq, when, dur, dbfs, pan){
     const amp=Math.pow(10, dbfs/20);
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when);
     g.gain.linearRampToValueAtTime(amp,when+.03);
     g.gain.setValueAtTime(amp,when+dur-.06); g.gain.linearRampToValueAtTime(0,when+dur);
-    g.connect(master);
+    if(pan){ const sp=ctx.createStereoPanner(); sp.pan.value=pan; g.connect(sp); sp.connect(master); }
+    else g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=freq; o.connect(g); o.start(when); o.stop(when+dur+.05);
   }
   // short neutral noise wash between the two intervals — a "palate cleanser" that resets
@@ -1263,6 +1266,9 @@
   // answerable state instead of the confusing "one interval is always empty" of a 2-interval task.
   // Absolute level uncalibrated; the curve SHAPE relative to your own 1 kHz is real (ears+headphone).
   const AG_FREQS=[125,250,500,1000,2000,4000,8000,12000,16000];
+  // per-ear plan walks OUTWARD from 1 kHz so every new frequency is seeded by a measured neighbour
+  const AG_PLAN=[1000,2000,4000,8000,12000,16000,500,250,125];
+  const EAR_PAN={R:1, L:-1, B:0}, EAR_NAME={R:'Right ear', L:'Left ear', B:'Both ears'};
   const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03, nMin:6, nMax:12, fmt:v=>Math.round(v)+' dBFS'};
   let ag=null;
 
@@ -1278,7 +1284,7 @@
     initAudio(); ctx.resume(); stopVoices(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
     if(!device) device=suggestName();
     if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
-    ag={fi:0, thr:{}, phase:'cal', calTimer:null};
+    ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}};
     $('cvsave').style.display='none';
     show('curve'); agCal();
   }
@@ -1299,17 +1305,41 @@
     const box=$('cvChoices'); box.innerHTML='';
     const play=document.createElement('button'); play.className='btn'; play.textContent='▶ Play 1 kHz';
     const go=document.createElement('button'); go.className='btn ghost'; go.textContent='Volume set — begin'; go.style.display='none'; go.style.marginLeft='8px';
-    play.onclick=()=>{ stopCurveAudio(); const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18); ag.calTimer=setTimeout(step,720); }; step(); play.textContent='↺ Again'; go.style.display='inline-block'; };
-    go.onclick=()=>{ stopCurveAudio(); ag.phase='run'; ag.fi=0; agFreq(); };
+    play.onclick=()=>{ stopCurveAudio(); const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18, 0); ag.calTimer=setTimeout(step,720); }; step(); play.textContent='↺ Again'; go.style.display='inline-block'; };
+    go.onclick=()=>{ stopCurveAudio(); agMode(); };
     box.appendChild(play); box.appendChild(go);
   }
+  // per-ear (the only way to see a left/right difference) vs both-ears quick
+  function agMode(){
+    ag.phase='mode'; $('cvwrap').style.display='none';
+    $('cvTitle').textContent='How to test'; $('cvprog').textContent='';
+    $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. Both-ears is quicker.';
+    const box=$('cvChoices'); box.innerHTML='';
+    const per=document.createElement('button'); per.className='choice'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
+    const both=document.createElement('button'); both.className='choice'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agStartRun('both');
+    box.appendChild(per); box.appendChild(both);
+  }
+  function agStartRun(mode){
+    ag.mode=mode; ag.ears = mode==='perear'?['R','L']:['B']; ag.ei=0;
+    ag.pts={R:{},L:{},B:{}}; ag.faTot={R:0,L:0,B:0}; ag.phase='run';
+    $('cvwrap').style.display='block'; agLiveDraw();       // reveal the curve canvas; it fills in as we go
+    agEar();
+  }
+  function agEar(){
+    ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.fi=0; ag.prevThr=null;
+    ag.plan = ag.mode==='perear' ? AG_PLAN.slice() : AG_FREQS.slice();
+    agFreq();
+  }
   function agFreq(){
-    const f=AG_FREQS[ag.fi];
-    ag.eng=window.SR_PSI.forRoom(AG_ROOM); ag.trial=0;
+    const f=ag.plan[ag.fi];
+    // neighbour-seed the prior from the previous locked threshold of THIS ear → fewer trials
+    const seed = ag.prevThr!=null ? {priorSeed:ag.prevThr, priorSDscale:0.5, nMin:4} : {};
+    ag.eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, seed)); ag.trial=0;
     ag.catchCount=0; ag.fa=0; ag.faShown=0;
     ag.catchCap=Math.max(2, Math.round((ag.eng.nMax||12)*0.35));   // ≤ ~4 silent trials per frequency
-    $('cvTitle').textContent = f>=1000?(f/1000)+' kHz':f+' Hz';
-    $('cvprog').textContent = `Tone ${ag.fi+1} of ${AG_FREQS.length}`;
+    const earLbl = ag.mode==='perear' ? EAR_NAME[ag.curEar]+' · ' : '';
+    $('cvTitle').textContent = earLbl + (f>=1000?(f/1000)+' kHz':f+' Hz');
+    $('cvprog').textContent = `${EAR_NAME[ag.curEar]} · tone ${ag.fi+1} of ${ag.plan.length}`;
     agTrial();
   }
   function agTrial(){
@@ -1318,7 +1348,7 @@
     // so "I heard nothing" is a normal, expected answer and false alarms can be measured.
     ag.catch = ag.trial>0 && (ag.catchCount||0)<ag.catchCap && Math.random()<0.2;
     if(ag.catch) ag.catchCount=(ag.catchCount||0)+1;
-    const f=AG_FREQS[ag.fi];
+    const f=ag.plan[ag.fi];
     const box=$('cvChoices'); box.innerHTML='';
     const hear=document.createElement('button'); hear.className='choice'; hear.innerHTML='I hear it<small>tap the moment you do</small>'; hear.onclick=()=>agAnswer('hear');
     const none=document.createElement('button'); none.className='choice'; none.innerHTML='Nothing<small>silence this time</small>'; none.onclick=()=>agAnswer('none');
@@ -1329,7 +1359,7 @@
       if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // constant reference each trial
       $('cvNote').textContent='Listen…';
       const lead=.18, win=1.30, t0=ctx.currentTime+lead;
-      if(!ag.catch) detTone(f, t0, win-.10, ag.curLevel);             // real trial: tone fills the window; catch: silence
+      if(!ag.catch) detTone(f, t0, win-.10, ag.curLevel, ag.pan);     // panned to the current ear; catch: silence
       // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
       choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ hear.disabled=false; hear.classList.add('playing'); $('cvNote').innerHTML='Now — tap <b>I hear it</b> the instant you notice it.'; } }, lead*1000));
       // "Nothing" answerable only AFTER the window has fully passed
@@ -1343,8 +1373,8 @@
     [...$('cvChoices').querySelectorAll('.choice')].forEach(b=>b.disabled=true);
     const heard = ans==='hear';
     if(ag.catch){
-      // catch trial: EXCLUDED from the threshold estimate — only tallies false alarms and, capped, nudges
-      if(heard){ ag.fa=(ag.fa||0)+1;
+      // catch trial: EXCLUDED from the estimate — tallies false alarms per ear (gates the warning) and nudges
+      if(heard){ ag.fa=(ag.fa||0)+1; ag.faTot[ag.curEar]=(ag.faTot[ag.curEar]||0)+1;
         if((ag.faShown||0)<2){ ag.faShown=(ag.faShown||0)+1; $('cvNote').innerHTML='That one was <b>silent</b> — listen carefully for the tone.'; }
         else $('cvNote').textContent='That one was silent.';
       } else $('cvNote').textContent='Right — silence.';
@@ -1353,20 +1383,65 @@
     }
     ag.eng.z.record(ag.curX, heard); ag.trial++;
     const st=ag.eng.z.stats();
-    if(st.usable||st.forceStop){ ag.thr[AG_FREQS[ag.fi]]=ag.eng.levelOf(st.mean); ag.fi++;
-      if(ag.fi>=AG_FREQS.length) finishCurve(); else choiceTimers.push(setTimeout(agFreq,320)); return; }
+    if(st.usable||st.forceStop){
+      const f=ag.plan[ag.fi];
+      ag.pts[ag.curEar][f]=ag.eng.levelOf(st.mean); ag.prevThr=ag.pts[ag.curEar][f];
+      agLiveDraw();                                        // redraw the curve as each point locks
+      ag.fi++;
+      if(ag.fi>=ag.plan.length){                           // this ear done → next ear or finish
+        ag.ei++;
+        if(ag.ei>=ag.ears.length){ finishCurve(); return; }
+        choiceTimers.push(setTimeout(agEar,650)); return;
+      }
+      choiceTimers.push(setTimeout(agFreq,320)); return;
+    }
     choiceTimers.push(setTimeout(agTrial,340));
+  }
+  // build one ear's curve, dB re that ear's OWN 1 kHz (so the equal-power pan offset cancels)
+  function agBuildCurve(ear){
+    const pts=ag.pts[ear]; const fs=Object.keys(pts).map(Number).sort((a,b)=>a-b);
+    if(!fs.length) return [];
+    const ref = pts[1000]!=null ? pts[1000] : pts[fs[0]];
+    return fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10 }));
+  }
+  // L−R asymmetry in the high band (≥2 kHz, where a sensorineural loss shows). +ve = left worse.
+  function agAsym(R,L){
+    const rmap={}; R.forEach(p=>{ rmap[p.f]=p.rel; });
+    let max=0, atF=0;
+    L.forEach(p=>{ if(p.f>=2000 && rmap[p.f]!=null){ const d=rmap[p.f]-p.rel; if(Math.abs(d)>Math.abs(max)){ max=d; atF=p.f; } } });
+    return {max, atF};
+  }
+  function agLiveDraw(){
+    if(!ag) return;
+    if(ag.mode==='perear') window.SR_FP.renderCurve($('cvcard'), { device, ears:{R:agBuildCurve('R'), L:agBuildCurve('L')} });
+    else window.SR_FP.renderCurve($('cvcard'), { device, curve:agBuildCurve('B') });
   }
   async function finishCurve(){
     ag.phase='done'; clearTimers();
-    const ref = ag.thr[1000]!=null ? ag.thr[1000] : -40;
-    const curve = AG_FREQS.map(f=>({ f, rel: Math.round((ref - ag.thr[f])*10)/10 }));  // dB re 1 kHz; <0 = rolled off
     $('cvTitle').textContent='Your curve'; $('cvprog').textContent=''; $('cvChoices').innerHTML='';
-    $('cvNote').innerHTML='How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or by your own hearing up high). Shape is real; the absolute level isn’t calibrated.';
     $('cvwrap').style.display='block'; $('cvsave').style.display='inline-block';
-    window.SR_FP.renderCurve($('cvcard'), { device, curve });
-    // persist
-    await loadDB(); upsertCurve(device, curve, 'yesno'); await saveDB();
+    if(ag.mode==='perear'){
+      const R=agBuildCurve('R'), L=agBuildCurve('L'), asym=agAsym(R,L);
+      const faHi=(ag.faTot.R+ag.faTot.L)>=4;                // click-happy on silent trials → don't over-warn
+      window.SR_FP.renderCurve($('cvcard'), { device, ears:{R,L} });
+      // REVIEW: medical framing — screening only, never a diagnosis, never names a condition.
+      let note;
+      if(faHi){
+        note='A few silent rounds got tapped as “heard”, so the left/right read isn’t reliable this time — worth a calm retry in a quiet room. Shape is relative; the absolute level isn’t calibrated.';
+      } else if(Math.abs(asym.max)>=15){
+        const worse=asym.max>0?'left':'right', kHz=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
+        note=`Your <b>${worse} ear</b> needed noticeably more level than the other above ~${kHz}. A left–right difference is the one thing a home test can legitimately flag — it’s worth showing to an audiologist. This isn’t a diagnosis, just a listening pattern on these headphones.`;
+      } else {
+        note='Your two ears track closely. Any shared roll-off up top is most likely these headphones (or the connection), not your ears. Shape is relative; the absolute level isn’t calibrated.';
+      }
+      $('cvNote').innerHTML=note;
+      await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym}, 'yesno-perear'); await saveDB();
+    } else {
+      const curve=agBuildCurve('B');
+      window.SR_FP.renderCurve($('cvcard'), { device, curve });
+      $('cvNote').innerHTML='How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.';
+      await loadDB(); upsertCurve(device, curve, 'yesno'); await saveDB();
+    }
   }
 
   // ---------- adaptive spatial ----------

@@ -150,9 +150,13 @@
     const xa = xf(P.floor), xb = xf(P.ceil);
     const xLo = Math.min(xa, xb), xHi = Math.max(xa, xb), span = xHi - xLo;
     const anchMid = (xf(P.anchors[0]) + xf(P.anchors[1])) / 2;
+    // seeding (audiogram): a neighbouring frequency's threshold gives a tight informed prior,
+    // so start there with a narrower SD and fewer required trials. priorSeed is in LEVEL units.
+    const pMean = (P.priorSeed!=null) ? xf(P.priorSeed) : anchMid;
+    const pSD = span * 0.55 * (P.priorSDscale || 1);
     const cfg = {
       nA: 50, xLo: xLo - span*0.05, xHi: xHi + span*0.05,
-      slope: 7, priorMean: anchMid, priorSD: span*0.55,
+      slope: 7, priorMean: pMean, priorSD: pSD,
       nMin: P.nMin || 8, nMax: P.nMax || 16, gamma: P.gamma,   // undefined for 2AFC rooms → makePsi default 0.5
       ciUsable: span*0.28, ciSolid: span*0.16
     };
