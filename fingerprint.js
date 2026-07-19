@@ -76,7 +76,7 @@
     if(showSpectrum) y += 78;
     const cardTop = 8;
     for(const s of sections){ y += 26 + s.rows.length*24; }
-    if(!compact) y += 22;                               // footer note
+    if(!compact) y += 34;                               // footer note (two lines)
     const H = y + 12;
 
     // ================= draw =================
@@ -84,7 +84,9 @@
     // header
     g+=`<text x="${PAD}" y="24" fill="${COL.muted}" font-size="9.5" letter-spacing="2.4" font-family="${FONT}">STONE ROOM · FINGERPRINT</text>`;
     if(data.date) g+=`<text x="${W-PAD}" y="24" fill="${COL.dim}" font-size="9.5" text-anchor="end" font-family="${FONT}">${esc(data.date)}</text>`;
-    g+=`<text x="${PAD}" y="43" fill="${COL.gold}" font-size="16" font-weight="600" font-family="${FONT}">${esc(data.device||'')}</text>`;
+    // the fingerprint's subject is the LISTENER; the pair is the co-star — "YOU + HD 600"
+    // kills the gear-grade misreading while keeping the share-worthy identity
+    g+=`<text x="${PAD}" y="43" fill="${COL.stone}" font-size="16" font-weight="600" font-family="${FONT}">YOU<tspan fill="${COL.muted}" font-weight="400"> + </tspan><tspan fill="${COL.gold}">${esc(data.device||'')}</tspan></text>`;
     let cy=52;
 
     // hero score
@@ -148,7 +150,8 @@
     // footer note
     if(!compact){
       g+=`<line x1="${PAD}" y1="${cy}" x2="${W-PAD}" y2="${cy}" stroke="${COL.line}" opacity="0.5"/>`;
-      g+=`<text x="${PAD}" y="${cy+15}" fill="${COL.dim}" font-size="9" font-family="${FONT}">Longer bar = better. Measured through your own ears + gear.</text>`;
+      g+=`<text x="${PAD}" y="${cy+15}" fill="${COL.dim}" font-size="9" font-family="${FONT}">Longer bar = better. One listener + one pair, measured together.</text>`;
+      g+=`<text x="${PAD}" y="${cy+27}" fill="${COL.dim}" font-size="9" font-family="${FONT}">Spatial readings lean on two-ear hearing.</text>`;
     }
 
     let mark='';

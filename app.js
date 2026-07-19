@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v36";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v37";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1197,6 +1197,7 @@
     const hit=i===answer;
     [...$('choices').children].forEach((b,k)=>{ if(k===answer) b.classList.add('correct'); else if(k===i) b.classList.add('wrong'); });
     st.eng.z.record(st.curX, hit);
+    (st.log=st.log||[]).push([Math.round(st.eng.levelOf(st.curX)*1000)/1000, hit?1:0]);   // raw per-trial log — exported for anyone who wants to check the math
     st.trial++;
     const stt=st.eng.z.stats();
     const cont=contentOf(st.tag);
@@ -1220,7 +1221,7 @@
     const pct=pctFromThreshold(A,thr);
     const b1=st.eng.levelOf(stt.mean-1.96*stt.sd), b2=st.eng.levelOf(stt.mean+1.96*stt.sd);
     const loT=Math.min(b1,b2), hiT=Math.max(b1,b2);
-    recordRoom(pct, A.fmt(thr), {val:thr, lo:loT, hi:hiT});
+    recordRoom(pct, A.fmt(thr), {val:thr, lo:loT, hi:hiT, trials:st.log});
     const conf=Math.round(stt.conf*100);
     $('status').innerHTML=`Your reading: <span class="pts">${A.fmt(thr)}</span> · +${pct} <span style="color:var(--muted)">· ${conf}% locked in</span>`;
     setPrecision(stt.conf, `${A.fmt(thr)}  ·  ${bandStr(A,loT,hiT)}`);
@@ -1522,7 +1523,7 @@
       }
     }
     ag.eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, seed)); ag.trial=0;
-    ag.catchCount=0; ag.fa=0; ag.faShown=0;
+    ag.catchCount=0; ag.fa=0; ag.faShown=0; ag.noneMax=0;
     ag.catchCap=Math.max(2, Math.round((ag.eng.nMax||12)*0.35));   // ≤ ~4 silent trials per frequency
     const earLbl = ag.mode==='perear' ? EAR_NAME[ag.curEar]+' · ' : '';
     $('cvTitle').textContent = earLbl + (f>=1000?(f/1000)+' kHz':f+' Hz');
@@ -1540,6 +1541,12 @@
     const hear=document.createElement('button'); hear.className='choice'; hear.innerHTML='I hear it<small>tap the moment you do</small>'; hear.onclick=()=>agAnswer('hear');
     const none=document.createElement('button'); none.className='choice'; none.innerHTML='Nothing<small>silence this time</small>'; none.onclick=()=>agAnswer('none');
     box.appendChild(hear); box.appendChild(none);
+    if((ag.noneMax||0)>=3){   // several "Nothing"s at the loudest we can play → offer the honest exit
+      const brk=document.createElement('span'); brk.className='brk'; box.appendChild(brk);
+      const giveup=document.createElement('button'); giveup.className='choice alt';
+      giveup.innerHTML='I can’t hear this one<small>mark beyond reach · continue</small>';
+      giveup.onclick=()=>agGiveUp(); box.appendChild(giveup);
+    }
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.replay)ag.replay(); }; box.appendChild(rep);
     const play=()=>{
       clearTimers(); hear.disabled=true; none.disabled=true; hear.classList.remove('playing');
@@ -1575,6 +1582,8 @@
       choiceTimers.push(setTimeout(agTrial,700));
       return;
     }
+    if(!heard && ag.curLevel>=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10)-2) ag.noneMax=(ag.noneMax||0)+1;   // "Nothing" at max level
+    else if(heard) ag.noneMax=0;
     ag.eng.z.record(ag.curX, heard); ag.trial++; ag.earTrials=(ag.earTrials||0)+1;
     const st=ag.eng.z.stats();
     if(st.usable||st.forceStop){
@@ -1586,23 +1595,38 @@
       // than recorded; the card draws these as open "beyond reach" dots, never confident ones
       ag.ptsMeta[ag.curEar][f]={ ci: Math.abs(hiL-loL)/2, cens: lvl>=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10)-3 };   // Ψ CI half-width → GP noise + honest band
       agLiveDraw();                                        // redraw the curve as each point locks
-      ag.fi++;
-      if(ag.fi>=ag.plan.length){                           // base done → Phase-B infill → verify pass → next ear/finish
-        if(!ag.phaseB){
-          ag.phaseB=true; const add=agPlanInfill(ag.curEar);
-          if(add.length){ ag.plan=ag.plan.concat(add); choiceTimers.push(setTimeout(agFreq,320)); return; }
-        }
-        if(!ag.phaseC){
-          ag.phaseC=true; const vf=agPlanVerify(ag.curEar);
-          if(vf.length){ ag.plan=ag.plan.concat(vf); choiceTimers.push(setTimeout(agFreq,320)); return; }
-        }
-        ag.ei++;
-        if(ag.ei>=ag.ears.length){ finishCurve(); return; }
-        choiceTimers.push(setTimeout(agEar,650)); return;
-      }
-      choiceTimers.push(setTimeout(agFreq,320)); return;
+      agNextPoint(); return;
     }
     choiceTimers.push(setTimeout(agTrial,340));
+  }
+  // advance past the current frequency: base plan → Phase-B infill → verify pass → next ear/finish
+  function agNextPoint(){
+    ag.fi++;
+    if(ag.fi>=ag.plan.length){
+      if(!ag.phaseB){
+        ag.phaseB=true; const add=agPlanInfill(ag.curEar);
+        if(add.length){ ag.plan=ag.plan.concat(add); choiceTimers.push(setTimeout(agFreq,320)); return; }
+      }
+      if(!ag.phaseC){
+        ag.phaseC=true; const vf=agPlanVerify(ag.curEar);
+        if(vf.length){ ag.plan=ag.plan.concat(vf); choiceTimers.push(setTimeout(agFreq,320)); return; }
+      }
+      ag.ei++;
+      if(ag.ei>=ag.ears.length){ finishCurve(); return; }
+      choiceTimers.push(setTimeout(agEar,650)); return;
+    }
+    choiceTimers.push(setTimeout(agFreq,320)); return;
+  }
+  // mercy-skip: a frequency this ear genuinely can't reach shouldn't be a grind of tapping
+  // "Nothing" into a void — mark it beyond reach (censored, honest) and move on
+  function agGiveUp(){
+    if(!ag||ag.phase!=='run')return; killStim(); clearTimers();
+    const f=ag.plan[ag.fi], hi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
+    ag.pts[ag.curEar][f]=hi; ag.prevThr=hi;
+    ag.ptsMeta[ag.curEar][f]={ci:null, cens:true};
+    ag.noneMax=0; agLiveDraw();
+    $('cvNote').textContent='Marked beyond reach — moving on.';
+    agNextPoint();
   }
   // build one ear's curve, dB re that ear's OWN 1 kHz (so the equal-power pan offset cancels).
   // each point carries its Ψ CI half-width so the render GP can weight it and draw an honest band.
@@ -1881,7 +1905,8 @@
     const i=order[oi], tag=CH[i].tag;
     if(chScore[i]!=null) score-=chScore[i];        // replace (not accumulate) — Sharpen re-records
     chScore[i]=pct; chPct[i]=pct; roomThr[tag]=readout;
-    if(extra && extra.val!=null) roomVal[tag]={val:extra.val, lo:extra.lo, hi:extra.hi};
+    if(extra && extra.val!=null){ roomVal[tag]={val:extra.val, lo:extra.lo, hi:extra.hi};
+      if(extra.trials) roomVal[tag].trials=extra.trials; }   // per-trial [level, correct] pairs ride into storage + export
     score+=pct; $('score').textContent=score;
     saveRun();                                       // persist the in-progress tour for resume
     // accumulate this reading onto the headphone's saved profile RIGHT AWAY, so partial tours and
@@ -1984,15 +2009,19 @@
     const nDone=order.filter(i=>chPct[i]!=null).length;
     const skipped=order.filter(i=>chPct[i]==null && !roomDone[i]).length;
     const curveDone=order.some(i=>roomDone[i]);
-    const max=nDone*100; $('finalnum').textContent=score;
+    const max=nDone*100;
     const pct=max?score/max:0; lastPct=pct; const pctR=Math.round(pct*100);
+    // never end on a bare zero: an empty run is the instrument declining to guess, not the
+    // listener failing — say so, and point at the one measurement that always yields a shape
+    $('finalnum').textContent = (nDone||curveDone) ? score : '—';
     $('finalout').innerHTML = nDone
       ? `of <b>${max}</b> · <b>${pctR}%</b> across ${nDone} room${nDone!==1?'s':''}`
         + (skipped?` <span style="color:var(--muted)">· ${skipped} skipped</span>`:'')
         + (curveDone?` <span style="color:var(--muted)">· curve measured</span>`:'')
-      : (curveDone ? 'Hearing curve measured' : 'No rooms completed');
+      : (curveDone ? 'Hearing curve measured' : 'nothing locked in this run');
     let rank,verdict;
-    if(pct>=.85){rank='Golden ear'; verdict=`Every claim verified on the ${device} — holography, slam, air, silk, the lot. The reviews weren’t poetry after all.`;}
+    if(!nDone && !curveDone){rank='No reading yet'; verdict='Not a failure — an honest instrument declining to guess. A quieter spot, a touch more volume, or a Replay before answering usually unlocks it.';}
+    else if(pct>=.85){rank='Golden ear'; verdict=`Every claim verified on the ${device} — holography, slam, air, silk, the lot. The reviews weren’t poetry after all.`;}
     else if(pct>=.6){rank='Tuned in'; verdict='Most claims verified. Whatever scored lowest below is the quality worth hunting for in your next album.';}
     else if(pct>=.35){rank='Warming up'; verdict='Critical listening is a learned skill. Another lap and the claims start proving themselves.';}
     else{rank='First listen'; verdict='All of this lives in the sound — it takes a few laps to hear it. Pick one group and drill it.';}
@@ -2007,7 +2036,9 @@
     let worst=null,worstP=101; order.forEach(i=>{ if(chPct[i]<worstP){worstP=chPct[i];worst=CH[i].tag;} });
     const drive = worst && hearingRooms[worst] ? `Your lowest room, ${worst}, leans on ${hearingRooms[worst]}.`
       : worst ? `Your lowest room was ${worst} — mostly down to the headphones and practice.` : '';
-    $('benchnote').innerHTML = `${pctR}% is ${where}. ${drive} To separate your ears from the gear, run the same rooms on a second pair — your ears stay constant, so the difference is the headphones.`;
+    $('benchnote').innerHTML = (!nDone && !curveDone)
+      ? 'For a guaranteed take-away, start with the <b>hearing curve</b> (~3 min) — it always produces the shape of what you hear.'
+      : `${pctR}% is ${where}. ${drive} To separate your ears from the gear, run the same rooms on a second pair — your ears stay constant, so the difference is the headphones.`;
     order.forEach(i=>{ if(chPct[i]==null) return; const tag=CH[i].tag;   // re-upsert under the SAME runId — idempotent, no dup history entry
       upsertRoomReading(device, tag, Object.assign({pct:chPct[i], thr:roomThr[tag]}, roomVal[tag]||{}));
     });
@@ -2250,7 +2281,70 @@
         list.appendChild(row);
       });
     });
+    buildDecoder(dev); buildDrift(dev);
     show('pfview');
+  }
+  // "review words, decoded for you": each measured metric read back through review vocabulary —
+  // the honest version of "are my headphones good?": which claims can YOU actually cash?
+  function buildDecoder(dev){
+    const box=$('pvdecode'); box.innerHTML='';
+    const D=(window.SR_CONTENT&&window.SR_CONTENT.DECODER)||[];
+    const rows=[];
+    D.forEach(d=>{
+      const r=dev.rooms&&dev.rooms[d.tag]; if(r==null) return;
+      const p=typeof r==='number'?r:r.pct; if(p==null) return;
+      const v=(typeof r==='object'&&isFinite(r.val))?r.val:null;
+      let line=null; try{ line=d.line(v,p); }catch(e){}
+      if(line) rows.push({term:d.term, line});
+    });
+    if(!rows.length){ box.style.display='none'; return; }
+    const h=document.createElement('div'); h.className='bghead'; h.textContent='Review words, decoded for you'; box.appendChild(h);
+    const sub=document.createElement('div'); sub.className='pvdsub'; sub.textContent='what the vocabulary is worth, given your numbers on this pair'; box.appendChild(sub);
+    rows.forEach(r=>{
+      const el=document.createElement('div'); el.className='pvdrow';
+      const t=document.createElement('span'); t.className='dt'; t.textContent=r.term;
+      const l=document.createElement('span'); l.className='dl'; l.textContent=r.line;
+      el.appendChild(t); el.appendChild(l); box.appendChild(el);
+    });
+    box.style.display='block';
+  }
+  // "over time": same pair, different days — earliest vs latest reading per room, plus a
+  // calm pointer when multiple curves exist. Honest framing: run-to-run wobble is normal.
+  function buildDrift(dev){
+    const box=$('pvdrift'); box.innerHTML='';
+    const M=(window.SR_FP&&window.SR_FP.META)||{};
+    const hist=(dev.history||[]).filter(h=>h.at).sort((a,b)=>a.at.localeCompare(b.at));
+    const rows=[];
+    CH.forEach(c=>{ if(c.mode==='curve')return;
+      const runs=hist.filter(h=>h.rooms&&h.rooms[c.tag]!=null&&((h.rooms[c.tag].pct!=null)||typeof h.rooms[c.tag]==='number'));
+      if(runs.length<2) return;
+      const first=runs[0], last=runs[runs.length-1];
+      if(first.at.slice(0,10)===last.at.slice(0,10)) return;   // same-day repeats are practice, not drift
+      const a=first.rooms[c.tag], b=last.rooms[c.tag];
+      const pa=typeof a==='number'?a:a.pct, pb=typeof b==='number'?b:b.pct;
+      const ta=(typeof a==='object'&&a.thr)||pa+'%', tb=(typeof b==='object'&&b.thr)||pb+'%';
+      rows.push({name:(M[c.tag]&&M[c.tag].name)||c.title, ta, tb, dp:pb-pa});
+    });
+    const nCurves=hist.filter(h=>h.curve).length;
+    if(!rows.length && nCurves<2){ box.style.display='none'; return; }
+    const h=document.createElement('div'); h.className='bghead'; h.textContent='Over time — same pair, different days'; box.appendChild(h);
+    const sub=document.createElement('div'); sub.className='pvdsub'; sub.textContent='small moves are normal run to run; big, persistent moves are the ones that matter'; box.appendChild(sub);
+    rows.forEach(r=>{
+      const el=document.createElement('div'); el.className='pvxrow';
+      const n=document.createElement('span'); n.className='xn'; n.textContent=r.name;
+      const v=document.createElement('span'); v.className='xv'; v.textContent=r.ta+' → '+r.tb;   // textContent: stored thr can't inject
+      const d=document.createElement('span'); d.className='xd';
+      if(r.dp>=8){ d.textContent='▲ better'; d.style.color='var(--sage)'; }
+      else if(r.dp<=-8){ d.textContent='▼ down'; d.style.color='var(--ember)'; }
+      else { d.textContent='≈ steady'; d.style.color='var(--muted)'; }
+      el.appendChild(n); el.appendChild(v); el.appendChild(d); box.appendChild(el);
+    });
+    if(nCurves>=2){
+      const cn=document.createElement('div'); cn.className='pvdsub';
+      cn.textContent='Curve measured '+nCurves+' times. A large (10 dB or more), persistent worsening at one pitch — not explained by a different volume — is worth a hearing check.';
+      box.appendChild(cn);
+    }
+    box.style.display='block';
   }
   // open a pair for testing: pick which rooms to run in the room-select, with this pair active
   function testPair(name){
@@ -2270,6 +2364,13 @@
 
   // ---------- boot ----------
   buildIntro(); applyCoffeeLinks(); wire();
+  // platform-aware setup guidance — Android codec instructions on an iPhone read as broken homework
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  if(isIOS){
+    $('introTips').textContent='Best in a quiet room, at a moderate volume, with Spatialize Audio and any EQ switched off.';
+    const w=document.querySelector('#device .warnbox');
+    if(w) w.innerHTML='<b>Comparing pairs?</b> Match loudness first: replay the calibration notes on each pair and set the volume until they sound equally loud. Keep ANC in the same mode, and turn off <em>Spatialize Audio</em> (press and hold the volume slider in Control Centre) and any headphone EQ.';
+  }
   (async()=>{ await loadDB(); if(deviceNames().length){ $('goprofiles').style.display='inline'; $('pfsep').style.display='inline'; } offerResume(); })();
   if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
 

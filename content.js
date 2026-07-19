@@ -13,10 +13,10 @@
   };
 
   const INTRO = {
-    hook: "Test your headphones. Train your ears.",
-    line: "Twenty-four rooms. Each proves one thing the reviews claim — then measures it on your pair, in real Hz and dB.",
+    hook: "Measure your hearing. Train your ears. Know your headphones.",
+    line: "Twenty-four rooms and a per-ear hearing curve. Each measures one claim the reviews make — as your ears actually hear it through your pair — and saves the shape so you can compare.",
     what: "Each room plays a sound and asks one simple question. Answer, and it hunts your exact limit — telling you, in real numbers, where your headphones and your hearing actually land. You learn what the words mean by hearing them.",
-    gap: "Other free tools do half the job: they train your ears with no number for your gear, or they publish lab readings of a unit that isn't on your head. This one measures your pair, through your ears, and saves it — so you can set one headphone against another.",
+    gap: "Other free tools do half the job: they train your ears with no number attached, or they publish lab readings of a unit that isn't on your head. This one measures what YOU hear through YOUR pair — ears and headphones as one chain — and saves it, so you can compare pairs and watch your own hearing over time.",
     tips: "Best in a quiet room, at a moderate volume, with any phone spatializer, Dolby Atmos and EQ switched off.",
     promise: "Free. Nothing leaves your phone."
   };
@@ -215,5 +215,51 @@
     }
   };
 
-  window.SR_CONTENT = { GROUPS, INTRO, ROOM: C };
+  // ---- review-decoder: what the review vocabulary is worth, given YOUR measured numbers ----
+  // one line per term, always anchored to this listener on this pair; honest about the chain.
+  const kHz = v=>(v/1000).toFixed(1)+' kHz';
+  const DECODER = [
+    { term:'"air" · treble extension', tag:'Air', line:(v,p)=> v==null ? null
+      : v>=16000 ? `Your window on this pair reaches ${kHz(v)} — "air" praised above 15 kHz is genuinely audible to you. Worth paying for.`
+      : v>=13500 ? `Your ceiling here is ${kHz(v)}. "Air" celebrated above 15 kHz sits mostly past your window — read those reviews calmly.`
+      : `This chain fades out near ${kHz(v)} for you. Treble-extension poetry above that line describes a view you won't see.` },
+    { term:'sub-bass "extension" · reach', tag:'Foundation', line:(v,p)=> v==null ? null
+      : v<=32 ? `Your floor reaches ${Math.round(v)} Hz — "sub-bass extension" claims are worth real attention (and money) to you.`
+      : v<=48 ? `You hear down to ~${Math.round(v)} Hz on this chain. Below that, deep-bass talk will land as pressure, not pitch.`
+      : `This chain lets go near ${Math.round(v)} Hz. Most "seismic sub-bass" copy describes a floor you won't visit on this pair.` },
+    { term:'"sibilance" · hot treble', tag:'Silk', line:(v,p)=>
+      p>=70 ? `You catch a sibilant edge early — "hot treble" warnings in reviews are load-bearing for you. Smooth-treble pairs will repay you.`
+      : p>=40 ? `You notice sibilance at moderate levels. Treble-smoothness claims matter to you, with some headroom.`
+      : `Sibilance barely registers for you — "harsh S" complaints are largely other people's problem.` },
+    { term:'"detail retrieval"', tag:'Whisper', line:(v,p)=>
+      p>=70 ? `You surface buried detail with ease — "detail retrieval" praise will be audible to you, not imagined.`
+      : p>=40 ? `You hear buried detail when it's not too deep. Detail claims are half-real for you — training moves this one.`
+      : `Fine detail stays buried for you right now. "Endless micro-detail" reviews promise more than this chain + your ears deliver today.` },
+    { term:'"black background"', tag:'Silence', line:(v,p)=>
+      p>=70 ? `You resolve near-silence well — a truly quiet pair will read blacker to you than to most.`
+      : `The last few dB of silence blur for you — "blackest background ever" claims will mostly read as identical.` },
+    { term:'"imaging" · centre focus', tag:'Centre', line:(v,p)=>
+      p>=70 ? `You lock a centre image tightly — channel matching is a spec that actually pays you. Hand-matched pairs earn their premium.`
+      : `Small centre drift slips past you — perfect channel matching is a premium you may not need to pay.` },
+    { term:'"soundstage" width', tag:'Stage', line:(v,p)=> v==null ? null
+      : v<=12 ? `You place sounds within ±${Math.round(v)}° — soundstage descriptions are a real, resolvable dimension for you.`
+      : `You place sounds within about ±${Math.round(v)}° — grand soundstage prose will read wider in the review than on your head.` },
+    { term:'"tight" vs "boomy" bass', tag:'Grip', line:(v,p)=>
+      p>=70 ? `You hear bass overhang early — "tight, controlled bass" is a difference you'll genuinely notice between pairs.`
+      : `Bass bloom has to get big before you notice — "boomy" complaints in reviews may not bother you in practice.` },
+    { term:'"micro-dynamics"', tag:'Shade', line:(v,p)=> v==null||!isFinite(v) ? null
+      : v<=0.5 ? `You resolve level steps of ~${v.toFixed(1)} dB — micro-dynamic shading is real listening currency for you.`
+      : `You resolve ~${v.toFixed(1)} dB steps — micro-dynamics talk finer than that is below your floor.` },
+    { term:'"congestion" · busy mixes', tag:'Crowd', line:(v,p)=>
+      p>=70 ? `You keep voices apart in a crowd — congestion in a busy mix is something you'll actually hear a good pair fix.`
+      : `Busy passages blur early for you — "never congested" claims will be hard to verify with your own ears.` },
+    { term:'"decay" · room feel', tag:'Halls', line:(v,p)=>
+      p>=70 ? `You size a space by its reverb tail — "you can hear the hall" reviews are literal for you.`
+      : `Reverb tails read similar to you — room-size poetry is atmosphere, not information, on this chain.` },
+    { term:'"slam" · attack', tag:'Snap', line:(v,p)=>
+      p>=70 ? `You feel a softened attack immediately — "slam" and "speed" differences between pairs are real for you.`
+      : `Attack edges have to soften a lot before you notice — "lightning transients" claims will mostly read alike.` },
+  ];
+
+  window.SR_CONTENT = { GROUPS, INTRO, ROOM: C, DECODER };
 })();
