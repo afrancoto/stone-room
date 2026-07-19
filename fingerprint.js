@@ -294,5 +294,5 @@ ${g}${mark}
     }
   };
 
-  window.SR_FP={ render, renderCurve, toPNG, SAMPLE };
+  window.SR_FP={ render, renderCurve, toPNG, SAMPLE, META };   // META exported so the profile list and the card share one vocabulary
 })();

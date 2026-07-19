@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v33";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v34";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2183,28 +2183,56 @@
     $('pvsavecurve').style.display=hasCurve?'':'none';
     $('pvempty').style.display=(data||hasCurve)?'none':'block';
     const list=$('pvrooms'); list.innerHTML='';
+    const FPMETA=(window.SR_FP&&window.SR_FP.META)||{};   // one vocabulary: the list uses the card's names
     Object.keys(GROUPS).forEach(gk=>{
       const rooms=CH.map((c,i)=>({c,i})).filter(x=>x.c.group===gk);
       if(!rooms.length) return;
       const h=document.createElement('div'); h.className='bghead'; h.textContent=GROUPS[gk].name; list.appendChild(h);
       rooms.forEach(({c,i})=>{
-        const row=document.createElement('button'); row.className='pvrow';
         const v=dev.rooms&&dev.rooms[c.tag];
         const p=v==null?null:(typeof v==='number'?v:v.pct);
         const isCurve=c.mode==='curve';
         const taken=isCurve?!!dev.curve:p!=null;
-        if(taken) row.classList.add('taken');
-        const val=isCurve ? (taken?'✓ measured':'—')
-          : p==null?'—':((typeof v==='object'&&v.thr)?v.thr+' · '+p+'%':p+'%');
-        const nm=document.createElement('span'); nm.className='rn'; nm.textContent=c.tag;
-        const rs=document.createElement('span'); rs.className='rs'; rs.textContent=c.tests;
-        const rv=document.createElement('span'); rv.className='rv'; rv.textContent=val;   // textContent: imported thr can't inject
-        const ch=document.createElement('span'); ch.className='chev'; ch.textContent=taken?'redo ›':'run ›';
-        row.appendChild(nm); row.appendChild(rs); row.appendChild(rv); row.appendChild(ch);
-        row.addEventListener('click',()=>{
+        // each row is a self-contained result: plain name, the reading, a plain-words verdict of
+        // what it MEANS, the action, and an ⓘ into the science sheet — no audiophile decoding needed
+        const band = p==null?null : p>=82?'excellent':p>=58?'strong':p>=34?'fair':'weak';
+        const bcol = band==null?null : (band==='excellent'||band==='strong')?'var(--sage)':band==='fair'?'var(--gold)':'var(--ember)';
+        const row=document.createElement('div'); row.className='pvrow'+(taken?' taken':''); row.dataset.tag=c.tag;
+        const main=document.createElement('button'); main.className='pvmain';
+        const nm=document.createElement('span'); nm.className='rn'; nm.textContent=isCurve?'Hearing curve':((FPMETA[c.tag]&&FPMETA[c.tag].name)||c.title);
+        const rt=document.createElement('span'); rt.className='rt'; rt.textContent=c.tag+' · '+c.tests;
+        const rv=document.createElement('span'); rv.className='rv';
+        const ra=document.createElement('span'); ra.className='ract';
+        main.appendChild(nm); main.appendChild(rv); main.appendChild(rt); main.appendChild(ra);
+        if(isCurve){
+          rv.textContent = taken?'✓ measured':'not yet';
+          ra.textContent = taken?'tap to redo ↻':'tap to measure ▶';
+        } else if(p!=null){
+          rv.textContent=((typeof v==='object'&&v.thr)?v.thr+' · ':'')+p+'%';   // textContent: imported thr can't inject
+          rv.style.color=bcol;
+          ra.textContent='tap to redo ↻';
+          const T=contentOf(c.tag).tiers||{};
+          let tierTxt=T[band==='excellent'?'reference':band]||'';
+          // some tier lines open with their own quality word ("Strong; centre holds…") — strip it
+          // so the row doesn't read "Strong — Strong; …"
+          tierTxt=tierTxt.replace(/^(excellent|strong|fair|weak|reference)[\s;,—–-]+\s*/i,'');
+          if(tierTxt) tierTxt=tierTxt[0].toUpperCase()+tierTxt.slice(1);
+          const vd=document.createElement('span'); vd.className='rverdict';
+          const bw=document.createElement('b'); bw.textContent=band[0].toUpperCase()+band.slice(1); bw.style.color=bcol;
+          vd.appendChild(bw); if(tierTxt) vd.appendChild(document.createTextNode(' — '+tierTxt));
+          main.appendChild(vd);
+        } else {
+          rv.textContent='not yet';
+          ra.textContent='tap to run ▶ · '+fmtRange(estRoom(c));
+        }
+        main.addEventListener('click',()=>{
           if(isCurve){ initAudio(); ctx.resume(); device=safeName(name); pfReturn=true; startCurve(); }
           else retakeRoom(name, i);
         });
+        const info=document.createElement('button'); info.className='iconbtn pvinfo'; info.textContent='i';
+        info.title='What this measures'; info.setAttribute('aria-label','What "'+nm.textContent+'" measures');
+        info.addEventListener('click',e=>{ e.stopPropagation(); openInfo(c.tag); });
+        row.appendChild(main); row.appendChild(info);
         list.appendChild(row);
       });
     });

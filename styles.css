@@ -297,16 +297,20 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 #pfview.on{justify-content:flex-start}
 #pfview h2{margin-bottom:2px}
 .pvrooms{width:min(88vw,340px); margin:14px auto 0; text-align:left}
-.pvrow{display:grid; grid-template-columns:minmax(0,1fr) auto auto; grid-template-areas:"rn rv chev" "rs rv chev";
-  column-gap:10px; align-items:center; width:100%; text-align:left; background:none; border:none;
-  border-bottom:1px solid var(--line); padding:9px 2px; cursor:pointer; color:var(--stone); font-family:var(--ui)}
-.pvrow:active{opacity:.7}
-.pvrow .rn{grid-area:rn; font-size:14px}
-.pvrow .rs{grid-area:rs; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
-.pvrow .rv{grid-area:rv; font-size:12.5px; color:var(--muted); white-space:nowrap}
+/* one self-contained result per row: name+reading on top, room tag + action under, verdict across */
+.pvrow{display:flex; align-items:stretch; border-bottom:1px solid var(--line)}
+.pvmain{flex:1 1 auto; min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto;
+  grid-template-areas:"rn rv" "rt ra" "vd vd"; column-gap:10px; row-gap:2px; align-items:baseline;
+  background:none; border:none; text-align:left; padding:10px 2px; cursor:pointer; color:var(--stone); font-family:var(--ui)}
+.pvmain:active{opacity:.7}
+.pvmain .rn{grid-area:rn; font-size:14.5px}
+.pvmain .rt{grid-area:rt; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.pvmain .rv{grid-area:rv; font-size:12.5px; color:var(--muted); white-space:nowrap; justify-self:end}
 .pvrow.taken .rv{color:var(--sage)}
-.pvrow .chev{grid-area:chev; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--sage); white-space:nowrap}
-.pvrow:not(.taken) .chev{color:var(--gold)}
+.pvmain .ract{grid-area:ra; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--sage); justify-self:end; white-space:nowrap}
+.pvrow:not(.taken) .ract{color:var(--gold)}
+.pvmain .rverdict{grid-area:vd; font-size:12px; line-height:1.45; color:var(--muted); font-family:var(--disp); font-style:italic; margin-top:2px}
+.pvinfo{align-self:center; margin-left:8px}
 #pfview .seltools{margin-top:16px}
 #pfview .seltools #pv-delete{color:var(--ember)}
 
