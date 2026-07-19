@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v29";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v30";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -591,6 +591,8 @@
   const SCHEMA=3;                 // profile schema version (v3 superset of stoneroom_results_v2)
   let currentRunId=null;          // one id per measurement occasion (tour / standalone curve / single retake)
   let fromProfile=false;          // true when the room-select was opened from a profile (device preset → skip naming)
+  let pvName=null;                // the pair whose detail view (#pfview) is open
+  let pfReturn=false;             // a standalone curve was launched from the profile view → Done returns there
   function uid(pre){ const r=(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,12):(Date.now().toString(36)+Math.random().toString(36).slice(2,8)); return (pre||'id')+'_'+r; }
   let st=null;                                    // active stair state
   let sp=null;                                    // active spatial state
@@ -611,7 +613,7 @@
   function killStim(){ if(master){ const now=ctx.currentTime; master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(master.gain.value, now); master.gain.linearRampToValueAtTime(0, now+0.035); } }
 
   const $=id=>document.getElementById(id);
-  const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve'),profiles:$('profiles')};
+  const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve'),profiles:$('profiles'),pfview:$('pfview')};
   let curveInTour=false;     // true while the hearing-curve room runs inside a tour
   const show=n=>{Object.values(scr).forEach(s=>s&&s.classList.remove('on')); scr[n].classList.add('on'); window.scrollTo(0,0);};
   const jit=(v,j)=>v+(Math.random()*2-1)*j;
@@ -859,6 +861,14 @@
     $('endprofiles').addEventListener('click',()=>{buildProfiles(); show('profiles');});
     $('pfcompare').addEventListener('click',()=>{ buildCompare(); show('compare'); });   // Compare is reached from Profiles now
     $('pf-back').addEventListener('click',()=>show(order.length?'end':'intro'));
+    $('pv-back').addEventListener('click',()=>{ buildProfiles(); show('profiles'); });
+    $('pv-test').addEventListener('click',()=>{ if(pvName) testPair(pvName); });
+    $('pv-rename').addEventListener('click',()=>{ if(!pvName)return; const nn=prompt('Rename this pair:', pvName); if(!nn)return;
+      const clean=safeName(String(nn).trim()); if(renameDevice(pvName,nn)){ pvName=clean; openProfile(pvName); } });
+    $('pv-export').addEventListener('click',()=>{ if(pvName) downloadExport(pvName); });
+    $('pv-delete').addEventListener('click',()=>{ if(pvName && confirm('Delete "'+pvName+'" and all its results?')){ deleteDevice(pvName); pvName=null; buildProfiles(); show('profiles'); } });
+    $('pvsavecard').addEventListener('click',()=>{ const svg=$('pvcard').querySelector('svg'); if(svg) sharePNG(svg,'stone-room-'+pvName.replace(/[^\w-]+/g,'_')+'.png').catch(()=>flashSaved('could not save card')); });
+    $('pvsavecurve').addEventListener('click',()=>{ const svg=$('pvcurve').querySelector('svg'); if(svg) sharePNG(svg,'stone-room-curve-'+pvName.replace(/[^\w-]+/g,'_')+'.png').catch(()=>flashSaved('could not save curve')); });
     $('pf-exportall').addEventListener('click',()=>downloadExport());
     $('pf-import').addEventListener('click',()=>$('pf-file').click());
     $('pf-file').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader();
@@ -895,8 +905,9 @@
     $('optnoise').checked = noiseReset;
     $('optnoise').addEventListener('change',e=>{ noiseReset=e.target.checked; try{ localStorage.setItem('stoneroom_noise', noiseReset?'1':'0'); }catch(_){} });
     $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName()); startGame(); });
-    $('endcurve').addEventListener('click',()=>{ startCurve(); });    // post-tour shortcut: re-measure the curve for this pair
-    $('cvexit').addEventListener('click',()=>{ if(curveInTour){ finishCurveRoom(); } else { stopCurveAudio(); show(order.length?'end':'intro'); } });
+    $('endcurve').addEventListener('click',()=>{ pfReturn=false; startCurve(); });    // post-tour shortcut: re-measure the curve for this pair
+    $('cvexit').addEventListener('click',()=>{ if(curveInTour){ finishCurveRoom(); } else { stopCurveAudio();
+      if(pfReturn){ pfReturn=false; buildProfiles(); openProfile(device); } else show(order.length?'end':'intro'); } });
     $('cvredo').addEventListener('click',()=>{ stopCurveAudio(); startCurve(); });
     $('cvsave').addEventListener('click',saveCurveCard);
     $('again').addEventListener('click',startGame);
@@ -1305,12 +1316,8 @@
   }
   async function saveCurveCard(){
     const svg=$('cvcard').querySelector('svg'); if(!svg) return;
-    try{
-      const blob=await window.SR_FP.toPNG(svg,3);
-      const file=new File([blob], `stone-room-curve-${device.replace(/[^\w-]+/g,'_')}.png`, {type:'image/png'});
-      if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:CONFIG.SHARE_TITLE}); }
-      else{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name; document.body.appendChild(a); a.click(); a.remove(); }
-    }catch(e){ flashSaved('could not save curve'); }
+    try{ await sharePNG(svg, `stone-room-curve-${device.replace(/[^\w-]+/g,'_')}.png`); }
+    catch(e){ flashSaved('could not save curve'); }
   }
   function stopCurveAudio(){ if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
   function agCal(){
@@ -1327,37 +1334,51 @@
   // PRE-CHECK — prove the signal chain before measuring. This is what stops the test from reading a
   // phone SPEAKER's bass roll-off or a fan's masking instead of the listener's ears: (1) a VERIFIABLE
   // left/right tone check (headphones on, sides not swapped), then (2) a quiet-room listen.
-  function agPrecheck(){ ag.phase='pre'; $('cvwrap').style.display='none'; agPcChannel('L'); }
+  function agPrecheck(){ ag.phase='pre'; ag.pcLevel=-14; $('cvwrap').style.display='none'; agPcChannel('L'); }
   function agPcChannel(side){
-    ag.phase='pre'; ag.pcSide=side; $('cvprog').textContent='Check · headphones';
+    ag.phase='pre'; ag.pcSide=side; ag.pcMiss=0; $('cvprog').textContent='Check · headphones';
     $('cvTitle').textContent='Headphone check';
-    $('cvNote').innerHTML='Headphones on. A short tone is playing in <b>one</b> ear — which side do you hear it on?';
+    $('cvNote').innerHTML='Headphones on. A two-note chime is playing in <b>one</b> ear — which side is it on? If it’s faint, nudge your volume up.';
     const box=$('cvChoices'); box.innerHTML='';
-    const mk=(lbl,val,sub)=>{ const b=document.createElement('button'); b.className='choice'; b.innerHTML=lbl+(sub?`<small>${sub}</small>`:''); b.onclick=()=>agPcAnswer(val); return b; };
+    const mk=(lbl,val,sub,cls)=>{ const b=document.createElement('button'); b.className='choice'+(cls?' '+cls:''); b.innerHTML=lbl+(sub?`<small>${sub}</small>`:''); b.onclick=()=>agPcAnswer(val); return b; };
     box.appendChild(mk('Left','L')); box.appendChild(mk('Right','R'));
-    box.appendChild(mk('Both / not sure','B','or no sound'));
+    const brk=document.createElement('span'); brk.className='brk'; box.appendChild(brk);   // L/R big on row 1; escapes smaller on row 2
+    box.appendChild(mk('Both sides','B','can’t tell them apart','alt'));
+    box.appendChild(mk('I don’t hear it','N','nothing this time','alt'));
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.pcPlay)ag.pcPlay(); }; box.appendChild(rep);
     const play=()=>{ stopCurveAudio(); clearTimers();
       if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
       const pan = side==='L'?-1:1;
-      const step=()=>{ if(!ag||ag.phase!=='pre')return; detTone(1000, ctx.currentTime+.02, .45, -20, pan); ag.calTimer=setTimeout(step,760); };
+      // a low-mid two-note chime, not a lone quiet 1 kHz sine: the check must prove the CHANNEL,
+      // not the listener — a notched or high-frequency loss in the tested ear shouldn't fail it.
+      const step=()=>{ if(!ag||ag.phase!=='pre')return; const t=ctx.currentTime+.02;
+        detTone(600, t, .30, ag.pcLevel, pan); detTone(900, t+.36, .30, ag.pcLevel, pan);
+        ag.calTimer=setTimeout(step,1150); };
       step(); };
     ag.pcPlay=play; play();
   }
   function agPcAnswer(val){
     if(!ag||ag.phase!=='pre')return;
     stopCurveAudio(); killStim();
-    if(val==='B'){ agPcFail('speaker'); return; }          // both ears / silent → speaker or mono blend
+    if(val==='N'){                                          // didn't hear it → try louder before judging:
+      if(ag.pcMiss<1){ ag.pcMiss++; ag.pcLevel=Math.min(-6, ag.pcLevel+8);   // a faint chime in a weaker
+        $('cvNote').innerHTML='Turning it up — same side. Listen again…';    // ear is normal, and exactly
+        if(ag.pcPlay)ag.pcPlay(); return; }                                  // what this test measures
+      agPcFail('silent'); return;
+    }
+    if(val==='B'){ agPcFail('speaker'); return; }          // both ears at once → speaker or mono blend
     if(val!==ag.pcSide){ agPcFail('swapped'); return; }     // heard in the other ear → L/R reversed
     if(ag.pcSide==='L'){ agPcChannel('R'); return; }        // left ok → verify right
     agPcQuiet();                                            // both sides correct → quiet check
   }
   function agPcFail(kind){
     ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Check · headphones';
-    $('cvTitle').textContent = kind==='swapped' ? 'Channels look swapped' : 'Sounds like a speaker';
+    $('cvTitle').textContent = kind==='swapped' ? 'Channels look swapped' : kind==='silent' ? 'One side stayed quiet' : 'Sounds like a speaker';
     $('cvNote').innerHTML = kind==='swapped'
       ? 'That tone was in your <b>other</b> ear — your left/right channels look reversed, so a per-ear result would be mislabelled. Check the L/R on your headphones, or run the both-ears test instead.'
-      : 'It seemed to come from both sides (or not at all). This test needs <b>headphones</b> — on a speaker it measures the speaker, not your ears, and can’t tell left from right.';
+      : kind==='silent'
+      ? 'Even louder, nothing came through on the <b>'+(ag.pcSide==='L'?'left':'right')+'</b>. Two honest possibilities: that side of the headphones isn’t playing (connection, cable, a Bluetooth hiccup) — or that ear needs more level than the other, which is exactly what this test measures. Reconnect and try again, or carry on and let the per-ear curve tell the story.'
+      : 'It seemed to come from both sides at once. This test needs <b>headphones</b> — on a speaker it measures the speaker, not your ears, and can’t tell left from right.';
     const box=$('cvChoices'); box.innerHTML='';
     const retry=document.createElement('button'); retry.className='choice'; retry.innerHTML='Try again<small>re-check headphones</small>'; retry.onclick=()=>agPcChannel('L');
     const anyway=document.createElement('button'); anyway.className='choice'; anyway.innerHTML='Continue anyway<small>results may be off</small>'; anyway.onclick=()=>agPcQuiet();
@@ -1913,31 +1934,47 @@
   }
 
   // ---------- fingerprint card ----------
-  function renderCard(dev){
-    // full picture of THIS pair: this run merged with anything measured before
+  // everything measured on a pair → the card's data contract, or null if nothing scored yet
+  function cardData(name, dev){
     const rooms={}; const ps=[];
     Object.keys(dev.rooms||{}).forEach(tag=>{ const r=dev.rooms[tag]; if(r && r.pct!=null){ rooms[tag]={pct:r.pct, val:r.val}; ps.push(r.pct); } });
-    const wrap=$('fpwrap');
-    if(!ps.length){ wrap.style.display='none'; return; }
-    wrap.style.display='block';
+    if(!ps.length) return null;
     const score=Math.round(ps.reduce((a,b)=>a+b,0)/ps.length);
     const context = score>=80?'trained-ear territory — most first runs are ~50–65%'
       : score>=55?'around a typical first listen (~50–65%)'
       : score>=35?'a little below a typical first run'
       : 'below a typical first run — try fewer rooms, a touch louder';
-    window.SR_FP.render($('fpcard'), { device, date:new Date().toLocaleDateString(), score, context, rooms });
+    return { device:name, date:new Date().toLocaleDateString(), score, context, rooms };
+  }
+  function renderCard(dev){
+    // full picture of THIS pair: this run merged with anything measured before
+    const data=cardData(device, dev);
+    const wrap=$('fpwrap');
+    if(!data){ wrap.style.display='none'; return; }
+    wrap.style.display='block';
+    window.SR_FP.render($('fpcard'), data);
+  }
+  // a saved curve back on screen — handles both shapes ({mode:'perear',ears} and the flat both-ears array)
+  function renderSavedCurve(box, name, dev){
+    const c=dev.curve;
+    if(c && c.ears) window.SR_FP.renderCurve(box, { device:name, ears:c.ears });
+    else if(Array.isArray(c) && c.length) window.SR_FP.renderCurve(box, { device:name, curve:c });
+    else return false;
+    return true;
+  }
+  async function sharePNG(svg, filename){
+    const blob=await window.SR_FP.toPNG(svg,3);
+    const file=new File([blob], filename, {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:CONFIG.SHARE_TITLE}); }
+    else{
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
   }
   async function saveCard(){
     const svg=$('fpcard').querySelector('svg'); if(!svg) return;
-    try{
-      const blob=await window.SR_FP.toPNG(svg,3);
-      const file=new File([blob], `stone-room-${device.replace(/[^\w-]+/g,'_')}.png`, {type:'image/png'});
-      if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:CONFIG.SHARE_TITLE}); }
-      else{
-        const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name;
-        document.body.appendChild(a); a.click(); a.remove();
-      }
-    }catch(e){ flashSaved('could not save card'); }
+    try{ await sharePNG(svg, `stone-room-${device.replace(/[^\w-]+/g,'_')}.png`); }
+    catch(e){ flashSaved('could not save card'); }
   }
 
   // ---------- comparison ----------
@@ -2009,33 +2046,78 @@
       const tot=deviceTotal(n);
       const done=CH.filter(c=>{const v=dev.rooms&&dev.rooms[c.tag]; return v!=null && (typeof v==='number'||v.pct!=null);}).length;
       const card=document.createElement('div'); card.className='pfcard';
-      const head=document.createElement('button'); head.className='pfhead'; head.title='Choose which tests to run for this pair';
+      const head=document.createElement('button'); head.className='pfhead'; head.title='See everything measured on this pair';
       const nm=document.createElement('span'); nm.className='pfname'; nm.textContent=n;   // textContent: no XSS from a stored/imported name
       const meta=document.createElement('span'); meta.className='pfmeta'; meta.innerHTML='';
       meta.textContent=(tot!=null?tot+'% · ':'')+done+'/'+CH.length+' rooms'+(dev.curve?' · curve':'');
       const chev=document.createElement('span'); chev.className='pfchev'; chev.textContent='›';
       head.appendChild(nm); head.appendChild(meta); head.appendChild(chev);
-      head.addEventListener('click',()=>testPair(n));
+      head.addEventListener('click',()=>openProfile(n));    // profile tap → RESULTS first; testing is a tap further
       card.appendChild(head);
       const dots=document.createElement('div'); dots.className='pfdots';
-      CH.forEach((c,idx)=>{
+      CH.forEach(c=>{
         const v=dev.rooms&&dev.rooms[c.tag]; const p=v==null?null:(typeof v==='number'?v:v.pct);
-        const d=document.createElement('button'); d.className='pfdot'+(p!=null?' filled':''); d.title=c.tag+(p!=null?' · '+p+'% — tap to retake':' · not taken — tap to measure');
+        const d=document.createElement('button'); d.className='pfdot'+(p!=null?' filled':''); d.title=c.tag+(p!=null?' · '+p+'%':' · not taken');
         if(p!=null) d.style.background = p>=70?'var(--sage)':p>=45?'var(--gold)':'var(--ember)';
-        d.addEventListener('click',()=>retakeRoom(n, idx));
+        d.addEventListener('click',()=>openProfile(n));
         dots.appendChild(d);
       });
       card.appendChild(dots);
       const acts=document.createElement('div'); acts.className='pfacts';
       const mk=(label,fn)=>{const b=document.createElement('button'); b.textContent=label; b.addEventListener('click',fn); return b;};
+      acts.appendChild(mk('Results ›',()=>openProfile(n)));
       acts.appendChild(mk('Test ›',()=>testPair(n)));
-      acts.appendChild(mk('Rename',()=>{ const nn=prompt('Rename this pair:', n); if(nn && renameDevice(n,nn)) buildProfiles(); }));
-      acts.appendChild(mk('Export',()=>downloadExport(n)));
-      acts.appendChild(mk('Delete',()=>{ if(confirm('Delete "'+n+'" and all its results?')){ deleteDevice(n); buildProfiles(); } }));
       card.appendChild(acts);
       list.appendChild(card);
     });
     $('pfcompare').style.display = names.length>=2 ? 'inline-flex' : 'none';   // Compare lives under Profiles
+  }
+  // profile detail: the pair's results FIRST — card, saved hearing curve, and every room with its
+  // reading; tapping a room (re)takes exactly that room on this pair. Rename/export/delete live here.
+  function openProfile(name){
+    const dev=db.devices[name];
+    if(!dev){ buildProfiles(); show('profiles'); return; }
+    pvName=name;
+    $('pvname').textContent=name;                       // textContent: stored/imported names can't inject
+    const tot=deviceTotal(name);
+    const done=CH.filter(c=>{const v=dev.rooms&&dev.rooms[c.tag]; return v!=null && (typeof v==='number'||v.pct!=null);}).length;
+    $('pvmeta').textContent=(tot!=null?tot+'% overall · ':'')+done+' of '+CH.length+' rooms'
+      +(dev.curve?' · curve measured':'')+(dev.date?' · last '+new Date(dev.date).toLocaleDateString():'');
+    const data=cardData(name, dev);
+    $('pvcardwrap').style.display=data?'block':'none';
+    $('pvsavecard').style.display=data?'':'none';
+    if(data) window.SR_FP.render($('pvcard'), data);
+    const hasCurve=renderSavedCurve($('pvcurve'), name, dev);
+    $('pvcurvewrap').style.display=hasCurve?'block':'none';
+    $('pvsavecurve').style.display=hasCurve?'':'none';
+    $('pvempty').style.display=(data||hasCurve)?'none':'block';
+    const list=$('pvrooms'); list.innerHTML='';
+    Object.keys(GROUPS).forEach(gk=>{
+      const rooms=CH.map((c,i)=>({c,i})).filter(x=>x.c.group===gk);
+      if(!rooms.length) return;
+      const h=document.createElement('div'); h.className='bghead'; h.textContent=GROUPS[gk].name; list.appendChild(h);
+      rooms.forEach(({c,i})=>{
+        const row=document.createElement('button'); row.className='pvrow';
+        const v=dev.rooms&&dev.rooms[c.tag];
+        const p=v==null?null:(typeof v==='number'?v:v.pct);
+        const isCurve=c.mode==='curve';
+        const taken=isCurve?!!dev.curve:p!=null;
+        if(taken) row.classList.add('taken');
+        const val=isCurve ? (taken?'✓ measured':'—')
+          : p==null?'—':((typeof v==='object'&&v.thr)?v.thr+' · '+p+'%':p+'%');
+        const nm=document.createElement('span'); nm.className='rn'; nm.textContent=c.tag;
+        const rs=document.createElement('span'); rs.className='rs'; rs.textContent=c.tests;
+        const rv=document.createElement('span'); rv.className='rv'; rv.textContent=val;   // textContent: imported thr can't inject
+        const ch=document.createElement('span'); ch.className='chev'; ch.textContent=taken?'redo ›':'run ›';
+        row.appendChild(nm); row.appendChild(rs); row.appendChild(rv); row.appendChild(ch);
+        row.addEventListener('click',()=>{
+          if(isCurve){ initAudio(); ctx.resume(); device=safeName(name); pfReturn=true; startCurve(); }
+          else retakeRoom(name, i);
+        });
+        list.appendChild(row);
+      });
+    });
+    show('pfview');
   }
   // open a pair for testing: pick which rooms to run in the room-select, with this pair active
   function testPair(name){

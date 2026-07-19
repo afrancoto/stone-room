@@ -239,6 +239,28 @@
     <div class="row"><button class="btn ghost" id="pf-back">Back</button><button class="btn ghost" id="pfcompare" style="display:none">Compare pairs</button></div>
   </section>
 
+  <!-- profile detail: results first — card, hearing curve, every room; tap a room to (re)take it -->
+  <section id="pfview" class="screen">
+    <div class="eyebrow">Profile</div>
+    <h2 id="pvname"></h2>
+    <p class="lede" id="pvmeta"></p>
+    <div class="fpwrap" id="pvcardwrap" style="display:none"><div class="fpbox" id="pvcard"></div></div>
+    <div class="fpwrap" id="pvcurvewrap" style="display:none"><div class="fpbox" id="pvcurve"></div></div>
+    <div class="cmpempty" id="pvempty" style="display:none">Nothing measured on this pair yet.<br>Tap any room below to take its first reading.</div>
+    <div class="pvrooms" id="pvrooms"></div>
+    <div class="seltools">
+      <button id="pvsavecard" style="display:none">Save card</button>
+      <button id="pvsavecurve" style="display:none">Save curve</button>
+      <button id="pv-rename">Rename</button>
+      <button id="pv-export">Export</button>
+      <button id="pv-delete">Delete</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="pv-back">Back</button>
+      <button class="btn" id="pv-test">Test rooms ›</button>
+    </div>
+  </section>
+
   <!-- audiogram / hearing curve -->
   <section id="curve" class="screen">
     <div class="eyebrow">Hearing + headphone curve</div>

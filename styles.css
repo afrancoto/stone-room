@@ -10,6 +10,8 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
+html{background:var(--bg)}   /* solid base under the fixed-attachment gradient — some mobile browsers drop
+                                'fixed' below the fold, which otherwise flashes white on long screens */
 body{
   background:radial-gradient(120% 90% at 50% -10%, #241D16 0%, var(--bg) 60%) fixed;
   color:var(--stone); font-family:var(--ui);
@@ -199,6 +201,9 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 #cvChoices .choice{flex:1 1 0; min-width:0; max-width:190px}
 #cvChoices .btn{flex:1 1 100%; max-width:280px}
 #cvChoices .replay{flex-basis:100%; justify-content:center; margin-top:2px}
+#cvChoices .brk{flex-basis:100%; height:0}                     /* hard line break between button rows */
+#cvChoices .choice.alt{flex:1 1 40%; font-size:15.5px; padding:13px 12px; font-family:var(--ui)}
+#cvChoices .choice.alt small{margin-top:4px}
 .hint{font-size:12px; color:var(--sage); margin:2px 0 4px; min-height:16px; letter-spacing:.02em}
 .hint:empty{display:none}
 .status{min-height:22px; font-size:13.5px; color:var(--stone); margin:4px 0 2px; font-weight:500}
@@ -287,6 +292,23 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .pfacts button:last-child{color:var(--ember)}
 .pfacts button:first-child{color:var(--stone); font-weight:600; text-decoration:none}
 #profiles .seltools{margin-top:12px}
+
+/* ---- profile detail (#pfview): results first — card, curve, then every room as a tappable row ---- */
+#pfview.on{justify-content:flex-start}
+#pfview h2{margin-bottom:2px}
+.pvrooms{width:min(88vw,340px); margin:14px auto 0; text-align:left}
+.pvrow{display:grid; grid-template-columns:minmax(0,1fr) auto auto; grid-template-areas:"rn rv chev" "rs rv chev";
+  column-gap:10px; align-items:center; width:100%; text-align:left; background:none; border:none;
+  border-bottom:1px solid var(--line); padding:9px 2px; cursor:pointer; color:var(--stone); font-family:var(--ui)}
+.pvrow:active{opacity:.7}
+.pvrow .rn{grid-area:rn; font-size:14px}
+.pvrow .rs{grid-area:rs; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.pvrow .rv{grid-area:rv; font-size:12.5px; color:var(--muted); white-space:nowrap}
+.pvrow.taken .rv{color:var(--sage)}
+.pvrow .chev{grid-area:chev; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--sage); white-space:nowrap}
+.pvrow:not(.taken) .chev{color:var(--gold)}
+#pfview .seltools{margin-top:16px}
+#pfview .seltools #pv-delete{color:var(--ember)}
 
 /* ---- info modal (science) ---- */
 .modal{position:fixed; inset:0; background:rgba(10,8,6,.72); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:50; padding:calc(20px + var(--safe-t)) 16px calc(20px + var(--safe-b))}
