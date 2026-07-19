@@ -4,10 +4,11 @@ A free, installable web app that does two things at once: **measures what you he
 the headphones you own** and **trains your ears**. Twenty-five short rooms each put one
 audiophile claim to the test — soundstage, detail, sub-bass, treble air, sibilance, timing,
 micro-dynamics — plus a **per-ear hearing + headphone curve** (pulsed yes/no detection with
-contralateral masking and silent catch trials). Every room runs an **adaptive Bayesian
-track** — two-interval forced choice for the A/B rooms, yes/no detection for the curve,
-adaptive difficulty for the spatial rooms — that hunts your exact limit and reports it in
-real **Hz and dB**, saved per pair so you can set one headphone against another. Absolute
+contralateral masking and silent catch trials). Most rooms run an **adaptive Bayesian
+track** — two-interval forced choice for the A/B rooms, yes/no detection for the curve —
+that hunts your exact limit and reports it in real **Hz and dB**; the five pointing rooms
+and the crowd-counting room instead walk a fixed difficulty ladder and score your accuracy.
+Everything is saved per pair so you can set one headphone against another. Absolute
 level is uncalibrated (browser, no SPL reference); shapes and differences are the honest output.
 
 No sign-up, no server, no tracking. Everything runs in the browser; results live in your

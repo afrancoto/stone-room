@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v41";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v42";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -399,7 +399,8 @@
   // volume up and both move together. Output-level error, and most of the headphone's frequency
   // response, divide out. That is the property that lets speech-in-noise screens work on
   // uncalibrated consumer headphones, and it's the one measurement here that barely cares that
-  // the browser has no SPL reference. (Level roving actually demonstrates it: the ratio holds.)
+  // the browser has no SPL reference. (The per-trial level rove rides on top of this: both the
+  // tone and its masker pass through the same output gain, so the ratio is untouched by it.)
   const SNR_F=1000, SNR_A=0.16, SNR_Q=1.2;   // 1 kHz tone in a ~1-octave band of noise around it
   // Band-passing white noise strips most of its power, so the raw amplitude parameter is NOT the
   // acoustic ratio. TONE_K was MEASURED offline (OfflineAudioContext, masker RMS vs tone RMS):
@@ -578,10 +579,10 @@
     Silence:{type:'X', q:'Which hid a hiss?', dur:2.4, answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.05,.006], physLo:0.000045, fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
       play:(lv,t,alt)=>silenceTail(t, alt?lv:0)},
     // level here is the TONE/MASKER amplitude ratio — a ratio, so it survives the missing
-    // calibration. physLo 0.09 (≈ −21 dB) guards the physical limit: no ear detects a tone
-    // arbitrarily far below noise in its own critical band.
+    // calibration. physLo guards the physical limit: no ear detects a tone arbitrarily far
+    // below noise in its own critical band.
     // range set from the measured calibration: a tone in same-band noise is typically detected
-    // near −8 dB SNR, so start at 0 dB (clearly audible), anchor weak/reference at +4 / −15 dB,
+    // near −8 dB SNR, so start at 0 dB (clearly audible), anchor weak/reference at +4 / −20 dB,
     // and clamp at −24 dB — below any plausible masked threshold.
     Noise:{type:'D', q:'Which held a tone?', dur:2.0, start:1.0, floor:.05, ceil:4.0, hard:.85, easy:1.35, log:true, betterHigh:false, anchors:[1.6,.10], physLo:0.06,
       fmt:v=>Math.round(20*Math.log10(Math.max(v,1e-4)))+' dB vs noise',
@@ -1809,7 +1810,9 @@
         note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
       }
       $('cvNote').innerHTML=note;
-      await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym}, 'yesno-perear'); await saveDB();
+      // persist the false-alarm verdict WITH the curve: the asymmetry note is gated by it here,
+      // so every later surface that re-shows the note must be able to apply the same gate
+      await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym, faHi}, 'yesno-perear'); await saveDB();
     } else {
       const curve=agBuildCurve('B');
       window.SR_FP.renderCurve($('cvcard'), { device, curve });
@@ -2162,10 +2165,10 @@
     else{rank='First listen'; verdict='All of this lives in the sound — it takes a few laps to hear it. Pick one group and drill it.';}
     $('rank').textContent=rank; $('verdict').textContent=verdict;
     // honest benchmark context + what drives the gap (hearing vs headphones)
-    const where = pctR>=80 ? 'well above the ~50–65% most people score on a first run — trained-ear territory'
-      : pctR>=55 ? 'right around where most first-time listeners land (~50–65%)'
-      : pctR>=35 ? 'a touch below the ~50–65% typical first run — the rooms you missed are the ones to drill'
-      : 'below a typical first run — try a smaller set and turn the volume up a little';
+    const where = pctR>=80 ? 'a strong run on this chain — trained-ear territory'
+      : pctR>=55 ? 'a solid run on this chain'
+      : pctR>=35 ? 'room to grow — the rooms you missed are the ones to drill'
+      : 'early days — try a smaller set and turn the volume up a little';
     // find weakest room and note whether it's hearing- or headphone-limited
     const hearingRooms={Air:'your ears (treble fades with age)',Foundation:'your ears and the headphones together'};
     let worst=null,worstP=101; order.forEach(i=>{ if(chPct[i]<worstP){worstP=chPct[i];worst=CH[i].tag;} });
@@ -2205,10 +2208,12 @@
     Object.keys(dev.rooms||{}).forEach(tag=>{ const r=dev.rooms[tag]; if(r && r.pct!=null){ rooms[tag]={pct:r.pct, val:r.val}; ps.push(r.pct); } });
     if(!ps.length) return null;
     const score=Math.round(ps.reduce((a,b)=>a+b,0)/ps.length);
-    const context = score>=80?'trained-ear territory — most first runs are ~50–65%'
-      : score>=55?'around a typical first listen (~50–65%)'
-      : score>=35?'a little below a typical first run'
-      : 'below a typical first run — try fewer rooms, a touch louder';
+    // no invented norm: this app is fully local and has never seen anyone else's run, so it must
+    // not quote a population figure. Describe the run on its own chain instead.
+    const context = score>=80?'trained-ear territory on this chain'
+      : score>=55?'a solid run on this chain'
+      : score>=35?'room to grow — the misses below are the ones to drill'
+      : 'early days on this chain — try fewer rooms, a touch louder';
     return { device:name, date:new Date().toLocaleDateString(), score, context, rooms };
   }
   function renderCard(dev){
@@ -2365,7 +2370,7 @@
     // the audiologist guidance persists with the saved curve — the one actionable output
     // shouldn't evaporate after the results screen
     const asym=dev.curve&&dev.curve.asym;
-    if(hasCurve && asym && Math.abs(asym.max)>=15){
+    if(hasCurve && asym && !(dev.curve&&dev.curve.faHi) && Math.abs(asym.max)>=15){   // same false-alarm gate as the results screen
       const worse=asym.max>0?'left':'right', atF=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
       $('pvcurvenote').textContent='On this run your '+worse+' ear needed noticeably more level above ~'+atF+'. A left–right difference is worth showing to an audiologist — screening, not a diagnosis.';
       $('pvcurvenote').style.display='block';
@@ -2463,7 +2468,9 @@
     const diffs=[];
     for(let i=1;i<runs.length;i++){
       const prev={}; runs[i-1].forEach(p=>{ prev[p.ear+'|'+p.f]=p.rel; });
-      runs[i].forEach(p=>{ const q=prev[p.ear+'|'+p.f]; if(q!=null) diffs.push(Math.abs(p.rel-q)); });
+      // skip 1 kHz: every run is referenced to its own 1 kHz, so that point is 0 by construction
+      // and would flatter the figure
+      runs[i].forEach(p=>{ if(p.f===1000) return; const q=prev[p.ear+'|'+p.f]; if(q!=null) diffs.push(Math.abs(p.rel-q)); });
     }
     if(diffs.length<3) return null;
     const mean=diffs.reduce((a,b)=>a+b,0)/diffs.length;
@@ -2475,6 +2482,17 @@
     const vals=hist.filter(h=>h.rooms&&h.rooms[tag]!=null).map(h=>h.rooms[tag])
       .map(r=>(typeof r==='number'?{pct:r}:r)).filter(r=>r&&r.pct!=null);
     if(vals.length<2) return null;
+    // a score pinned at 0 or 100 every run is the ANCHOR CLAMP repeating, not the measurement —
+    // reporting ±0 there would manufacture perfect repeatability in the one panel about honesty
+    if(vals.every(v=>v.pct===0||v.pct===100)) return { runs:vals.length, pinned:true };
+    // prefer the raw threshold in the room's own units; fall back to score points
+    const A=ADAPT[tag], raw=vals.filter(v=>isFinite(v.val)).map(v=>v.val);
+    if(A && A.fmt && raw.length===vals.length && raw.length>=2){
+      const d=[]; for(let i=1;i<raw.length;i++) d.push(A.log ? Math.abs(Math.log(raw[i]/raw[i-1])) : Math.abs(raw[i]-raw[i-1]));
+      const m=d.reduce((a,b)=>a+b,0)/d.length;
+      // a log-scaled room's gap is a proportion, not an absolute — say it that way
+      return { runs:vals.length, spread: A.log ? '±'+Math.round((Math.exp(m)-1)*100)+'%' : '±'+A.fmt(m) };
+    }
     const dp=[]; for(let i=1;i<vals.length;i++) dp.push(Math.abs(vals[i].pct-vals[i-1].pct));
     return { runs:vals.length, meanPct: dp.reduce((a,b)=>a+b,0)/dp.length };
   }
@@ -2506,16 +2524,19 @@
         const el=document.createElement('div'); el.className='pvrep';
         const big=document.createElement('span'); big.className='rbig'; big.textContent='±'+cr.mean.toFixed(1)+' dB';
         const lab=document.createElement('span'); lab.className='rlab';
-        lab.textContent='average gap between your hearing-curve runs · '+cr.w5+'% within 5 dB · '+cr.w10+'% within 10 dB · '+cr.runs+' runs, '+cr.n+' point pairs';
+        lab.textContent='average gap in curve SHAPE between your runs (each run is referenced to its own 1 kHz, so an overall level change — volume, seal, ambient noise — is subtracted out) · '+cr.w5+'% within 5 dB · '+cr.w10+'% within 10 dB · '+cr.runs+' runs, '+cr.n+' point pairs';
         el.appendChild(big); el.appendChild(lab); box.appendChild(el);
         const bm=document.createElement('div'); bm.className='pvdsub';
-        bm.textContent='For scale, from published studies (not of this app): unsupervised home audiometry averaged 4.7 dB with 74% within 5 dB; automated audiometry in clinic conditions 3.3–3.6 dB with 91% within 5 dB; booth audiometry is generally taken as repeatable to 5–10 dB.';
+        bm.textContent='Not directly comparable: the studies below measured ABSOLUTE thresholds, a harder test than shape agreement. Treat them as context, not a scoreboard. Unsupervised home audiometry averaged 4.7 dB with 74% within 5 dB; automated audiometry in clinic conditions 3.3–3.6 dB with 91% within 5 dB; booth audiometry is generally taken as repeatable to 5–10 dB.';
         box.appendChild(bm);
       }
       rr.forEach(({c,r})=>{
         const el=document.createElement('div'); el.className='pvxrow';
         const n=document.createElement('span'); n.className='xn'; n.textContent=((window.SR_FP&&window.SR_FP.META[c.tag]||{}).name)||c.title;
-        const v=document.createElement('span'); v.className='xv'; v.textContent='±'+Math.round(r.meanPct)+' pts across '+r.runs+' runs';
+        const v=document.createElement('span'); v.className='xv';
+        v.textContent = r.pinned ? 'at this room’s limit — repeatability can’t be read here'
+          : r.spread ? 'typical gap between runs '+r.spread+' · '+r.runs+' runs'
+          : '±'+Math.round(r.meanPct)+' pts across '+r.runs+' runs';
         el.appendChild(n); el.appendChild(v); box.appendChild(el);
       });
       if(!cr && nCurves===1){

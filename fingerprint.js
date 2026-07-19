@@ -298,7 +298,7 @@ ${g}${mark}
   // watermarked sample for the landing demo
   const SAMPLE={
     device:'Sample pair', sample:true, score:71, date:'',
-    context:'above a typical first listen (~50–65%)',
+    context:'a solid run on this chain',
     rooms:{
       Foundation:{pct:78,val:26}, Air:{pct:64,val:15200},
       Presence:{pct:72,val:2.4}, Silk:{pct:58,val:.06}, Grip:{pct:66,val:.12},
