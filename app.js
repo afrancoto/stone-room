@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v38";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v39";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2278,6 +2278,15 @@
           const bw=document.createElement('b'); bw.textContent=band[0].toUpperCase()+band.slice(1); bw.style.color=bcol;
           vd.appendChild(bw); if(tierTxt) vd.appendChild(document.createTextNode(' — '+tierTxt));
           main.appendChild(vd);
+          // the review-word decoded for THIS room lives on the row itself — score, verdict and
+          // what-it-means-when-reviews-say-it are one unit, not parallel sections
+          const D=((window.SR_CONTENT&&window.SR_CONTENT.DECODER)||[]).find(d=>d.tag===c.tag);
+          if(D){ const numVal=(typeof v==='object'&&isFinite(v.val))?v.val:null;
+            let dline=null; try{ dline=D.line(numVal,p); }catch(e){}
+            if(dline){ const dc=document.createElement('span'); dc.className='rdecode';
+              const dt=document.createElement('b'); dt.textContent=D.term+' · ';
+              dc.appendChild(dt); dc.appendChild(document.createTextNode(dline));
+              main.appendChild(dc); } }
         } else {
           rv.textContent='not yet';
           ra.textContent='tap to run ▶ · '+fmtRange(estRoom(c));
@@ -2293,32 +2302,8 @@
         list.appendChild(row);
       });
     });
-    buildDecoder(dev); buildDrift(dev);
+    buildDrift(dev);
     show('pfview');
-  }
-  // "review words, decoded for you": each measured metric read back through review vocabulary —
-  // the honest version of "are my headphones good?": which claims can YOU actually cash?
-  function buildDecoder(dev){
-    const box=$('pvdecode'); box.innerHTML='';
-    const D=(window.SR_CONTENT&&window.SR_CONTENT.DECODER)||[];
-    const rows=[];
-    D.forEach(d=>{
-      const r=dev.rooms&&dev.rooms[d.tag]; if(r==null) return;
-      const p=typeof r==='number'?r:r.pct; if(p==null) return;
-      const v=(typeof r==='object'&&isFinite(r.val))?r.val:null;
-      let line=null; try{ line=d.line(v,p); }catch(e){}
-      if(line) rows.push({term:d.term, line});
-    });
-    if(!rows.length){ box.style.display='none'; return; }
-    const h=document.createElement('div'); h.className='bghead'; h.textContent='Review words, decoded for you'; box.appendChild(h);
-    const sub=document.createElement('div'); sub.className='pvdsub'; sub.textContent='what the vocabulary is worth, given your numbers on this pair'; box.appendChild(sub);
-    rows.forEach(r=>{
-      const el=document.createElement('div'); el.className='pvdrow';
-      const t=document.createElement('span'); t.className='dt'; t.textContent=r.term;
-      const l=document.createElement('span'); l.className='dl'; l.textContent=r.line;
-      el.appendChild(t); el.appendChild(l); box.appendChild(el);
-    });
-    box.style.display='block';
   }
   // "over time": same pair, different days — earliest vs latest reading per room, plus a
   // calm pointer when multiple curves exist. Honest framing: run-to-run wobble is normal.
