@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v37";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v38";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2148,6 +2148,18 @@
       rooms.forEach(c=>{
         const row=document.createElement('div'); row.className='cmprow';
         row.innerHTML=`<div class="rname">${c.tag} · ${c.tests}</div>`;
+        // with exactly two pairs shown, say whether the runs can actually tell them apart:
+        // non-overlapping 95% CIs = a difference the measurements support; overlapping = honest
+        // "too close to call" (a bar-length gap alone is NOT evidence)
+        if(active.length===2){
+          const va=db.devices[active[0]].rooms[c.tag], vb=db.devices[active[1]].rooms[c.tag];
+          if(va&&vb&&typeof va==='object'&&typeof vb==='object'&&va.lo!=null&&va.hi!=null&&vb.lo!=null&&vb.hi!=null){
+            const overlap=!(va.hi<vb.lo||vb.hi<va.lo);
+            const s=document.createElement('span'); s.className='cmpsig'+(overlap?'':' real');
+            s.textContent=overlap?'≈ too close to call':'differs for real';
+            row.querySelector('.rname').appendChild(s);
+          }
+        }
         active.forEach(n=>{
           const v=db.devices[n].rooms[c.tag];
           const p = v==null ? null : (typeof v==='number' ? v : v.pct);

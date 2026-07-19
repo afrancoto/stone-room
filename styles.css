@@ -73,6 +73,20 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 .about p{margin:0 0 10px; font-size:13px; line-height:1.6; color:var(--muted)}
 .about p:last-child{margin-bottom:0}
 .about .about-tips{color:var(--gold); font-size:12px; line-height:1.55}
+/* the chain map: five stages, a lab sees one, you hear them all */
+.chainmap{margin:16px 0 12px; text-align:left}
+.cm-head{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:12px}
+.cm-node{position:relative; padding:0 0 14px 20px; border-left:1px solid var(--line); margin-left:5px}
+.cm-node:last-of-type{border-left-color:transparent}
+.cm-node::before{content:''; position:absolute; left:-5px; top:3px; width:9px; height:9px; border-radius:50%; background:var(--surface); border:1px solid var(--muted)}
+.cm-node .cn{display:block; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--stone); margin-bottom:3px}
+.cm-node .cd{display:block; font-size:12px; line-height:1.5; color:var(--muted)}
+.cm-node.lab .cn::after{content:' · the only stage a lab rig measures'; color:var(--gold); letter-spacing:.08em}
+.cm-node.lab::before{border-color:var(--gold)}
+.cm-node.you::before{background:var(--ember); border-color:var(--ember)}
+.cm-node.you .cn{color:var(--ember)}
+.cm-cap{font-size:12px; line-height:1.6; color:var(--muted); margin:2px 0 0}
+.cm-cap b{color:var(--stone); font-weight:600}
 .promise{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); text-align:center; margin-top:22px; opacity:.7}
 .ver{font-size:10px; letter-spacing:.14em; color:var(--muted); text-align:center; margin-top:12px; opacity:.5}
 .demo{max-width:min(92vw,380px); margin:18px auto 0; animation:fade .35s ease both}
@@ -275,6 +289,8 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .cmpbar .track{flex:1; height:5px; background:var(--line); border-radius:3px; overflow:hidden}
 .cmpbar .fill{height:100%; border-radius:3px}
 .cmpbar .pct{width:64px; font-size:10px; color:var(--stone); text-align:right}
+.cmpsig{display:block; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-top:2px}
+.cmpsig.real{color:var(--sage)}
 .cmpempty{color:var(--muted); font-size:13.5px; margin-top:20px; line-height:1.6}
 #compare .row{margin-top:16px}
 

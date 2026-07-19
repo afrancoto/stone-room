@@ -56,6 +56,16 @@
     <div class="about" id="introAbout" hidden>
       <p id="introWhat"></p>
       <p id="introGap"></p>
+      <!-- the chain: everything a listening moment passes through — a lab rig measures one stage; you hear all five -->
+      <div class="chainmap" aria-label="The five stages every sound passes through before you hear it">
+        <div class="cm-head">Everything you hear passes through five stages</div>
+        <div class="cm-node"><span class="cn">The recording</span><span class="cd">Streams and files are lossy-compressed — the encoder discards what a masking model predicts you won’t hear. A choice made before you press play.</span></div>
+        <div class="cm-node"><span class="cn">The phone &amp; its apps</span><span class="cd">Volume curve, EQ, spatializers, system mixing — every setting quietly reshapes the signal.</span></div>
+        <div class="cm-node"><span class="cn">The connection</span><span class="cd">Bluetooth re-compresses the audio again (SBC, AAC, aptX, LDAC — codecs differ); a cable skips that step.</span></div>
+        <div class="cm-node lab"><span class="cn">The headphones</span><span class="cd">The driver’s frequency response, distortion, and seal against your head.</span></div>
+        <div class="cm-node you"><span class="cn">Your ears</span><span class="cd">Outer-ear filtering, your own hearing thresholds, your training. Where sound becomes perception.</span></div>
+        <p class="cm-cap">A lab rig measures the headphone stage in isolation — precisely, but alone. Listening happens through all five at once. Stone Room measures the whole line, because the whole line is what you hear — which is why every reading here says <b>you + this chain</b>, never a bare headphone spec.</p>
+      </div>
       <p class="about-tips" id="introTips"></p>
     </div>
     <div class="demo" id="introDemo" hidden>
@@ -216,7 +226,7 @@
   <section id="compare" class="screen">
     <div class="eyebrow">The lab bench</div>
     <h2>Headphone vs headphone</h2>
-    <p class="lede">Same rooms, different pairs. Tap names to show or hide them.</p>
+    <p class="lede">Same rooms, different pairs. Tap names to show or hide them. With two pairs shown, each row says whether the gap is real — or within run-to-run noise.</p>
     <div class="legend" id="legend"></div>
     <div class="cmpscroll" id="cmpscroll"></div>
     <div class="row">
