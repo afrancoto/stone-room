@@ -27,6 +27,7 @@
     Crowd:     { group:'detail',name:'Ensemble count',fmt:v=>Math.round(v)+' voices' },
     Whisper:   { group:'detail',name:'Buried detail', fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under' },
     Silence:   { group:'detail',name:'Noise floor',   fmt:v=>Math.round(20*Math.log10(v/.45))+' dB' },
+    Noise:     { group:'detail',name:'Signal in noise',fmt:v=>Math.round(20*Math.log10(Math.max(v,1e-4)))+' dB' },
     Grain:     { group:'detail',name:'Timbre purity', fmt:v=>Math.round(v*100)+'% partial' },
     Halls:     { group:'detail',name:'Decay / rooms', fmt:v=>Math.round(v*100)+'% Δ' },
     Composure: { group:'detail',name:'Composure',     fmt:v=>'drive '+v.toFixed(1) },

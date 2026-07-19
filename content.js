@@ -14,7 +14,7 @@
 
   const INTRO = {
     hook: "Measure your hearing. Train your ears. Know your headphones.",
-    line: "Twenty-four rooms and a per-ear hearing curve. Each measures one claim the reviews make — as your ears actually hear it through your pair — and saves the shape so you can compare.",
+    line: "Twenty-five rooms, including a per-ear hearing curve. Each measures one claim the reviews make — as your ears actually hear it through your pair — and saves the shape so you can compare.",
     what: "Each room plays a sound and asks one simple question. Answer, and it hunts your exact limit — telling you, in real numbers, where your headphones and your hearing actually land. You learn what the words mean by hearing them.",
     gap: "Other free tools do half the job: they train your ears with no number attached, or they publish lab readings of a unit that isn't on your head. This one measures what YOU hear through YOUR pair — ears and headphones as one chain — and saves it, so you can compare pairs and watch your own hearing over time.",
     tips: "Best in a quiet room, at a moderate volume, with any phone spatializer, Dolby Atmos and EQ switched off.",
@@ -208,6 +208,14 @@
       miss: ["Widened the gap.", "Made the step bigger.", "Easier to hear."],
       tiers: { reference: "The faintest 1 dB swell reads clearly — fully alive.", strong: "Reads most shadings; the subtlest slip past.", fair: "Big moves land, small ones blur.", weak: "Loud and soft flatten together — no shading." }
     },
+    Noise: {
+      benchmark: "Struggling to follow a voice in a busy room is the complaint that sends most people to an audiologist — and hearing a signal buried in noise is the ability behind it.",
+      science: "Your inner ear behaves like a bank of narrow filters. A tone becomes audible when it stands far enough above the noise inside its own filter — so what's measured is a ratio, not a loudness. That's why this room is the sturdiest one here: the tone and the noise ride the same chain at the same instant, so turning the volume up moves both together and the answer stays put. Screening tests built on this principle work on ordinary consumer headphones without calibration.",
+      models: "Less about the driver than most rooms: background noise in your room, a poor seal, or your own hearing move this number far more than the headphone does.",
+      hit: ["Found it in there.", "You heard through the noise.", "Caught it buried."],
+      miss: ["Lifting it out a little.", "A clearer tone next.", "Making it stand prouder."],
+      tiers: { reference: "Exceptional — you pull a tone out of noise that hides it from most people.", strong: "Strong — you follow a signal well into the noise.", fair: "Fair — the tone needs to stand clear of the noise before you catch it.", weak: "The noise has to drop away before the tone appears — worth retrying somewhere quiet." }
+    },
     Hearing: {
       benchmark: "Young ears span ~20 Hz–20 kHz; the top end falls with age, and every headphone rolls off somewhere of its own.",
       science: "A browser has no absolute SPL reference, so the loudness isn't calibrated — but the SHAPE is real: the combined response of these headphones and your own ears, the same idea behind Samsung's Adapt Sound. Dips are bands this chain renders quieter; the high end also shows your own hearing's ceiling.",
@@ -250,6 +258,10 @@
     { term:'"micro-dynamics"', tag:'Shade', line:(v,p)=> v==null||!isFinite(v) ? null
       : v<=0.5 ? `You resolve level steps of ~${v.toFixed(1)} dB — micro-dynamic shading is real listening currency for you.`
       : `You resolve ~${v.toFixed(1)} dB steps — micro-dynamics talk finer than that is below your floor.` },
+    { term:'"clarity" · hearing into a mix', tag:'Noise', line:(v,p)=>
+      p>=70 ? `You pull a signal well out of the noise around it — the ability reviewers gesture at with "clarity" is genuinely strong in you.`
+      : p>=40 ? `You need a signal to stand moderately clear of surrounding noise. Quiet rooms will flatter your listening more than new gear will.`
+      : `Noise buries things quickly for you today — worth re-running somewhere quiet before reading anything into it.` },
     { term:'"congestion" · busy mixes', tag:'Crowd', line:(v,p)=>
       p>=70 ? `You keep voices apart in a crowd — congestion in a busy mix is something you'll actually hear a good pair fix.`
       : `Busy passages blur early for you — "never congested" claims will be hard to verify with your own ears.` },
@@ -261,5 +273,43 @@
       : `Attack edges have to soften a lot before you notice — "lightning transients" claims will mostly read alike.` },
   ];
 
-  window.SR_CONTENT = { GROUPS, INTRO, ROOM: C, DECODER };
+  // ---- methods page: how it measures, what it refuses to claim, and the published work behind both.
+  // Every number quoted here is from the cited study, describing THAT study — not a claim about
+  // Stone Room's own accuracy, which has never been validated against a clinical audiometer.
+  const METHODS = [
+    { h:'What is actually being measured',
+      p:['A threshold: the smallest difference, or the quietest sound, you can reliably detect — on this recording, this phone, this connection, these headphones, these ears. That whole line is the instrument. No part of it is isolated, and the reading belongs to all of it at once.',
+         'This is the opposite of a lab measurement, which isolates the headphone on a coupler and tells you nothing about the listener. Neither one substitutes for the other.'] },
+    { h:'How a threshold is found',
+      p:['Each room runs a Bayesian adaptive procedure. It holds a probability distribution over three things at once — your threshold, the steepness of your psychometric function, and your lapse rate (the chance you blink, sneeze or mis-tap on a trial you should have got) — and places each new trial where it expects to learn the most, by minimising the expected entropy of the threshold distribution.',
+         'Modelling lapses matters: without that third dimension a single careless answer drags a threshold estimate badly. With it, one slip costs very little.',
+         'The general framework is QUEST+ (Watson, 2017, Journal of Vision), which unified this family; the marginalising variant used here follows Prins (2013) and the original psi method of Kontsevich & Tyler (1999).'] },
+    { h:'The hearing curve',
+      p:['Per-ear, single-interval yes/no detection with pulsed tones — three short bursts rather than one steady tone, because a steady tone is easily confused with tinnitus, which tends to sit exactly where hearing is weakest.',
+         'About one trial in five is silent. Those catch trials never touch the estimate; they measure how often you answer "I hear it" when nothing played, and a high false-alarm count suppresses the left/right warning rather than letting it fire on noise.',
+         'In per-ear mode a band of noise plays in the resting ear. With headphones, a loud tone crosses the skull to the other cochlea attenuated by roughly 40–50 dB, so without that masking noise a good ear quietly answers for a weak one and a real asymmetry reads far smaller than it is.',
+         'Points are drawn through a Gaussian process over log-frequency, so wide-uncertainty points are pulled toward their neighbours and the shaded band widens where the data are thin. Continuous-frequency machine-learning audiometry (Song and colleagues; Cox & de Vries) is the published line this follows.'] },
+    { h:'What stops you gaming it',
+      p:['Level and base pitch are randomised every trial, so no token can be memorised — only the difference under test carries information.',
+         'Where a difference could be heard as "just louder", the alternatives are power-matched, so loudness cannot stand in for the quality being tested.',
+         'Tones are switched on and off with raised-cosine ramps, so nobody can detect the click instead of the tone.'] },
+    { h:'What this can NOT tell you',
+      p:['<b>Not decibels of hearing loss.</b> A browser has no absolute sound-pressure reference: the app knows the digital level it requested, never the pressure that arrived at your eardrum. Uncalibrated remote testing has been reported to sit tens of decibels away from booth audiometry in absolute terms — one study of an uncalibrated remote setup reported about 27 dB of bias. Absolute numbers here are not audiometric values and must never be read as dB HL.',
+         '<b>Not a diagnosis, and not a clinical instrument.</b> Stone Room has not been validated against a clinical audiometer. It is a screening-grade listening tool. Anything that worries you belongs with an audiologist.',
+         '<b>Not a headphone spec.</b> Two people measuring the same headphones will get different numbers, because their ears are in the circuit. To compare gear, hold the listener constant: same person, same session, two pairs.',
+         '<b>Not population-normed.</b> Proper norming needs a large validated reference dataset, which this app does not have. Priors are seeded from your own neighbouring frequencies instead — within-subject, never borrowed from a population we have not measured.'] },
+    { h:'What it CAN stand behind',
+      p:['<b>Shape.</b> The relative form of your curve — which bands need more level than your own 1 kHz — survives the missing calibration, because every point shares the same uncalibrated chain.',
+         '<b>Differences.</b> Left versus right, pair versus pair, today versus last spring: differences cancel the constant unknowns, which is why the app pushes you toward comparisons rather than absolute verdicts.',
+         '<b>Ratios.</b> Where a room measures a signal against a masker played through the same transducer at the same moment, output-level and frequency-response errors cancel in the ratio. This is why speech-in-noise screens work on uncalibrated consumer headphones — a smartphone digits-in-noise test reported roughly 1 dB of residual difference across five different headphone types (Potgieter et al., 2016), and it is the principle the "In the noise" room borrows.',
+         '<b>Repeatability.</b> The one claim an uncalibrated instrument can genuinely earn: does it give you the same answer twice? Measure any room again and the app shows you its own agreement, unedited.'] },
+    { h:'How repeatable should a hearing test be?',
+      p:['Benchmarks worth holding this app to, from published work on real listeners: unsupervised home audiometry on consumer earphones reported a mean absolute test-retest difference of 4.7 dB, with 74% of retests within 5 dB and an intraclass correlation of 0.85; automated audiometry in clinical conditions reported 3.3–3.6 dB average agreement with 91% within 5 dB; standard booth audiometry is generally taken as repeatable to 5–10 dB.',
+         'For context on the field: a 2025 diagnostic-accuracy study found that neither of two well-known boothless screening apps achieved high test-retest reliability. Repeatability is not a solved problem in this category — which is exactly why this app measures and shows its own, instead of asserting it.'] },
+    { h:'Sources',
+      p:['Watson (2017), <i>QUEST+: a general multidimensional Bayesian adaptive psychometric method</i>, Journal of Vision · Kontsevich & Tyler (1999), <i>Bayesian adaptive estimation of psychometric slope and threshold</i>, Vision Research · Prins (2013), <i>The psi-marginal adaptive method</i>, Journal of Vision · Potgieter et al. (2016), <i>Development and validation of a smartphone digits-in-noise hearing test</i>, International Journal of Audiology · Swanepoel et al. (2010), automated versus manual pure-tone audiometry, and subsequent work on ambient-noise monitoring for boothless testing · Song et al. and Cox & de Vries, machine-learning / Gaussian-process audiometry · Jacoti home-audiometry test-retest analysis (Frontiers in Audiology &amp; Otology, 2024) · JAMA Network Open (2025), diagnostic accuracy and reliability of consumer hearing-screening apps.',
+         'These are cited as precedent and as benchmarks to be measured against. None of them is a validation of this app.'] },
+  ];
+
+  window.SR_CONTENT = { GROUPS, INTRO, ROOM: C, DECODER, METHODS };
 })();

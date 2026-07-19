@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v39";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v41";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -393,6 +393,39 @@
     nb.connect(bp); bp.connect(g); g.connect(sp); sp.connect(master);
     nb.start(when); nb.stop(when+dur+.05);
   }
+  // ---- calibration-robust masked detection: a tone hidden inside a band of noise centred on it.
+  // WHY THIS ROOM IS DIFFERENT: the tone and its masker occupy the same narrow band and pass
+  // through the same transducer at the same instant, so what's measured is a RATIO — turn the
+  // volume up and both move together. Output-level error, and most of the headphone's frequency
+  // response, divide out. That is the property that lets speech-in-noise screens work on
+  // uncalibrated consumer headphones, and it's the one measurement here that barely cares that
+  // the browser has no SPL reference. (Level roving actually demonstrates it: the ratio holds.)
+  const SNR_F=1000, SNR_A=0.16, SNR_Q=1.2;   // 1 kHz tone in a ~1-octave band of noise around it
+  // Band-passing white noise strips most of its power, so the raw amplitude parameter is NOT the
+  // acoustic ratio. TONE_K was MEASURED offline (OfflineAudioContext, masker RMS vs tone RMS):
+  // without it the parameter ran +14.8 dB hot and the room's range sat entirely below threshold.
+  // With it, the level parameter IS the true tone-RMS / masker-RMS ratio, so the reported "−8 dB
+  // vs noise" is a real signal-to-noise ratio. (Nyquist-dependent to ~0.4 dB between 44.1/48 kHz.)
+  const SNR_TONE_K=0.182;
+  let snrOff=0;
+  function snrFreeze(){ snrOff=Math.random()*0.9; }   // one masker realisation per TRIAL, shared by A and B
+  function snrMasked(t, dur, ratio, withTone){
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(3.2);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=SNR_F; bp.Q.value=SNR_Q;
+    const ng=ctx.createGain(); ng.gain.setValueAtTime(0,t); ng.gain.linearRampToValueAtTime(SNR_A,t+.06);
+    ng.gain.setValueAtTime(SNR_A,t+dur-.08); ng.gain.linearRampToValueAtTime(0,t+dur);
+    nb.connect(bp); bp.connect(ng); ng.connect(master);
+    nb.start(t, snrOff); nb.stop(t+dur+.05);
+    if(!withTone) return;
+    const amp=SNR_A*SNR_TONE_K*ratio, td=0.45;
+    const on=t+0.35+Math.random()*Math.max(0.05,(dur-1.0));   // random onset inside the masker — no timing tell
+    const rise=HANN_RISE.map(v=>v*amp), fall=HANN_RISE.map(v=>v*amp).reverse();
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,on);
+    g.gain.setValueCurveAtTime(rise, on, .03);
+    g.gain.setValueCurveAtTime(fall, on+td-.03, .03);
+    g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=SNR_F; o.connect(g); o.start(on); o.stop(on+td+.05);
+  }
   // short neutral noise wash between the two intervals — a "palate cleanser" that resets
   // the ear (releases forward masking) so A and B are judged fresh. Optional.
   function interNoise(when, dur){
@@ -476,6 +509,10 @@
      claim:'Between the notes: true black. No hiss, no veil, just nothing.',
      learn:'"Black background" is a low noise floor — nothing added beneath quiet passages. You just resolved near-silence, which is exactly what the phrase means.',
      notice:'A note, then silence — twice. One silence hides a faint hiss. <b>Tap the one that hid it.</b>'},
+    {group:'res',tag:'Noise',title:'In the noise',tests:'signal in noise',mode:'stair',
+     claim:'Clarity: a signal stays findable even when noise is trying to bury it.',
+     learn:'Your ear analyses sound in narrow bands, and a tone becomes audible once it rises far enough above the noise inside its own band. Because the tone and the noise travel the same path at the same moment, this reading barely moves when you change the volume — it is the one measurement here that hardly cares about calibration.',
+     notice:'Two bursts of noise — one hides a steady tone inside it. <b>Tap the burst that held the tone.</b>'},
     {group:'res',tag:'Grain',title:'Spot the impostor',tests:'timbre resolution',mode:'stair',
      claim:'Timbre is texture — and you can hear when a note’s texture is even slightly off.',
      learn:'Timbre lives in the balance of overtones. The impostor carried one stray partial at ~2.8× the fundamental — the sound of texture being subtly wrong.',
@@ -540,6 +577,16 @@
       play:(lv,t,on)=>{pad(t,1.6,.2); if(on) tick(t+.5+Math.random()*.7, lv);}},
     Silence:{type:'X', q:'Which hid a hiss?', dur:2.4, answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.05,.006], physLo:0.000045, fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
       play:(lv,t,alt)=>silenceTail(t, alt?lv:0)},
+    // level here is the TONE/MASKER amplitude ratio — a ratio, so it survives the missing
+    // calibration. physLo 0.09 (≈ −21 dB) guards the physical limit: no ear detects a tone
+    // arbitrarily far below noise in its own critical band.
+    // range set from the measured calibration: a tone in same-band noise is typically detected
+    // near −8 dB SNR, so start at 0 dB (clearly audible), anchor weak/reference at +4 / −15 dB,
+    // and clamp at −24 dB — below any plausible masked threshold.
+    Noise:{type:'D', q:'Which held a tone?', dur:2.0, start:1.0, floor:.05, ceil:4.0, hard:.85, easy:1.35, log:true, betterHigh:false, anchors:[1.6,.10], physLo:0.06,
+      fmt:v=>Math.round(20*Math.log10(Math.max(v,1e-4)))+' dB vs noise',
+      onTrial:()=>snrFreeze(),
+      play:(lv,t,on)=>snrMasked(t, 2.0, lv, on)},
     Grain:{type:'X', q:'Which was pure?', dur:1.15, answerAltered:false, start:.1, floor:.008, ceil:.35, hard:.78, easy:1.4, log:true, betterHigh:false, anchors:[.15,.02], physLo:0.005, fmt:v=>'partial '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>grainNote(t, alt, lv)},
     Composure:{type:'X', q:'Which stayed clean?', dur:1.8, answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], physLo:0.15, fmt:v=>'drive '+v.toFixed(1),
@@ -576,6 +623,7 @@
     Air:'Tap the interval with the faint high shimmer',
     Whisper:'Tap the pad that hid a faint tick',
     Silence:'Tap the silence that wasn’t truly black',
+    Noise:'Tap the noise burst that hid a steady tone',
     Grain:'Tap the cleaner, purer of the two notes',
     Composure:'Tap the one that stayed clean under load',
     Grip:'Tap the tighter bass — the one that stops dead',
@@ -608,7 +656,7 @@
   let choiceTimers=[], orbitInt=null;
   // curated default tour (~11 non-redundant rooms across all four domains) — keeps the set
   // short. Every other room stays available on the select screen, just off by default.
-  const DEFAULT_ROOMS = new Set(['Stage','Orbit','Depth','Crowd','Whisper','Grain','Foundation','Air','Presence','Snap','Shade']);
+  const DEFAULT_ROOMS = new Set(['Stage','Orbit','Depth','Crowd','Whisper','Noise','Grain','Foundation','Air','Presence','Snap','Shade']);
   let selected = CH.map(c=>DEFAULT_ROOMS.has(c.tag));
   let device='';
   let db={devices:{}}, storageOK=false, cmpVisible={};
@@ -617,6 +665,7 @@
   let currentRunId=null;          // one id per measurement occasion (tour / standalone curve / single retake)
   let fromProfile=false;          // true when the room-select was opened from a profile (device preset → skip naming)
   let pvName=null;                // the pair whose detail view (#pfview) is open
+  let methodsBack='intro';        // where the methods page returns to
   let pfReturn=false;             // a standalone curve was launched from the profile view → Done returns there
   function uid(pre){ const r=(window.crypto&&crypto.randomUUID)?crypto.randomUUID().replace(/-/g,'').slice(0,12):(Date.now().toString(36)+Math.random().toString(36).slice(2,8)); return (pre||'id')+'_'+r; }
   let st=null;                                    // active stair state
@@ -638,7 +687,7 @@
   function killStim(){ if(master){ const now=ctx.currentTime; master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(master.gain.value, now); master.gain.linearRampToValueAtTime(0, now+0.035); } }
 
   const $=id=>document.getElementById(id);
-  const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve'),profiles:$('profiles'),pfview:$('pfview')};
+  const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve'),profiles:$('profiles'),pfview:$('pfview'),methods:$('methods')};
   let curveInTour=false;     // true while the hearing-curve room runs inside a tour
   const show=n=>{Object.values(scr).forEach(s=>s&&s.classList.remove('on')); scr[n].classList.add('on'); window.scrollTo(0,0);};
   const jit=(v,j)=>v+(Math.random()*2-1)*j;
@@ -886,6 +935,8 @@
     $('endprofiles').addEventListener('click',()=>{buildProfiles(); show('profiles');});
     $('pfcompare').addEventListener('click',()=>{ buildCompare(); show('compare'); });   // Compare is reached from Profiles now
     $('pf-back').addEventListener('click',()=>show(order.length?'end':'intro'));
+    $('gomethods').addEventListener('click',()=>{ buildMethods(); methodsBack='intro'; show('methods'); });
+    $('mdback').addEventListener('click',()=>show(methodsBack||'intro'));
     $('pv-back').addEventListener('click',()=>{ buildProfiles(); show('profiles'); });
     $('pv-test').addEventListener('click',()=>{ if(pvName) testPair(pvName); });
     $('pv-rename').addEventListener('click',()=>{ if(!pvName)return; const nn=prompt('Rename this pair:', pvName); if(!nn)return;
@@ -1157,20 +1208,28 @@
   function setupStair(c){
     const A=ADAPT[c.tag];
     const eng=window.SR_ZEST.forRoom(A);
-    st={A, tag:c.tag, eng, trial:0, side:0, curX:0, curLevel:A.start, done:false, dur:A.dur||1.5};
+    // one unscored familiarisation trial at an obvious level first: a listener still learning
+    // what to listen FOR answers their first real trials badly, and that noise lands in the
+    // estimate. Standard practice in psychophysics — the practice answer is discarded.
+    st={A, tag:c.tag, eng, trial:0, side:0, curX:0, curLevel:A.start, done:false, dur:A.dur||1.5, warm:true};
     showPrecisionUI();
     stairTrial();
   }
   function stairTrial(){
     const A=st.A;
     st.curX=st.eng.z.next(); st.curLevel=st.eng.levelOf(st.curX);
+    // warm-up plays at the EASY end of the room's own range so the difference is unmistakable
+    if(st.warm) st.curLevel = A.anchors ? A.anchors[0] : A.start;
     st.side=Math.random()<.5?0:1;
     const btns=buildChoices(['A','B'],['first','second'],stairPick);
     const dur=st.dur, gap=.3;
     const play=()=>{
       choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
       setChoicesEnabled(false); setReplay(false); roveTrial();
-      $('status').innerHTML=`Trial ${st.trial+1} <span style="color:var(--muted)">of ≤${st.eng.nMax}</span> · <span class="pts">honing in…</span>`;
+      if(A.onTrial) A.onTrial();          // per-trial stimulus prep (e.g. freeze one masker for both intervals)
+      $('status').innerHTML = st.warm
+        ? `<span class="pts">Practice</span> <span style="color:var(--muted)">· a clear one first — this doesn’t count</span>`
+        : `Trial ${st.trial+1} <span style="color:var(--muted)">of ≤${st.eng.nMax}</span> · <span class="pts">honing in…</span>`;
       const wash = noiseReset ? 0.32 : 0;             // symmetric noise wash: before A and between A/B
       const g2 = gap + wash;
       const t0 = 0.25 + wash;                          // pre-roll leaves room for the before-A wash
@@ -1196,6 +1255,14 @@
     const answer = A.type==='D' ? st.side : (A.answerAltered ? st.side : 1-st.side);
     const hit=i===answer;
     [...$('choices').children].forEach((b,k)=>{ if(k===answer) b.classList.add('correct'); else if(k===i) b.classList.add('wrong'); });
+    if(st.warm){                            // practice answer: shown, explained, never recorded
+      st.warm=false;
+      $('status').innerHTML = hit
+        ? '✓ That’s the one — now it gets quieter.'
+        : '○ That was the other one. Now you know what to listen for.';
+      choiceTimers.push(setTimeout(()=>{ [...$('choices').children].forEach(b=>b.classList.remove('correct','wrong')); stairTrial(); }, 900));
+      return;
+    }
     st.eng.z.record(st.curX, hit);
     (st.log=st.log||[]).push([Math.round(st.eng.levelOf(st.curX)*1000)/1000, hit?1:0]);   // raw per-trial log — exported for anyone who wants to check the math
     st.trial++;
@@ -1431,6 +1498,64 @@
     const listen=document.createElement('button'); listen.className='btn'; listen.textContent='▶ Listen (4s)';
     const silent=document.createElement('button'); silent.className='choice'; silent.innerHTML='It was silent<small>ready to test</small>'; silent.style.display='none';
     const noisy=document.createElement('button'); noisy.className='choice'; noisy.innerHTML='I heard noise<small>quieter spot is better</small>'; noisy.style.display='none';
+    // optional: measure the room with the device mic. This is a QUALITY-CONTROL check (is background
+    // noise likely to swamp the quietest tones?) — NOT a calibration. A phone mic has no known
+    // sensitivity, so it can compare your room to itself, never to a decibel standard. Nothing is
+    // recorded, stored or sent; the stream is released the moment the reading ends.
+    let micBtn=null;
+    const canMic = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
+    if(canMic){
+      const mic=document.createElement('button'); mic.className='btn ghost'; mic.textContent='🎙 Measure the room';
+      mic.style.marginLeft='8px';
+      mic.onclick=async()=>{
+        mic.disabled=true; stopCurveAudio(); clearTimers();
+        if(master) master.gain.setValueAtTime(0.0001, ctx.currentTime);
+        let stream=null;
+        try{
+          stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, autoGainControl:false, noiseSuppression:false}});
+          const src=ctx.createMediaStreamSource(stream);
+          const an=ctx.createAnalyser(); an.fftSize=2048; src.connect(an);
+          const sink=ctx.createGain(); sink.gain.value=0; an.connect(sink); sink.connect(ctx.destination);   // silent sink keeps the graph pulled; nothing is audible
+          ag.micNodes=[src,an,sink];
+          const buf=new Float32Array(an.fftSize);
+          let peak=0, sum=0, n=0, ticks=0;
+          $('cvNote').innerHTML='Listening to the room… stay quiet and still.';
+          await new Promise(res=>{
+            const step=()=>{
+              if(!ag||ag.phase!=='pre'){ res(); return; }
+              an.getFloatTimeDomainData(buf);
+              let q=0; for(let i=0;i<buf.length;i++) q+=buf[i]*buf[i];
+              const rms=Math.sqrt(q/buf.length);
+              sum+=rms; n++; if(rms>peak) peak=rms;
+              const db=20*Math.log10(Math.max(rms,1e-8));
+              const pctBar=clamp((db+80)/60,0,1)*100;     // −80…−20 dBFS across the meter
+              $('cvprog').textContent='Room level '+'▇'.repeat(Math.round(pctBar/10))+'▁'.repeat(10-Math.round(pctBar/10));
+              if(++ticks<40){ ag.calTimer=setTimeout(step,100); } else res();
+            };
+            step();
+          });
+          const avg=20*Math.log10(Math.max(sum/Math.max(n,1),1e-8));
+          const pk=20*Math.log10(Math.max(peak,1e-8));
+          const verdict = avg<=-55 ? {t:'Sounds like a quiet room.', ok:true}
+            : avg<=-45 ? {t:'There’s some background noise.', ok:false}
+            : {t:'That’s a noisy room for this test.', ok:false};
+          $('cvprog').textContent='Check · quiet room';
+          $('cvNote').innerHTML = verdict.t+' <span style="color:var(--muted)">(rough reading: your mic averaged '
+            +Math.round(avg)+' dBFS, peaks near '+Math.round(pk)+'. A phone mic isn’t calibrated, so this compares your room to itself — it is not a decibel measurement.)</span>'
+            +(verdict.ok?' Good to go.':' A quieter spot — or turning off a fan — makes the quietest tones measurable rather than guessed.');
+          silent.style.display=''; noisy.style.display=''; listen.textContent='↺ Listen again';
+        }catch(e){
+          $('cvNote').innerHTML='No microphone reading (permission declined or unavailable) — no problem, just listen for yourself instead.';
+          silent.style.display=''; noisy.style.display='';
+        }finally{
+          if(stream) stream.getTracks().forEach(t=>t.stop());     // release the mic immediately
+          if(ag&&ag.micNodes){ ag.micNodes.forEach(n=>{ try{n.disconnect();}catch(e){} }); ag.micNodes=null; }
+          if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
+          mic.disabled=false;
+        }
+      };
+      micBtn=mic;
+    }
     listen.onclick=()=>{ stopCurveAudio(); clearTimers(); if(master) master.gain.setValueAtTime(0.0001, ctx.currentTime);
       $('cvNote').innerHTML='Listening… stay still.'; let n=4; $('cvprog').textContent='Quiet check · '+n+'s';
       const tick=()=>{ if(!ag||ag.phase!=='pre')return; n--;
@@ -1444,7 +1569,7 @@
       const go=document.createElement('button'); go.className='choice'; go.innerHTML='Test anyway<small>continue</small>'; go.onclick=()=>agMode();
       const again=document.createElement('button'); again.className='choice'; again.innerHTML='Re-check<small>listen again</small>'; again.onclick=()=>agPcQuiet();
       b.appendChild(go); b.appendChild(again); };
-    box.appendChild(listen); box.appendChild(silent); box.appendChild(noisy);
+    box.appendChild(listen); if(micBtn) box.appendChild(micBtn); box.appendChild(silent); box.appendChild(noisy);
   }
   // per-ear (the only way to see a left/right difference) vs both-ears quick
   function agMode(){
@@ -1465,6 +1590,7 @@
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.fi=0; ag.prevThr=null;
     ag.earTrials=0; ag.phaseB=false; ag.phaseC=false;      // per-ear tally + infill-pass + verify-pass flags
+    ag.warm = ag.ei===0;                                   // one obvious practice tone before the first ear
     ag.plan = AG_BASE_PLAN.slice();                         // base octaves; Phase-B appends inter-octaves
     agFreq();
   }
@@ -1532,9 +1658,10 @@
   }
   function agTrial(){
     ag.curX=ag.eng.z.next(); ag.curLevel=ag.eng.levelOf(ag.curX);
+    if(ag.warm) ag.curLevel=-30;              // practice: unmistakably audible, never recorded
     // ~20% SILENT catch trials — never the first of a frequency (need one real reference), capped —
     // so "I heard nothing" is a normal, expected answer and false alarms can be measured.
-    ag.catch = ag.trial>0 && (ag.catchCount||0)<ag.catchCap && Math.random()<0.2;
+    ag.catch = !ag.warm && ag.trial>0 && (ag.catchCount||0)<ag.catchCap && Math.random()<0.2;
     if(ag.catch) ag.catchCount=(ag.catchCount||0)+1;
     const f=ag.plan[ag.fi];
     const box=$('cvChoices'); box.innerHTML='';
@@ -1573,6 +1700,14 @@
     killStim();                            // stop the tone the instant you answer
     [...$('cvChoices').querySelectorAll('.choice')].forEach(b=>b.disabled=true);
     const heard = ans==='hear';
+    if(ag.warm){                             // practice tone: teaches the window, never recorded
+      ag.warm=false;
+      $('cvNote').innerHTML = heard
+        ? 'That’s it — from here they get quieter, and some rounds are <b>silent</b> on purpose.'
+        : 'That one was clearly there. Turn the volume up a little, then carry on — and remember some rounds are <b>silent</b> on purpose.';
+      choiceTimers.push(setTimeout(agTrial,900));
+      return;
+    }
     if(ag.catch){
       // catch trial: EXCLUDED from the estimate — tallies false alarms per ear (gates the warning) and nudges
       if(heard){ ag.fa=(ag.fa||0)+1; ag.faTot[ag.curEar]=(ag.faTot[ag.curEar]||0)+1;
@@ -2305,8 +2440,44 @@
     buildDrift(dev);
     show('pfview');
   }
-  // "over time": same pair, different days — earliest vs latest reading per room, plus a
-  // calm pointer when multiple curves exist. Honest framing: run-to-run wobble is normal.
+  function buildMethods(){
+    const box=$('mdoc'); if(box.dataset.built) return; box.innerHTML='';
+    ((window.SR_CONTENT&&window.SR_CONTENT.METHODS)||[]).forEach(s=>{
+      const h=document.createElement('div'); h.className='bghead'; h.textContent=s.h; box.appendChild(h);
+      s.p.forEach(t=>{ const p=document.createElement('p'); p.className='mdp'; p.innerHTML=t; box.appendChild(p); });
+    });
+    box.dataset.built='1';
+  }
+  // ---- repeatability: the one claim an uncalibrated instrument can genuinely earn. Compare a
+  // pair's repeated runs of the SAME room and report the agreement, unedited, against published
+  // benchmarks for home/automated/booth audiometry.
+  function curvePoints(c){                     // normalise both stored curve shapes → [{ear,f,rel}]
+    const out=[];
+    if(c&&c.ears){ ['R','L'].forEach(e=>(c.ears[e]||[]).forEach(p=>{ if(isFinite(p.rel)) out.push({ear:e,f:p.f,rel:p.rel}); })); }
+    else if(Array.isArray(c)) c.forEach(p=>{ if(isFinite(p.rel)) out.push({ear:'B',f:p.f,rel:p.rel}); });
+    return out;
+  }
+  function curveRepeat(hist){
+    const runs=hist.filter(h=>h.curve).map(h=>curvePoints(h.curve)).filter(a=>a.length);
+    if(runs.length<2) return null;
+    const diffs=[];
+    for(let i=1;i<runs.length;i++){
+      const prev={}; runs[i-1].forEach(p=>{ prev[p.ear+'|'+p.f]=p.rel; });
+      runs[i].forEach(p=>{ const q=prev[p.ear+'|'+p.f]; if(q!=null) diffs.push(Math.abs(p.rel-q)); });
+    }
+    if(diffs.length<3) return null;
+    const mean=diffs.reduce((a,b)=>a+b,0)/diffs.length;
+    return { n:diffs.length, runs:runs.length, mean,
+      w5:Math.round(100*diffs.filter(d=>d<=5).length/diffs.length),
+      w10:Math.round(100*diffs.filter(d=>d<=10).length/diffs.length) };
+  }
+  function roomRepeat(hist, tag){
+    const vals=hist.filter(h=>h.rooms&&h.rooms[tag]!=null).map(h=>h.rooms[tag])
+      .map(r=>(typeof r==='number'?{pct:r}:r)).filter(r=>r&&r.pct!=null);
+    if(vals.length<2) return null;
+    const dp=[]; for(let i=1;i<vals.length;i++) dp.push(Math.abs(vals[i].pct-vals[i-1].pct));
+    return { runs:vals.length, meanPct: dp.reduce((a,b)=>a+b,0)/dp.length };
+  }
   function buildDrift(dev){
     const box=$('pvdrift'); box.innerHTML='';
     const M=(window.SR_FP&&window.SR_FP.META)||{};
@@ -2323,7 +2494,37 @@
       rows.push({name:(M[c.tag]&&M[c.tag].name)||c.title, ta, tb, dp:pb-pa});
     });
     const nCurves=hist.filter(h=>h.curve).length;
-    if(!rows.length && nCurves<2){ box.style.display='none'; return; }
+    const cr=curveRepeat(hist);
+    const rr=CH.filter(c=>c.mode!=='curve').map(c=>({c, r:roomRepeat(hist,c.tag)})).filter(x=>x.r);
+    if(!rows.length && nCurves<2 && !cr && !rr.length){ box.style.display='none'; return; }
+    // repeatability first — it is the headline claim, not a footnote
+    if(cr||rr.length){
+      const rh=document.createElement('div'); rh.className='bghead'; rh.textContent='Does it repeat?'; box.appendChild(rh);
+      const rs=document.createElement('div'); rs.className='pvdsub';
+      rs.textContent='the honest test of an uncalibrated instrument: measure again and see if it says the same thing'; box.appendChild(rs);
+      if(cr){
+        const el=document.createElement('div'); el.className='pvrep';
+        const big=document.createElement('span'); big.className='rbig'; big.textContent='±'+cr.mean.toFixed(1)+' dB';
+        const lab=document.createElement('span'); lab.className='rlab';
+        lab.textContent='average gap between your hearing-curve runs · '+cr.w5+'% within 5 dB · '+cr.w10+'% within 10 dB · '+cr.runs+' runs, '+cr.n+' point pairs';
+        el.appendChild(big); el.appendChild(lab); box.appendChild(el);
+        const bm=document.createElement('div'); bm.className='pvdsub';
+        bm.textContent='For scale, from published studies (not of this app): unsupervised home audiometry averaged 4.7 dB with 74% within 5 dB; automated audiometry in clinic conditions 3.3–3.6 dB with 91% within 5 dB; booth audiometry is generally taken as repeatable to 5–10 dB.';
+        box.appendChild(bm);
+      }
+      rr.forEach(({c,r})=>{
+        const el=document.createElement('div'); el.className='pvxrow';
+        const n=document.createElement('span'); n.className='xn'; n.textContent=((window.SR_FP&&window.SR_FP.META[c.tag]||{}).name)||c.title;
+        const v=document.createElement('span'); v.className='xv'; v.textContent='±'+Math.round(r.meanPct)+' pts across '+r.runs+' runs';
+        el.appendChild(n); el.appendChild(v); box.appendChild(el);
+      });
+      if(!cr && nCurves===1){
+        const nudge=document.createElement('div'); nudge.className='pvdsub';
+        nudge.textContent='Measure the hearing curve once more — on another day, same headphones — and this becomes a real repeatability figure in decibels.';
+        box.appendChild(nudge);
+      }
+    }
+    if(!rows.length && nCurves<2){ box.style.display='block'; return; }
     const h=document.createElement('div'); h.className='bghead'; h.textContent='Over time — same pair, different days'; box.appendChild(h);
     const sub=document.createElement('div'); sub.className='pvdsub'; sub.textContent='small moves are normal run to run; big, persistent moves are the ones that matter'; box.appendChild(sub);
     rows.forEach(r=>{

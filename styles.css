@@ -333,9 +333,19 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .pvinfo{align-self:center; margin-left:8px}
 #pfview .seltools{margin-top:16px}
 #pfview .seltools #pv-delete{color:var(--ember)}
-/* drift section (decoder lines live on the room rows themselves) */
+/* drift + repeatability section (decoder lines live on the room rows themselves) */
 .pvdrift{width:min(88vw,340px); margin:18px auto 0; text-align:left}
 .pvdsub{font-size:11px; color:var(--muted); line-height:1.5; margin:6px 0 4px}
+.pvrep{display:flex; align-items:baseline; gap:10px; margin:8px 0 4px}
+.pvrep .rbig{font-family:var(--disp); font-size:22px; color:var(--sage); white-space:nowrap}
+.pvrep .rlab{font-size:11px; line-height:1.45; color:var(--muted)}
+/* methods page */
+#methods.on{justify-content:flex-start}
+.mdoc{width:min(88vw,360px); margin:14px auto 0; text-align:left}
+.mdoc .bghead{margin-top:18px}
+.mdp{font-size:13px; line-height:1.62; color:var(--muted); margin:8px 0}
+.mdp b{color:var(--stone); font-weight:600}
+.mdp i{color:var(--muted)}
 .pvxrow{display:flex; align-items:baseline; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:12.5px}
 .pvxrow .xn{flex:1 1 auto; min-width:0; color:var(--stone)}
 .pvxrow .xv{color:var(--muted); white-space:nowrap}

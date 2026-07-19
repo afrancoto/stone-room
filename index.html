@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Stone Room — a listening lab</title>
-<meta name="description" content="A free listening lab: measure your hearing and your headphones together. 24 adaptive rooms + a per-ear hearing curve — the shape of what you hear, saved so you can compare pairs and watch your ears over time." />
+<meta name="description" content="A free listening lab: measure your hearing and your headphones together. 25 adaptive rooms including a per-ear hearing curve — the shape of what you hear, saved so you can compare pairs and watch your ears over time." />
 <meta name="theme-color" content="#17130F" />
 <meta property="og:title" content="Stone Room — a listening lab" />
 <meta property="og:description" content="Measure your hearing and your headphones together. Adaptive rooms + a per-ear hearing curve, saved so you can compare pairs — and learn the vocabulary as you go." />
@@ -52,6 +52,8 @@
       <button class="linkbtn" id="demoToggle" aria-expanded="false">What you’ll get</button>
       <span class="sep" id="pfsep" style="display:none">·</span>
       <button class="linkbtn" id="goprofiles" style="display:none">Profiles</button>
+      <span class="sep">·</span>
+      <button class="linkbtn" id="gomethods">Methods</button>
     </div>
     <div class="about" id="introAbout" hidden>
       <p id="introWhat"></p>
@@ -271,6 +273,15 @@
       <button class="btn ghost" id="pv-back">Back</button>
       <button class="btn" id="pv-test">Build a tour ›</button>
     </div>
+  </section>
+
+  <!-- methods: how it measures, what it can and cannot claim, and the literature behind both -->
+  <section id="methods" class="screen">
+    <div class="eyebrow">How this works</div>
+    <h2>Methods &amp; limits</h2>
+    <p class="lede">Everything here is measured in a browser, on your gear, by you. That buys a lot — and rules some things out. Both are written down.</p>
+    <div class="mdoc" id="mdoc"></div>
+    <div class="row"><button class="btn ghost" id="mdback">Back</button></div>
   </section>
 
   <!-- audiogram / hearing curve -->

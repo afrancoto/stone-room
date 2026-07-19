@@ -1,7 +1,7 @@
 {
   "name": "Stone Room — a listening lab",
   "short_name": "Stone Room",
-  "description": "A free listening lab: test your headphones and train your ears. 24 short rooms that measure your pair's fade points in real Hz and dB.",
+  "description": "A free listening lab: measure your hearing and your headphones together. 25 adaptive rooms including a per-ear hearing curve.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
