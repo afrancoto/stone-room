@@ -57,7 +57,7 @@
       tiers: { reference: "Reference — the sound truly circles, front and back.", strong: "Strong; only the rear quadrant slips now and then.", fair: "Sides read clean; front and back confuse you.", weak: "It all collapses inside your head." }
     },
     Depth: {
-      benchmark: "You judge near versus far mostly by the direct-to-reverberant ratio, not loudness — a soft close sound still reads close.",
+      benchmark: "Near versus far is read from cues that move together: closer arrives louder and drier, farther comes softer with more of the room riding along.",
       science: "Layering depends on resolving how much dry sound arrives against its reflected tail. Low distortion and quick decay keep the near and far strata distinct; a smeary, resonant driver folds the back row into the front.",
       models: "The HD 800 S and HiFiMan Susvara render clear front-to-back layers.",
       hit: ["Right row.", "You read the depth.", "Front and back — got it."],
@@ -66,7 +66,7 @@
     },
     Flyby: {
       benchmark: "Inside about 1 m the level gap between your ears grows fast — a strong closeness cue speakers can't give.",
-      science: "Closeness rides on that near-field level difference plus the Doppler pitch-shift as something passes. Clean, matched drivers preserve both; distortion or channel imbalance flattens the pass into a vague swell.",
+      science: "Closeness rides on how sharply the level swells and falls as something crosses — the pitch bend sells the motion, the swell carries the distance. Clean, matched drivers preserve that shape; distortion or channel imbalance flattens the pass into a vague blur.",
       models: "The Focal Utopia and HD 800 S render a convincing near pass.",
       hit: ["Closest one — got it.", "You felt it pass.", "Right up close."],
       miss: ["Widening the gap.", "A clearer pass.", "Easing them apart."],
@@ -153,8 +153,8 @@
       tiers: { reference: "Full extension — the lowest notes arrive whole, not merely hinted at.", strong: "Reaches deep; only the very bottom softens.", fair: "Solid to the mid-bass, then it thins out.", weak: "The floor drops away early — you hear overtones, not roots." }
     },
     Grip: {
-      benchmark: "One cycle of a 40 Hz note lasts 25 ms; a controlled driver settles in a few, so the note ends before the next begins.",
-      science: "Grip is how fast the diaphragm stops after it's pushed. Lighter, well-damped drivers — planars, or dynamics with strong motor control — follow the signal and halt on command; heavier cones and resonant enclosures keep ringing, adding bloom the recording never had. A leaky seal loosens the whole bass envelope.",
+      benchmark: "One cycle of a 55 Hz bass note lasts 18 ms; a controlled driver settles in a few, so the note ends before the next begins.",
+      science: "Grip is how fast the diaphragm stops after it's pushed. Lighter, well-damped drivers — planars, or dynamics with strong motor control — follow the signal and halt on command; heavier cones and resonant enclosures keep ringing, adding bloom the recording never had. A leaky seal drains bass level and softens the punch.",
       models: "Focal's Clear and Utopia and most HiFiMan planars are known for bass that punches, then gets out of the way.",
       hit: ["Tight and clean.", "No wobble there.", "It stopped on time."],
       miss: ["Loosened it slightly.", "More bloom to spot.", "Easier to hear now."],
@@ -185,7 +185,7 @@
       tiers: { reference: "Consonants stay crisp and clean — never a stab.", strong: "Smooth overall; the odd 's' edges up.", fair: "Mostly fine, but sibilance pokes through.", weak: "Every 's' stings — harsh and fatiguing." }
     },
     Snap: {
-      benchmark: "A drum's leading edge rises in well under a millisecond, and the ear resolves timing down to ~10 microseconds.",
+      benchmark: "A drum's leading edge rises in well under a millisecond — and an attack smeared by even a few milliseconds reads as soft instead of sharp.",
       science: "Snap is how faithfully a driver renders the instant a note begins — the leading edge before the tone settles. Lower moving mass, as in planars and electrostatics, starts and stops faster, so attacks land sharp and hard; heavier diaphragms soften the strike. Tight motor control turns voltage into motion without lag or overshoot.",
       models: "The Focal Utopia and the Audeze LCD line are known for the fast, physical slam of a hard transient.",
       hit: ["That one hit.", "Sharp and hard.", "Clean strike."],

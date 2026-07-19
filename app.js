@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v30";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v31";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -110,9 +110,15 @@
     }
     function setAz(az2){const {x,z}=pos(az2,dist); panner.positionX.value=x; panner.positionZ.value=z;}
     function glide(fromAz,toAz,dur){
-      const t=ctx.currentTime, a=pos(fromAz,dist), b=pos(toAz,dist);
-      panner.positionX.setValueAtTime(a.x,t); panner.positionZ.setValueAtTime(a.z,t);
-      panner.positionX.linearRampToValueAtTime(b.x,t+dur); panner.positionZ.linearRampToValueAtTime(b.z,t+dur);
+      // follow the ARC, not the chord: a single Cartesian ramp cuts inside the circle, passing
+      // closer to the head mid-glide (a ~4 dB loudness swell that isn't part of the motion cue).
+      // Piecewise ramps along the arc stay at constant distance and remain zipper-free.
+      const t=ctx.currentTime, N=8;
+      for(let i=0;i<=N;i++){
+        const p=pos(fromAz+(toAz-fromAz)*(i/N), dist);
+        if(i===0){ panner.positionX.setValueAtTime(p.x,t); panner.positionZ.setValueAtTime(p.z,t); }
+        else { panner.positionX.linearRampToValueAtTime(p.x,t+dur*i/N); panner.positionZ.linearRampToValueAtTime(p.z,t+dur*i/N); }
+      }
     }
     return {loop,stop,playOnce,glide,setAz,timbre:key,az,dist};
   }
@@ -421,11 +427,11 @@
      notice:'It circles your whole head — behind you too — then stops. <b>Tap the ring where it landed.</b> Eyes closed.'},
     {group:'holo',tag:'Depth',title:'Front row, back row',tests:'layering',mode:'depth',
      claim:'Layering: a good mix has a front row and a back row, and you can seat everyone.',
-     learn:'Distance is decoded from three cues at once: loudness, treble roll-off, and how much room reverb rides along with the direct sound.',
+     learn:'Distance is decoded from cues that move together: how loud a sound arrives, and how much room reverb rides along with it — closer is louder and drier.',
      notice:'A sound plays near or far. <b>Tap the inner ring for near, the outer for far</b> — aimed at its direction.'},
     {group:'holo',tag:'Flyby',title:'How close did it pass?',tests:'distance rendering',mode:'stair',
      claim:'Distance is rendered, not implied — near and far are different physical things.',
-     learn:'A pass distance is computed from the Doppler pitch bend plus the loudness swell. The closer the pass, the sharper both curves — action-movie physics, verified.',
+     learn:'A pass distance is read from the loudness swell — how sharply it rises and falls as it crosses your stage. The pitch bend sells the motion; the swell carries the answer.',
      notice:'Two vehicles cross your stage, bending pitch as they pass. <b>Tap the one that passed closer.</b>'},
     {group:'holo',tag:'Echo',title:'Hear the walls',tests:'spatial cues',mode:'stair',
      claim:'Good transducers preserve the room’s reflections — you can hear the walls.',
@@ -441,7 +447,7 @@
      notice:'Three sounds at once. You’ll hear your target alone first — then <b>tap it out of the crowd.</b>'},
     {group:'res',tag:'Crowd',title:'Count the ensemble',tests:'no congestion',mode:'count',
      claim:'A busy passage never collapses into mush — the mix stays countable.',
-     learn:'Congestion is where cheap gear folds first: as sources stack up, intermodulation smears them together. Countability is the bluntest possible test of it.',
+     learn:'Congestion is where busy mixes fold first: as voices stack up they mask and blur into one another. Countability is the bluntest possible test of whether each keeps its own place.',
      notice:'A small ensemble plays together, spread across the stage. <b>Tap how many voices you count.</b>'},
     {group:'res',tag:'Whisper',title:'Details under the music',tests:'detail retrieval',mode:'stair',
      claim:'You hear things in familiar albums you never knew were there.',
@@ -632,7 +638,7 @@
       const t=0.25+2*d+0.3+1.7;                 // both intervals + answer + feedback pause
       return {q:9*t, f:16*t};
     }
-    if(c.mode==='count') return {q:5*7.5, f:8*7.5};
+    if(c.mode==='count') return {q:5*7.5, f:10*7.5};
     if(c.mode==='curve') return {q:9*6*1.6+16, f:9*12*1.6+16};   // 9 pitches × trials + volume calibration
     const per={locate:7,sweep:8.5,depth:7.5,separate:10,orbit:11}[c.mode]||8;
     const S=SPATIAL[c.tag]||{minR:4,maxR:8};
@@ -1211,7 +1217,7 @@
 
   // ---------- adaptive count (Crowd) ----------
   function setupCount(c){
-    cnt={ability:3.4, n:3, prevN:0, best:3, trial:0, minR:4, maxR:8, wrong:0, done:false, history:[]};
+    cnt={ability:3.4, n:3, prevN:0, best:3, trial:0, minR:4, maxR:10, wrong:0, done:false, history:[]};   // maxR 10: the 2-hit credit rule needs room to prove a level
     showPrecisionUI();
     countTrial();
   }
@@ -1228,8 +1234,12 @@
   function countTrial(){
     nextCountLevel();
     const n=cnt.n;
-    // shuffle the three options so the true count isn't always the middle button (a positional tell)
-    const vals=[n-1,n,n+1];
+    // slide the offered window so the true count lands at a RANDOM slot of the triple — with a
+    // fixed [n-1,n,n+1] the correct answer was always the middle VALUE, so sorting the three
+    // numbers in your head and tapping the median scored 100% without listening at all.
+    const offLo=Math.max(-1, 2-(n-1)), offHi=Math.min(1, 8-(n+1));
+    const off=offLo+Math.floor(Math.random()*(offHi-offLo+1));
+    const vals=[n-1+off, n+off, n+1+off];
     for(let i=vals.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [vals[i],vals[j]]=[vals[j],vals[i]];}
     const btns=buildChoices(vals.map(String),['voices','voices','voices'],countPick);
     cnt.answerIdx=vals.indexOf(n);
@@ -1257,15 +1267,21 @@
     else { cnt.wrong++; cnt.ability=Math.max(3, cnt.ability-0.9); }
     // confidence: proportion of run done + convergence of best
     const frac=clamp(cnt.trial/cnt.maxR,0,1);
-    setPrecision(frac, `top count ${cnt.best}`);
+    setPrecision(frac, `top count ${creditedCount()}`);
     const enough=cnt.trial>=cnt.minR && (cnt.wrong>=2);
     if(cnt.trial>=cnt.maxR || enough){ finishCount(); return; }
     $('status').innerHTML = hit? `✓ ${pick(cont.hit)}` : `○ ${pick(cont.miss)}`;
     choiceTimers.push(setTimeout(()=>{ [...$('choices').children].forEach(b=>b.classList.remove('correct','wrong')); countTrial(); }, 640));
   }
+  // a count level is only CREDITED once two hits land at that size or larger — with three options
+  // there's a 33% guess floor, so a single lucky tap at 7 was permanently pinning the score at 100%.
+  function creditedCount(){
+    for(let m=7;m>3;m--){ if(cnt.history.filter(h=>h.hit&&h.n>=m).length>=2) return m; }
+    return 3;
+  }
   function finishCount(){
     if(cnt.done) return; cnt.done=true; guessLocked=true; stopVoices();
-    const best=Math.max(cnt.best,3);             // 3 is the smallest ensemble ever presented
+    const best=creditedCount();                  // 3 is the smallest ensemble ever presented
     const pct=Math.round(clamp((best-3)/(7-3),0,1)*100);
     recordRoom(pct, best+' voices', {val:best});
     $('status').innerHTML=`You held <span class="pts">${best} voices</span> apart · +${pct}`;
@@ -1602,7 +1618,12 @@
       const from=jit((Math.random()<.5?-1:1)*80,6), to=jit((Math.random()<.5?-1:1)*55,10), key=rndTimbre();
       sp.target={az:to,dist:1.6,mode:'sweep'};
       const build=()=>{stopVoices(); const v=makeVoice(key,from,1.6,0.55); voices=[v];
-        choiceTimers.push(setTimeout(()=>{ if(!voices[0])return; v.loop(); v.glide(from,to,spd); },200));};
+        choiceTimers.push(setTimeout(()=>{ if(!voices[0])return; v.loop(); v.glide(from,to,spd);
+          // silence shortly after landing — left looping parked at the endpoint, this room was
+          // just static localization (wait, then point at the parked sound). Now you mark where
+          // the MOTION ended, which is what "track the mover" claims to test.
+          choiceTimers.push(setTimeout(()=>{ if(voices[0]===v && !guessLocked){ v.stop(); $('status').textContent='Gone. Tap where it stopped.'; } },(spd+0.35)*1000));
+        },200));};
       replayFn=()=>{listen(); build();}; $('status').textContent='It moves…'; listen(); build();
     } else if(c.mode==='depth'){
       const near=Math.random()<.5; const az=jit((Math.random()<.5?-1:1)*(30+r*6),6);
@@ -1619,7 +1640,11 @@
       sp.target={az:angs[ti],dist:1.7,mode:'separate',key:keys[ti]};
       sp.sepVoices=keys.map((k,i)=>({az:angs[i],timbre:k}));
       const play=(solo)=>{ stopVoices(); voices=keys.map((k,i)=>makeVoice(k,angs[i],1.7,0.5));
-        if(solo){ $('status').textContent='Your target, alone…'; let t=ctx.currentTime+0.3; t=voices[ti].playOnce(t);
+        if(solo){ $('status').textContent='Your target, alone…'; let t=ctx.currentTime+0.3;
+          // preview the target's TIMBRE from dead centre — previewing it at its true position
+          // pre-revealed the answer (spatial memory, not in-crowd segregation, got scored)
+          const pv=makeVoice(keys[ti],0,1.7,0.5); t=pv.playOnce(t);
+          choiceTimers.push(setTimeout(()=>pv.stop(),(t-ctx.currentTime+0.15)*1000));
           choiceTimers.push(setTimeout(()=>{ if(guessLocked)return; $('status').textContent='Now — find it.'; voices.forEach(v=>v.loop()); },(t-ctx.currentTime+0.5)*1000));
         } else { $('status').textContent='Find it.'; voices.forEach(v=>v.loop()); } };
       replayFn=()=>{listen(); play(false);}; listen(); play(true);
@@ -1758,7 +1783,11 @@
     sp.round++;
     const a=acuityStats();
     setPrecision(a.conf, `≈ ${Math.round(a.med)}° acuity`);
-    const enough = sp.round>=sp.minR && a.se < sp.S.ref*0.6;
+    // never auto-finish before the room's whole difficulty ladder has been presented — stopping
+    // early meant a confident listener was scored on the EASY eccentricities/speeds only, while a
+    // wobblier one also faced the hard end: same ability, different numbers.
+    const ladder=(sp.S.ecc||sp.S.spd||sp.S.spread||sp.S.dur||[]).length;
+    const enough = sp.round>=Math.max(sp.minR, ladder) && a.se < sp.S.ref*0.6;
     // normal flow auto-finishes when confident; a Sharpen run continues to maxR
     if(sp.round>=sp.maxR || (!sp.sharpen && enough)){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
     choiceTimers.push(setTimeout(()=>spatialRound(), 820));

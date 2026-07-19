@@ -1,6 +1,6 @@
 /* Stone Room service worker — offline app shell + runtime caching.
    Bump CACHE on any release so clients pull fresh assets. */
-const CACHE = 'stone-room-v30';
+const CACHE = 'stone-room-v31';
 const SHELL = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const SHELL = [
   './content.js',
   './adaptive.js',
   './fingerprint.js',
+  './card-font.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

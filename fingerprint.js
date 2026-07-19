@@ -142,7 +142,7 @@
     g+=`<text x="${PAD}" y="${cy+15}" fill="${COL.dim}" font-size="9" font-family="${FONT}">Longer bar = better. Measured through your own ears + gear.</text>`;
 
     let mark='';
-    if(data.sample) mark=`<text x="${W/2}" y="${H/2}" fill="${COL.stone}" opacity="0.08" font-size="52" font-weight="700" letter-spacing="10" text-anchor="middle" transform="rotate(-16 ${W/2} ${H/2})" font-family="${FONT}">SAMPLE</text>`;
+    if(data.sample) mark=`<text x="${W*0.40}" y="${H/2}" fill="${COL.stone}" opacity="0.045" font-size="48" font-weight="700" letter-spacing="10" text-anchor="middle" transform="rotate(-16 ${W*0.40} ${H/2})" font-family="${FONT}">SAMPLE</text>`;   /* faint + left of the readout column, so the numbers that sell the card stay legible */
 
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <rect x="1" y="1" width="${W-2}" height="${H-2}" rx="16" fill="${COL.bg}" stroke="${COL.line}"/>
