@@ -250,7 +250,11 @@ ${g}${mark}
       }
       if(!/polyline/.test(s)) s+=`<polyline points="${c.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
       c.forEach(p=>{ const col=byVal?(p.rel>=-6?COL.good:p.rel>=-20?COL.gold:COL.ember):stroke;
-        s+=`<circle cx="${x(p.f).toFixed(1)}" cy="${y(p.rel).toFixed(1)}" r="3.4" fill="${col}" stroke="${COL.bg}" stroke-width="1"/>`; });
+        const cx=x(p.f).toFixed(1), cy=y(p.rel);
+        if(p.cens){   // pinned at the test's loudest — true threshold may sit BELOW this: open dot + down-tick
+          s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="3.4" fill="${COL.bg}" stroke="${col}" stroke-width="1.4"/>`;
+          s+=`<path d="M ${cx-3} ${(cy+6.5).toFixed(1)} L ${(+cx+3).toFixed(1)} ${(cy+6.5).toFixed(1)} L ${cx} ${(cy+11).toFixed(1)} Z" fill="${col}" opacity="0.85"/>`;
+        } else s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="3.4" fill="${col}" stroke="${COL.bg}" stroke-width="1"/>`; });
       return s;
     };
     let series='', banded=false;
@@ -261,13 +265,15 @@ ${g}${mark}
         series+=`<line x1="${x(p.f).toFixed(1)}" y1="${y(rmap[p.f]).toFixed(1)}" x2="${x(p.f).toFixed(1)}" y2="${y(p.rel).toFixed(1)}" stroke="${COL.ember}" stroke-width="1" opacity="0.35"/>`; } });
       const rs=drawSeries(Rc, COL.sage, false), ls=drawSeries(Lc, COL.gold, false);
       banded=/polygon/.test(rs)||/polygon/.test(ls); series+=rs+ls;
-      series+=`<circle cx="${W-R-64}" cy="52" r="3.2" fill="${COL.sage}"/><text x="${W-R-56}" y="55" fill="${COL.muted}" font-size="9" font-family="${FONT}">Right</text>`;
+      series+=`<circle cx="${W-R-74}" cy="52" r="3.2" fill="${COL.sage}"/><text x="${W-R-66}" y="55" fill="${COL.muted}" font-size="9" font-family="${FONT}">Right</text>`;
       series+=`<circle cx="${W-R-30}" cy="52" r="3.2" fill="${COL.gold}"/><text x="${W-R-22}" y="55" fill="${COL.muted}" font-size="9" font-family="${FONT}">Left</text>`;
     } else {
       series=drawSeries(curve, COL.sage, true); banded=/polygon/.test(series);
     }
     g+=series;
-    if(banded) g+=`<text x="${L}" y="${H-4}" fill="${COL.dim}" font-size="8.5" font-family="${FONT}">shaded = less certain</text>`;
+    const anyCens=(data.curve||[]).concat((data.ears&&data.ears.R)||[], (data.ears&&data.ears.L)||[]).some(p=>p&&p.cens);
+    const footL=[banded?'shaded = less certain':null, anyCens?'open dot = beyond reach':null].filter(Boolean).join(' · ');
+    if(footL) g+=`<text x="${L}" y="${H-4}" fill="${COL.dim}" font-size="8.5" font-family="${FONT}">${footL}</text>`;
     g+=`<text x="${W-R}" y="${H-4}" fill="${COL.dim}" font-size="8.5" text-anchor="end" font-family="${FONT}">flat = even · dips = rolled off</text>`;
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <rect x="1" y="1" width="${W-2}" height="${H-2}" rx="14" fill="${COL.bg}" stroke="${COL.line}"/>${g}</svg>`;

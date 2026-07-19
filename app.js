@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v32";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v33";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -365,14 +365,33 @@
   // pure sine at an absolute digital level (dBFS) — the audiogram detection stimulus. pan:
   // -1 = left ear only, +1 = right ear only (equal-power StereoPanner → the off-ear gets zero),
   // 0/undefined = both. Per-ear isolation is what lets the test see a left/right difference.
+  // Raised-cosine (Hann) edges: a linear ramp's spectral splatter can make the ONSET audible when
+  // the tone itself isn't — especially at low frequencies — which corrupts the threshold.
+  const HANN_N=24, HANN_RISE=Float32Array.from({length:HANN_N},(_,i)=>0.5*(1-Math.cos(Math.PI*i/(HANN_N-1))));
   function detTone(freq, when, dur, dbfs, pan){
-    const amp=Math.pow(10, dbfs/20);
+    const amp=Math.pow(10, dbfs/20), Rm=Math.min(.045, dur/3);
+    const rise=HANN_RISE.map(v=>v*amp), fall=rise.slice().reverse();
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when);
-    g.gain.linearRampToValueAtTime(amp,when+.03);
-    g.gain.setValueAtTime(amp,when+dur-.06); g.gain.linearRampToValueAtTime(0,when+dur);
+    g.gain.setValueCurveAtTime(rise, when, Rm);
+    g.gain.setValueCurveAtTime(fall, when+dur-Rm, Rm);
     if(pan){ const sp=ctx.createStereoPanner(); sp.pan.value=pan; g.connect(sp); sp.connect(master); }
     else g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=freq; o.connect(g); o.start(when); o.stop(when+dur+.05);
+  }
+  // contralateral masking for per-ear runs: matched-band noise in the NON-test ear. Physics: with
+  // headphones, a loud tone reaches the far cochlea through the skull attenuated ~45+ dB — the good
+  // ear "shadow-hears" and answers for the weak one, capping any measurable left/right gap. A mask
+  // riding 18 dB below the tone sits well ABOVE that crossover (so the far ear can't help) while its
+  // own crossover back into the test ear lands ~63 dB under the tone (so it can never mask the test).
+  function detMask(freq, when, dur, dbfs, pan){
+    const amp=Math.pow(10, dbfs/20);
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(dur+.3);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=freq; bp.Q.value=1;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(amp,when+.06);
+    g.gain.setValueAtTime(amp,when+dur-.08); g.gain.linearRampToValueAtTime(0,when+dur);
+    const sp=ctx.createStereoPanner(); sp.pan.value=pan;
+    nb.connect(bp); bp.connect(g); g.connect(sp); sp.connect(master);
+    nb.start(when); nb.stop(when+dur+.05);
   }
   // short neutral noise wash between the two intervals — a "palate cleanser" that resets
   // the ear (releases forward masking) so A and B are judged fresh. Optional.
@@ -1311,7 +1330,7 @@
   const AG_INFILL_CAP={both:5, perear:3};        // per-ear cap (per-ear path is 2× the work → tighter)
   const AG_TRIAL_BUDGET={both:95, perear:70};    // skip further ADAPTIVE inserts once this ear's real trials pass this
   const EAR_PAN={R:1, L:-1, B:0}, EAR_NAME={R:'Right ear', L:'Left ear', B:'Both ears'};
-  const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03, nMin:6, nMax:12, fmt:v=>Math.round(v)+' dBFS'};
+  const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03, nMin:6, nMax:12, physLo:-94, physHi:-10, fmt:v=>Math.round(v)+' dBFS'};   // phys clamps: auto-widen can never wander past what we can actually play
   let ag=null;
 
   // hearing-curve as a tour room: launch the curve screen, then rejoin the tour on "Continue →"
@@ -1427,7 +1446,7 @@
   function agMode(){
     ag.phase='mode'; $('cvwrap').style.display='none';
     $('cvTitle').textContent='How to test'; $('cvprog').textContent='';
-    $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. Both-ears is quicker.';
+    $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. In each-ear mode a <b>soft rush</b> plays in the resting ear; that’s deliberate — it keeps that ear from secretly helping. Both-ears is quicker.';
     const box=$('cvChoices'); box.innerHTML='';
     const per=document.createElement('button'); per.className='choice'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
     const both=document.createElement('button'); both.className='choice'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agStartRun('both');
@@ -1441,7 +1460,7 @@
   }
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.fi=0; ag.prevThr=null;
-    ag.earTrials=0; ag.phaseB=false;                       // per-ear real-trial tally + infill-pass flag
+    ag.earTrials=0; ag.phaseB=false; ag.phaseC=false;      // per-ear tally + infill-pass + verify-pass flags
     ag.plan = AG_BASE_PLAN.slice();                         // base octaves; Phase-B appends inter-octaves
     agFreq();
   }
@@ -1462,16 +1481,43 @@
       if(!c.always && (ag.earTrials||0)>=budget) continue; chosen.push(c.f); }
     return chosen.sort((a,b)=>a-b);
   }
+  // verify pass: the 1-2 measured points with the widest Ψ CI (≥5 dB, not ceiling-pinned) get a
+  // short anchored re-test — a few extra trials that either confirm the reading or pull it true
+  function agPlanVerify(ear){
+    const meta=ag.ptsMeta[ear]||{};
+    return Object.keys(meta).map(Number)
+      .filter(f=>meta[f] && !meta[f].cens && meta[f].ci!=null && meta[f].ci>=5)
+      .sort((a,b)=>meta[b].ci-meta[a].ci).slice(0,2).sort((a,b)=>a-b);
+  }
   function agFreq(){
     const f=ag.plan[ag.fi];
     // seed the prior: an infill point interpolates BOTH its locked brackets; a base point uses the
     // previous locked threshold of THIS ear. Either way → a tight informed prior → fewer trials.
     const pts=ag.pts[ag.curEar], spec=AG_INFILL.find(c=>c.f===f);
     let seed={};
-    if(spec && pts[spec.lo]!=null && pts[spec.hi]!=null){
+    if(pts[f]!=null){
+      // verify re-test: anchor on the existing reading and confirm/refine it in a few trials
+      seed={priorSeed:pts[f], priorSDscale:0.5, nMin:3};
+    } else if(spec && pts[spec.lo]!=null && pts[spec.hi]!=null){
       const w=Math.log2(f/spec.lo)/Math.log2(spec.hi/spec.lo);
       seed={priorSeed: pts[spec.lo]+w*(pts[spec.hi]-pts[spec.lo]), priorSDscale:0.4, nMin:3};
-    } else if(ag.prevThr!=null){ seed={priorSeed:ag.prevThr, priorSDscale:0.5, nMin:4}; }
+    } else {
+      // slope-aware seed from the two nearest locked points (in log-f): flat-carrying the previous
+      // threshold made every new frequency on a steep loss start far too quiet and burn trials
+      // chasing the dive; continuing the local trend starts it where the ear actually is. Also fixes
+      // the plan's 16k→500 jump, which used to seed the lows from the treble.
+      const done=Object.keys(pts).map(Number).filter(x=>pts[x]!=null)
+        .sort((a,b)=>Math.abs(Math.log2(a/f))-Math.abs(Math.log2(b/f)));
+      if(done.length){
+        let sd=pts[done[0]];
+        if(done.length>=2){
+          const n1=done[0], n2=done[1];
+          const ext=pts[n1]+(pts[n1]-pts[n2])/Math.log2(n1/n2)*Math.log2(f/n1);
+          sd=clamp(ext, pts[n1]-15, pts[n1]+15);          // cap the extrapolation — trends bend
+        }
+        seed={priorSeed:sd, priorSDscale: Math.abs(Math.log2(done[0]/f))<=1?0.45:0.55, nMin:4};
+      }
+    }
     ag.eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, seed)); ag.trial=0;
     ag.catchCount=0; ag.fa=0; ag.faShown=0;
     ag.catchCap=Math.max(2, Math.round((ag.eng.nMax||12)*0.35));   // ≤ ~4 silent trials per frequency
@@ -1495,9 +1541,16 @@
     const play=()=>{
       clearTimers(); hear.disabled=true; none.disabled=true; hear.classList.remove('playing');
       if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // constant reference each trial
-      $('cvNote').textContent='Listen…';
+      $('cvNote').textContent = (ag.pan && ag.fi===0 && ag.trial===0)
+        ? 'Listen… the soft rush in your other ear just keeps it from helping.' : 'Listen…';
       const lead=.18, win=1.30, t0=ctx.currentTime+lead;
-      if(!ag.catch) detTone(f, t0, win-.10, ag.curLevel, ag.pan);     // panned to the current ear; catch: silence
+      // clinical-style PULSED tone (3 short bursts): a steady tone is easy to confuse with tinnitus —
+      // which tends to live exactly where hearing is weakest; pulses are unmistakably "the test".
+      if(!ag.catch){ const pd=.28, gap=.12;
+        for(let k=0;k<3;k++) detTone(f, t0+k*(pd+gap), pd, ag.curLevel, ag.pan); }
+      // per-ear runs: mask the other ear at tone−18 dB (floored) — identical on catch trials, so the
+      // rush itself never signals whether a tone is coming
+      if(ag.pan) detMask(f, t0-.06, win, Math.max(-70, ag.curLevel-18), -ag.pan);
       // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
       choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ hear.disabled=false; hear.classList.add('playing'); $('cvNote').innerHTML='Now — tap <b>I hear it</b> the instant you notice it.'; } }, lead*1000));
       // "Nothing" answerable only AFTER the window has fully passed
@@ -1523,15 +1576,22 @@
     const st=ag.eng.z.stats();
     if(st.usable||st.forceStop){
       const f=ag.plan[ag.fi];
-      ag.pts[ag.curEar][f]=ag.eng.levelOf(st.mean); ag.prevThr=ag.pts[ag.curEar][f];
+      const lvl=ag.eng.levelOf(st.mean);
+      ag.pts[ag.curEar][f]=lvl; ag.prevThr=lvl;
       const loL=ag.eng.levelOf(st.ci[0]), hiL=ag.eng.levelOf(st.ci[1]);
-      ag.ptsMeta[ag.curEar][f]={ ci: Math.abs(hiL-loL)/2 };   // Ψ CI half-width → GP noise + honest band
+      // cens: the estimate is pinned at the loudest we can play — the TRUE threshold may be worse
+      // than recorded; the card draws these as open "beyond reach" dots, never confident ones
+      ag.ptsMeta[ag.curEar][f]={ ci: Math.abs(hiL-loL)/2, cens: lvl>=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10)-3 };   // Ψ CI half-width → GP noise + honest band
       agLiveDraw();                                        // redraw the curve as each point locks
       ag.fi++;
-      if(ag.fi>=ag.plan.length){                           // base pass done → Phase-B infill, next ear, or finish
+      if(ag.fi>=ag.plan.length){                           // base done → Phase-B infill → verify pass → next ear/finish
         if(!ag.phaseB){
           ag.phaseB=true; const add=agPlanInfill(ag.curEar);
           if(add.length){ ag.plan=ag.plan.concat(add); choiceTimers.push(setTimeout(agFreq,320)); return; }
+        }
+        if(!ag.phaseC){
+          ag.phaseC=true; const vf=agPlanVerify(ag.curEar);
+          if(vf.length){ ag.plan=ag.plan.concat(vf); choiceTimers.push(setTimeout(agFreq,320)); return; }
         }
         ag.ei++;
         if(ag.ei>=ag.ears.length){ finishCurve(); return; }
@@ -1548,7 +1608,7 @@
     if(!fs.length) return [];
     const ref = pts[1000]!=null ? pts[1000] : pts[fs[0]];
     const meta=(ag.ptsMeta&&ag.ptsMeta[ear])||{};
-    return fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci)||null }));
+    return fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci)||null, cens: !!(meta[f]&&meta[f].cens) }));
   }
   // L−R asymmetry in the high band (≥2 kHz, where a sensorineural loss shows). +ve = left worse.
   function agAsym(R,L){
@@ -1580,12 +1640,19 @@
       } else {
         note='Your two ears track closely. Any shared roll-off up top is most likely these headphones (or the connection), not your ears. Shape is relative; the absolute level isn’t calibrated.';
       }
+      // cap honesty: past a point a home test undershoots a large gap (crossover + output ceiling),
+      // even with the masking rush — say so rather than let the drawn gap read as the whole story
+      const hiCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>+f>=2000 && ag.ptsMeta[e][f].cens));
+      if(!faHi && Math.abs(asym.max)>=15 && (hiCens || Math.abs(asym.max)>=30)){
+        note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
+      }
       $('cvNote').innerHTML=note;
       await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym}, 'yesno-perear'); await saveDB();
     } else {
       const curve=agBuildCurve('B');
       window.SR_FP.renderCurve($('cvcard'), { device, curve });
-      $('cvNote').innerHTML='How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.';
+      const faHiB=(ag.faTot.B||0)>=3;   // click-happy on silent trials → flag the reading, same as per-ear
+      $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.';
       await loadDB(); upsertCurve(device, curve, 'yesno'); await saveDB();
     }
   }
