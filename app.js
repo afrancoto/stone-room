@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v35";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v36";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1641,7 +1641,7 @@
         const worse=asym.max>0?'left':'right', kHz=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
         note=`Your <b>${worse} ear</b> needed noticeably more level than the other above ~${kHz}. A left–right difference is the one thing a home test can legitimately flag — it’s worth showing to an audiologist. This isn’t a diagnosis, just a listening pattern on these headphones.`;
       } else {
-        note='Your two ears track closely. Any shared roll-off up top is most likely these headphones (or the connection), not your ears. Shape is relative; the absolute level isn’t calibrated.';
+        note='Your two ears track closely. A shared roll-off up top can be these headphones or the connection — but if conversation has also been getting harder lately, a matching dip in <b>both</b> ears deserves a proper hearing check too. Shape is relative; the absolute level isn’t calibrated.';
       }
       // cap honesty: past a point a home test undershoots a large gap (crossover + output ceiling),
       // even with the masking rush — say so rather than let the drawn gap read as the whole story
@@ -2184,6 +2184,14 @@
     const hasCurve=renderSavedCurve($('pvcurve'), name, dev);
     $('pvcurvewrap').style.display=hasCurve?'block':'none';
     $('pvsavecurve').style.display=hasCurve?'':'none';
+    // the audiologist guidance persists with the saved curve — the one actionable output
+    // shouldn't evaporate after the results screen
+    const asym=dev.curve&&dev.curve.asym;
+    if(hasCurve && asym && Math.abs(asym.max)>=15){
+      const worse=asym.max>0?'left':'right', atF=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
+      $('pvcurvenote').textContent='On this run your '+worse+' ear needed noticeably more level above ~'+atF+'. A left–right difference is worth showing to an audiologist — screening, not a diagnosis.';
+      $('pvcurvenote').style.display='block';
+    } else $('pvcurvenote').style.display='none';
     $('pvempty').style.display=(data||hasCurve)?'none':'block';
     const list=$('pvrooms'); list.innerHTML='';
     const FPMETA=(window.SR_FP&&window.SR_FP.META)||{};   // one vocabulary: the list uses the card's names

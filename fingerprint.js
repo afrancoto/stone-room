@@ -20,7 +20,7 @@
     Orbit:     { group:'space', name:'360 imaging',   fmt:v=>'±'+Math.round(v)+'°' },
     Depth:     { group:'space', name:'Depth layers',  fmt:v=>'±'+Math.round(v)+'°' },
     Separation:{ group:'space', name:'Separation',    fmt:v=>'±'+Math.round(v)+'°' },
-    Centre:    { group:'space', name:'Centre image',  fmt:v=>Math.round(v*100)+'% off' },
+    Centre:    { group:'space', name:'Centre image',  fmt:v=>'drift '+Math.round(v*100)+'%' },   // "% off" read as a discount
     Duet:      { group:'space', name:'Stereo width',  fmt:v=>Math.round(v*100)+'%' },
     Flyby:     { group:'space', name:'Distance',      fmt:v=>v.toFixed(1)+'× gap' },
     Echo:      { group:'space', name:'Reflections',   fmt:v=>Math.round(v*1000)+' ms' },
@@ -133,7 +133,14 @@
         g+=`<text x="${nameX}" y="${rowY+4}" fill="${COL.stone}" font-size="12.5" font-family="${FONT}">${esc(r.name)}</text>`;
         g+=round1({x:trackX0,y:rowY-3,w:twMax,h:6,r:3,fill:COL.track});
         g+=round1({x:trackX0,y:rowY-3,w:Math.max(4,twMax*r.pct/100),h:6,r:3,fill:b.col});
-        const vtxt = (META[r.tag].fmt && r.val!=null) ? META[r.tag].fmt(r.val) : '';
+        // never print a broken number on the one artifact built to travel: legacy/imported
+        // profiles can carry vals in the wrong units (e.g. a display-dB where an amplitude
+        // belongs) — a NaN here taxes the credibility of every honest number around it
+        let vtxt='';
+        if(META[r.tag].fmt && r.val!=null && isFinite(r.val)){
+          try{ vtxt=META[r.tag].fmt(r.val); }catch(e){ vtxt=''; }
+          if(/NaN|Infinity/i.test(vtxt)) vtxt='';
+        }
         g+=`<text x="${W-PAD}" y="${rowY+4}" fill="${COL.muted}" font-size="10.5" text-anchor="end" font-family="${FONT}">${esc(vtxt)}</text>`;
         cy+=24;
       }
