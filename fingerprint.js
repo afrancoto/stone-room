@@ -53,15 +53,16 @@
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const round1=(a,b)=>`<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="${a.r||3}" fill="${a.fill}"${a.op?` fill-opacity="${a.op}"`:''}/>`;
 
-  function render(el, data){
+  function render(el, data, opts){
     const W=384, PAD=22, IW=W-2*PAD;
+    const compact=!!(opts&&opts.compact);   // hero + spectrum only — for screens that carry their own scorecard
     const rooms=data.rooms||{};
     const has=t=>rooms[t] && rooms[t].pct!=null;
     const score=data.score!=null?Math.round(data.score):null;
 
     // ---- assemble scorecard groups (everything except the spectrum edges) ----
     const sections=[];
-    for(const [gk,gname] of GROUPS){
+    if(!compact) for(const [gk,gname] of GROUPS){
       const rows=Object.keys(META).filter(t=>META[t].group===gk && has(t))
         .map(t=>({tag:t, name:META[t].name, pct:rooms[t].pct, val:rooms[t].val}))
         .sort((a,b)=>a.pct-b.pct);                     // weakest first — problems read top of each block
@@ -75,7 +76,7 @@
     if(showSpectrum) y += 78;
     const cardTop = 8;
     for(const s of sections){ y += 26 + s.rows.length*24; }
-    y += 22;                                            // footer note
+    if(!compact) y += 22;                               // footer note
     const H = y + 12;
 
     // ================= draw =================
@@ -138,8 +139,10 @@
       }
     }
     // footer note
-    g+=`<line x1="${PAD}" y1="${cy}" x2="${W-PAD}" y2="${cy}" stroke="${COL.line}" opacity="0.5"/>`;
-    g+=`<text x="${PAD}" y="${cy+15}" fill="${COL.dim}" font-size="9" font-family="${FONT}">Longer bar = better. Measured through your own ears + gear.</text>`;
+    if(!compact){
+      g+=`<line x1="${PAD}" y1="${cy}" x2="${W-PAD}" y2="${cy}" stroke="${COL.line}" opacity="0.5"/>`;
+      g+=`<text x="${PAD}" y="${cy+15}" fill="${COL.dim}" font-size="9" font-family="${FONT}">Longer bar = better. Measured through your own ears + gear.</text>`;
+    }
 
     let mark='';
     if(data.sample) mark=`<text x="${W*0.40}" y="${H/2}" fill="${COL.stone}" opacity="0.045" font-size="48" font-weight="700" letter-spacing="10" text-anchor="middle" transform="rotate(-16 ${W*0.40} ${H/2})" font-family="${FONT}">SAMPLE</text>`;   /* faint + left of the readout column, so the numbers that sell the card stay legible */

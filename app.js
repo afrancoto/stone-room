@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v34";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v35";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -892,7 +892,10 @@
       const clean=safeName(String(nn).trim()); if(renameDevice(pvName,nn)){ pvName=clean; openProfile(pvName); } });
     $('pv-export').addEventListener('click',()=>{ if(pvName) downloadExport(pvName); });
     $('pv-delete').addEventListener('click',()=>{ if(pvName && confirm('Delete "'+pvName+'" and all its results?')){ deleteDevice(pvName); pvName=null; buildProfiles(); show('profiles'); } });
-    $('pvsavecard').addEventListener('click',()=>{ const svg=$('pvcard').querySelector('svg'); if(svg) sharePNG(svg,'stone-room-'+pvName.replace(/[^\w-]+/g,'_')+'.png').catch(()=>flashSaved('could not save card')); });
+    $('pvsavecard').addEventListener('click',()=>{ if(!pvName)return;   // export the FULL card (the on-screen one is the compact hero)
+      const dev=db.devices[pvName], data=dev&&cardData(pvName,dev); if(!data)return;
+      const tmp=document.createElement('div'); window.SR_FP.render(tmp, data);
+      const svg=tmp.querySelector('svg'); if(svg) sharePNG(svg,'stone-room-'+pvName.replace(/[^\w-]+/g,'_')+'.png').catch(()=>flashSaved('could not save card')); });
     $('pvsavecurve').addEventListener('click',()=>{ const svg=$('pvcurve').querySelector('svg'); if(svg) sharePNG(svg,'stone-room-curve-'+pvName.replace(/[^\w-]+/g,'_')+'.png').catch(()=>flashSaved('could not save curve')); });
     $('pf-exportall').addEventListener('click',()=>downloadExport());
     $('pf-import').addEventListener('click',()=>$('pf-file').click());
@@ -2177,7 +2180,7 @@
     const data=cardData(name, dev);
     $('pvcardwrap').style.display=data?'block':'none';
     $('pvsavecard').style.display=data?'':'none';
-    if(data) window.SR_FP.render($('pvcard'), data);
+    if(data) window.SR_FP.render($('pvcard'), data, {compact:true});   // hero+spectrum only — the room list below IS the scorecard (no double display); Save card still exports the full artifact
     const hasCurve=renderSavedCurve($('pvcurve'), name, dev);
     $('pvcurvewrap').style.display=hasCurve?'block':'none';
     $('pvsavecurve').style.display=hasCurve?'':'none';
@@ -2211,6 +2214,9 @@
           rv.textContent=((typeof v==='object'&&v.thr)?v.thr+' · ':'')+p+'%';   // textContent: imported thr can't inject
           rv.style.color=bcol;
           ra.textContent='tap to redo ↻';
+          const bar=document.createElement('span'); bar.className='rbar';       // the card's bullet bar, now living on the row itself
+          const bf=document.createElement('span'); bf.className='rfill'; bf.style.width=p+'%'; bf.style.background=bcol;
+          bar.appendChild(bf); main.appendChild(bar);
           const T=contentOf(c.tag).tiers||{};
           let tierTxt=T[band==='excellent'?'reference':band]||'';
           // some tier lines open with their own quality word ("Strong; centre holds…") — strip it
