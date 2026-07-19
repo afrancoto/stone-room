@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v31";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v32";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2092,11 +2092,6 @@
         dots.appendChild(d);
       });
       card.appendChild(dots);
-      const acts=document.createElement('div'); acts.className='pfacts';
-      const mk=(label,fn)=>{const b=document.createElement('button'); b.textContent=label; b.addEventListener('click',fn); return b;};
-      acts.appendChild(mk('Results ›',()=>openProfile(n)));
-      acts.appendChild(mk('Test ›',()=>testPair(n)));
-      card.appendChild(acts);
       list.appendChild(card);
     });
     $('pfcompare').style.display = names.length>=2 ? 'inline-flex' : 'none';   // Compare lives under Profiles
