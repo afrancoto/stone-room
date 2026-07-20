@@ -220,15 +220,15 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 /* curve answers: the choices share one row (equal width), Replay drops to its own row below */
 /* curve-screen buttons are labelled sentences, not big A/B letters — the game's 22px display
    type plus a subline made them enormous. Compact them and keep paired answers on one row. */
-#cvChoices{flex-wrap:wrap; align-items:stretch; max-width:420px; gap:10px}
-#cvChoices .choice{flex:1 1 0; min-width:0; max-width:190px; font-size:18px; padding:14px 12px; line-height:1.15; min-height:56px; display:flex; flex-direction:column; justify-content:center}
-#cvChoices .choice small{font-size:9.5px; letter-spacing:.06em; margin-top:4px; line-height:1.3}
-#cvChoices .btn{flex:1 1 100%; max-width:280px}
-#cvChoices .btn.half{flex:1 1 42%; max-width:190px; padding:12px 14px; font-size:14px}   /* two actions share a row */
-#cvChoices .replay{flex-basis:100%; justify-content:center; margin-top:2px}
-#cvChoices .brk{flex-basis:100%; height:0}                     /* hard line break between button rows */
-#cvChoices .choice.alt{flex:1 1 40%; font-size:14.5px; padding:12px 10px; font-family:var(--ui); min-height:0}
-#cvChoices .choice.alt small{margin-top:3px}
+#cvChoices, #calChoices{flex-wrap:wrap; align-items:stretch; max-width:420px; gap:10px}
+#cvChoices .choice, #calChoices .choice{flex:1 1 0; min-width:0; max-width:190px; font-size:18px; padding:14px 12px; line-height:1.15; min-height:56px; display:flex; flex-direction:column; justify-content:center}
+#cvChoices .choice small, #calChoices .choice small{font-size:9.5px; letter-spacing:.06em; margin-top:4px; line-height:1.3}
+#cvChoices .btn, #calChoices .btn{flex:1 1 100%; max-width:280px}
+#cvChoices .btn.half, #calChoices .btn.half{flex:1 1 42%; max-width:190px; padding:12px 14px; font-size:14px}   /* two actions share a row */
+#cvChoices .replay, #calChoices .replay{flex-basis:100%; justify-content:center; margin-top:2px}
+#cvChoices .brk, #calChoices .brk{flex-basis:100%; height:0}                     /* hard line break between button rows */
+#cvChoices .choice.alt, #calChoices .choice.alt{flex:1 1 40%; font-size:14.5px; padding:12px 10px; font-family:var(--ui); min-height:0}
+#cvChoices .choice.alt small, #calChoices .choice.alt small{margin-top:3px}
 .hint{font-size:12px; color:var(--sage); margin:2px 0 4px; min-height:16px; letter-spacing:.02em}
 .hint:empty{display:none}
 .status{min-height:22px; font-size:13.5px; color:var(--stone); margin:4px 0 2px; font-weight:500}
