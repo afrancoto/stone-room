@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v48";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v49";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -715,11 +715,11 @@
   // score maps median angular error to pct via [weakDeg, refDeg]; stops when the running
   // acuity estimate is confident (SE small) after a minimum, else at maxRounds.
   const SPATIAL={
-    Stage:{minR:3, maxR:6, weak:40, ref:5, ecc:[40,58,74,86]},
-    Motion:{minR:3, maxR:6, weak:45, ref:7, spd:[2.4,2.0,1.7,1.4]},
-    Orbit:{minR:3, maxR:6, weak:75, ref:14, dur:[4.2,3.8,3.4,3.0]},
+    Stage:{minR:3, maxR:8, weak:40, ref:5, ecc:[40,58,74,86]},
+    Motion:{minR:3, maxR:8, weak:45, ref:7, spd:[2.4,2.0,1.7,1.4]},
+    Orbit:{minR:3, maxR:8, weak:75, ref:14, dur:[4.2,3.8,3.4,3.0]},
     Depth:{minR:3, maxR:6, weak:52, ref:10},
-    Separation:{minR:3, maxR:6, weak:52, ref:10, spread:[64,48,36,28]},
+    Separation:{minR:3, maxR:8, weak:52, ref:10, spread:[64,48,36,28]},
   };
 
   // ---------- state ----------
@@ -1252,7 +1252,7 @@
   function sharpenRoom(){
     hideCheckpointBtns(); $('next').classList.remove('on'); $('learn').classList.remove('on');
     if(st && st.done){ st.eng.z.bumpMax(6); st.eng.nMax+=6; st.done=false; st._shown=false; st.sharpen=true; guessLocked=false; stairTrial(); }
-    else if(sp && sp._finished){ sp.maxR=sp.round+3; sp._finished=false; sp.done=false; sp.sharpen=true; guessLocked=false; spatialRound(); }
+    else if(sp && sp._finished){ sp.maxR=sp.round+sp.diffLen; sp._finished=false; sp.done=false; sp.sharpen=true; guessLocked=false; spatialRound(); }   // Sharpen adds one FULL cycle, keeping the mix balanced
   }
   function redoRoom(){
     const i=order[oi], tag=CH[i].tag;
@@ -2122,6 +2122,9 @@
     setReplay(true); roveTrial();
     kbActive=false; kbAz=0; kbRad = sp.mode==='orbit'?112 : sp.mode==='depth'?90 : 110;
     const c=sp.c, S=sp.S, r=sp.round % sp.diffLen;   // difficulty index cycles; sp.round still counts rounds
+    // record which difficulty this round ran at — persisted with the reading so the eccentricity
+    // weights (the future normalization model) can be re-fit from real aggregated data
+    sp.curDiff=(S.ecc&&S.ecc[r])||(S.spd&&S.spd[r])||(S.spread&&S.spread[r])||(S.dur&&S.dur[r])||r;
     if(c.mode==='locate'){
       const ecc=S.ecc[Math.min(r,S.ecc.length-1)];
       const az=(Math.random()<.5?-1:1)*jit(ecc,6), key=rndTimbre();
@@ -2259,7 +2262,7 @@
     } else {
       msg = err<12?pick(contentOf(sp.c.tag).hit):err<32?'Close.':pick(contentOf(sp.c.tag).miss);
     }
-    sp.errs.push({eff:effErr, raw:err});   // eff scores; raw feeds the spread stats (see acuityStats)
+    sp.errs.push({eff:effErr, raw:err, d:sp.curDiff});   // eff scores; raw feeds the spread stats; d = this round's difficulty
     $('status').innerHTML=`${msg} <span style="color:var(--muted)">· ${Math.round(err)}° off</span>`;
     afterSpatialRound();
   }
@@ -2280,7 +2283,7 @@
     // "100% locked in" for a run of nothing but front/back flips
     if(we>50 && wrapErr(az,mirrorAz)<20){ effErr=wrapErr(az,mirrorAz)+35; msg='Mirrored — the classic front/back flip.'; }
     else msg = we<16?pick(contentOf('Orbit').hit):we<40?'In the area.':pick(contentOf('Orbit').miss);
-    sp.errs.push({eff:effErr, raw:we});
+    sp.errs.push({eff:effErr, raw:we, d:sp.curDiff});
     $('status').innerHTML=`${msg} <span style="color:var(--muted)">· ${Math.round(we)}° off</span>`;
     afterSpatialRound();
   }
@@ -2315,9 +2318,10 @@
     // never auto-finish before the room's whole difficulty ladder has been presented — stopping
     // early meant a confident listener was scored on the EASY eccentricities/speeds only, while a
     // wobblier one also faced the hard end: same ability, different numbers.
-    // sp.diffLen (ladder length, or maxR for r-derived rooms like Depth) — Depth had no array, so
-    // its ladder floor was 0 and it could auto-finish having shown only the easy eccentricities
-    const enough = sp.round>=Math.max(sp.minR, sp.diffLen) && a.se < sp.S.ref*0.6;
+    // BALANCED stopping: auto-finish only on COMPLETE difficulty cycles. Stopping mid-cycle let
+    // the trial mix tilt the median — the same listener printed 47 or 58 depending purely on the
+    // stop round (and the cleaner run scored WORSE). Model-free fix; maxR is a cycle multiple.
+    const enough = sp.round>=Math.max(sp.minR, sp.diffLen) && sp.round % sp.diffLen === 0 && a.se < sp.S.ref*0.6;
     // normal flow auto-finishes when confident; a Sharpen run continues to maxR
     if(sp.round>=sp.maxR || (!sp.sharpen && enough)){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
     choiceTimers.push(setTimeout(()=>spatialRound(), 820));
@@ -2328,7 +2332,8 @@
     // map median error (deg) between ref (100%) and weak (0%) in log space
     const lw=Math.log(S.weak), lb=Math.log(S.ref), lt=Math.log(clamp(a.med,S.ref,S.weak));
     const pct=Math.round(clamp((lw-lt)/(lw-lb),0,1)*100);
-    recordRoom(pct, `${Math.round(a.med)}° acuity`, {val:a.med, lo:Math.max(1,a.med-1.96*a.se), hi:a.med+1.96*a.se});
+    recordRoom(pct, `${Math.round(a.med)}° acuity`, {val:a.med, lo:Math.max(1,a.med-1.96*a.se), hi:a.med+1.96*a.se,
+      trials:sp.errs.map(e=>typeof e==='number'?[null,e,e]:[e.d,Math.round(e.raw*10)/10,Math.round(e.eff*10)/10])});   // [difficulty, raw°, eff°] per round — exported
     $('status').innerHTML=`Your acuity: <span class="pts">${Math.round(a.med)}°</span> · +${pct} <span style="color:var(--muted)">· ${Math.round(a.conf*100)}% locked in</span>`;
     setPrecision(a.conf, `${Math.round(a.med)}° · ${sp.round} rounds`);
     showLearn(); appendTier(tierLine(sp.c.tag,pct));
@@ -2934,15 +2939,19 @@
     lp.connect(g); g.connect(master);
     [110,110.7,165.3].forEach(f=>{const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f; o.connect(lp); o.start(when); o.stop(when+dur+.05);});
   }
-  function labTickLow(when,gain){                 // V2: the tick moved down into the pad's band
-    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=330; bp.Q.value=2;
+  function labTickLow(when,gain){                 // V2: tick moved low — 300 Hz, deliberately OFF every pad
+    // harmonic (the pad has partials at exactly 330.0 and 330.6 Hz; a 330 Hz tick would add
+    // coherently onto them → increment-detection + 0.6 Hz beats, not masking)
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=300; bp.Q.value=2;
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.005); g.gain.exponentialRampToValueAtTime(Math.max(gain*0.0025,1e-7),when+.055);
     bp.connect(g); g.connect(master);
-    const o=ctx.createOscillator(); o.type='square'; o.frequency.value=330; o.connect(bp); o.start(when); o.stop(when+.07);
+    const o=ctx.createOscillator(); o.type='square'; o.frequency.value=300; o.connect(bp); o.start(when); o.stop(when+.07);
   }
-  function labAir(when,dur,gain){                 // V3: soft noise "air" layer 1.5–4.5 kHz over the warm pad
+  function labAir(when,dur,gain){                 // V3: air narrowed to ~1 ERB around 3 kHz (348 Hz wide, Q≈8.6)
+    // so the eventual "dB re air" is the true in-band SNR with no bandwidth correction — the
+    // design review's key honesty requirement (a broadband gain here would be the old lie anew)
     const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(dur+.3);
-    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2600; bp.Q.value=.7;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=3000; bp.Q.value=8.6;
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.4);
     g.gain.setValueAtTime(gain,when+dur-.5); g.gain.linearRampToValueAtTime(0,when+dur);
     nb.connect(bp); bp.connect(g); g.connect(master); nb.start(when); nb.stop(when+dur+.05);
@@ -2959,7 +2968,7 @@
     const box=$('labpanel'); box.innerHTML='';
     const h=document.createElement('div'); h.className='bghead'; h.textContent='Lab · Whisper masker variants'; box.appendChild(h);
     const sub=document.createElement('div'); sub.className='pvdsub';
-    sub.textContent='Each plays the pad with a tick at an easy (.04) or near-threshold (.008) level. V0 = shipped (no real masking). Listen for: does the tick feel BURIED IN the music rather than beside it — and is there any beating, roughness or other tell?';
+    sub.textContent='Each plays the pad with a tick at an easy (.04) or faint (.008) level. The decisive checks: V1 — a clean high pip, or a FLUTTER/roughness (≈10–30 Hz)? Flutter = beat detection, reject. V2 — a distinct low detail, or the note momentarily SWELLING thicker? Swell = increment detection, reject. V3 — a clean pip emerging from steady pitchless hiss, smoothly more audible as it rises = the textbook case. V0 control: change your volume — the tick’s findability shouldn’t depend on the pad at all (that’s the bug).';
     box.appendChild(sub);
     [['V0 · shipped',0],['V1 · brighter pad',1],['V2 · tick moved low',2],['V3 · pad + air',3]].forEach(([name,v])=>{
       const row=document.createElement('div'); row.className='labrow';
