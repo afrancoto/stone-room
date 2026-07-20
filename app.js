@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v42";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v43";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1402,6 +1402,9 @@
   const AG_INFILL_CAP={both:5, perear:3};        // per-ear cap (per-ear path is 2× the work → tighter)
   const AG_TRIAL_BUDGET={both:95, perear:70};    // skip further ADAPTIVE inserts once this ear's real trials pass this
   const EAR_PAN={R:1, L:-1, B:0}, EAR_NAME={R:'Right ear', L:'Left ear', B:'Both ears'};
+  // tone level above which cross-hearing becomes plausible and contralateral masking is worth its
+  // distraction. Below it the resting ear stays silent — which is most trials for a normal ear.
+  const MASK_FROM=-45;
   const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03, nMin:6, nMax:12, physLo:-94, physHi:-10, fmt:v=>Math.round(v)+' dBFS'};   // phys clamps: auto-widen can never wander past what we can actually play
   let ag=null;
 
@@ -1487,8 +1490,8 @@
       ? 'Even louder, nothing came through on the <b>'+(ag.pcSide==='L'?'left':'right')+'</b>. Two honest possibilities: that side of the headphones isn’t playing (connection, cable, a Bluetooth hiccup) — or that ear needs more level than the other, which is exactly what this test measures. Reconnect and try again, or carry on and let the per-ear curve tell the story.'
       : 'It seemed to come from both sides at once. This test needs <b>headphones</b> — on a speaker it measures the speaker, not your ears, and can’t tell left from right.';
     const box=$('cvChoices'); box.innerHTML='';
-    const retry=document.createElement('button'); retry.className='choice'; retry.innerHTML='Try again<small>re-check headphones</small>'; retry.onclick=()=>agPcChannel('L');
-    const anyway=document.createElement('button'); anyway.className='choice'; anyway.innerHTML='Continue anyway<small>results may be off</small>'; anyway.onclick=()=>agPcQuiet();
+    const retry=document.createElement('button'); retry.className='choice alt'; retry.innerHTML='Try again<small>re-check headphones</small>'; retry.onclick=()=>agPcChannel('L');
+    const anyway=document.createElement('button'); anyway.className='choice alt'; anyway.innerHTML='Continue anyway<small>results may be off</small>'; anyway.onclick=()=>agPcQuiet();
     box.appendChild(retry); box.appendChild(anyway);
   }
   function agPcQuiet(){
@@ -1496,9 +1499,10 @@
     $('cvTitle').textContent='Quiet check';
     $('cvNote').innerHTML='Headphones confirmed. Now the room — <b>stop and listen</b> for a few seconds with nothing playing. Background sound (a fan, traffic, a hum) hides the quietest tones and bends the curve.';
     const box=$('cvChoices'); box.innerHTML='';
-    const listen=document.createElement('button'); listen.className='btn'; listen.textContent='▶ Listen (4s)';
-    const silent=document.createElement('button'); silent.className='choice'; silent.innerHTML='It was silent<small>ready to test</small>'; silent.style.display='none';
-    const noisy=document.createElement('button'); noisy.className='choice'; noisy.innerHTML='I heard noise<small>quieter spot is better</small>'; noisy.style.display='none';
+    const listen=document.createElement('button'); listen.className='btn half'; listen.textContent='▶ Listen (4s)';
+    const brkQ=document.createElement('span'); brkQ.className='brk';
+    const silent=document.createElement('button'); silent.className='choice alt'; silent.innerHTML='It was silent<small>ready to test</small>'; silent.style.display='none';
+    const noisy=document.createElement('button'); noisy.className='choice alt'; noisy.innerHTML='I heard noise<small>quieter spot is better</small>'; noisy.style.display='none';
     // optional: measure the room with the device mic. This is a QUALITY-CONTROL check (is background
     // noise likely to swamp the quietest tones?) — NOT a calibration. A phone mic has no known
     // sensitivity, so it can compare your room to itself, never to a decibel standard. Nothing is
@@ -1506,8 +1510,7 @@
     let micBtn=null;
     const canMic = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
     if(canMic){
-      const mic=document.createElement('button'); mic.className='btn ghost'; mic.textContent='🎙 Measure the room';
-      mic.style.marginLeft='8px';
+      const mic=document.createElement('button'); mic.className='btn ghost half'; mic.textContent='🎙 Measure the room';
       mic.onclick=async()=>{
         mic.disabled=true; stopCurveAudio(); clearTimers();
         if(master) master.gain.setValueAtTime(0.0001, ctx.currentTime);
@@ -1567,19 +1570,20 @@
     silent.onclick=()=>agMode();
     noisy.onclick=()=>{ $('cvNote').innerHTML='A quieter spot gives a truer curve — but you can carry on. Just treat the very quietest tones as rough.';
       const b=$('cvChoices'); b.innerHTML='';
-      const go=document.createElement('button'); go.className='choice'; go.innerHTML='Test anyway<small>continue</small>'; go.onclick=()=>agMode();
-      const again=document.createElement('button'); again.className='choice'; again.innerHTML='Re-check<small>listen again</small>'; again.onclick=()=>agPcQuiet();
+      const go=document.createElement('button'); go.className='choice alt'; go.innerHTML='Test anyway<small>continue</small>'; go.onclick=()=>agMode();
+      const again=document.createElement('button'); again.className='choice alt'; again.innerHTML='Re-check<small>listen again</small>'; again.onclick=()=>agPcQuiet();
       b.appendChild(go); b.appendChild(again); };
-    box.appendChild(listen); if(micBtn) box.appendChild(micBtn); box.appendChild(silent); box.appendChild(noisy);
+    box.appendChild(listen); if(micBtn) box.appendChild(micBtn);
+    box.appendChild(brkQ); box.appendChild(silent); box.appendChild(noisy);   // actions row, then answers row
   }
   // per-ear (the only way to see a left/right difference) vs both-ears quick
   function agMode(){
     ag.phase='mode'; $('cvwrap').style.display='none';
     $('cvTitle').textContent='How to test'; $('cvprog').textContent='';
-    $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. In each-ear mode a <b>soft rush</b> plays in the resting ear; that’s deliberate — it keeps that ear from secretly helping. Both-ears is quicker.';
+    $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. When a tone has to get loud, a <b>soft rush</b> joins in the resting ear; that’s deliberate, and it keeps that ear from secretly helping. Both-ears is quicker.';
     const box=$('cvChoices'); box.innerHTML='';
-    const per=document.createElement('button'); per.className='choice'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
-    const both=document.createElement('button'); both.className='choice'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agStartRun('both');
+    const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
+    const both=document.createElement('button'); both.className='choice alt'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agStartRun('both');
     box.appendChild(per); box.appendChild(both);
   }
   function agStartRun(mode){
@@ -1679,16 +1683,23 @@
     const play=()=>{
       clearTimers(); hear.disabled=true; none.disabled=true; hear.classList.remove('playing');
       if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // constant reference each trial
-      $('cvNote').textContent = (ag.pan && ag.fi===0 && ag.trial===0)
-        ? 'Listen… the soft rush in your other ear just keeps it from helping.' : 'Listen…';
+      $('cvNote').textContent = (ag.pan && ag.curLevel>MASK_FROM && !ag.rushSaid)
+        ? 'Listen… a soft rush in your other ear keeps it from helping on the louder tones.' : 'Listen…';
+      if(ag.pan && ag.curLevel>MASK_FROM) ag.rushSaid=true;   // explain the rush the first time it appears
       const lead=.18, win=1.30, t0=ctx.currentTime+lead;
       // clinical-style PULSED tone (3 short bursts): a steady tone is easy to confuse with tinnitus —
       // which tends to live exactly where hearing is weakest; pulses are unmistakably "the test".
       if(!ag.catch){ const pd=.28, gap=.12;
         for(let k=0;k<3;k++) detTone(f, t0+k*(pd+gap), pd, ag.curLevel, ag.pan); }
-      // per-ear runs: mask the other ear at tone−18 dB (floored) — identical on catch trials, so the
-      // rush itself never signals whether a tone is coming
-      if(ag.pan) detMask(f, t0-.06, win, Math.max(-70, ag.curLevel-18), -ag.pan);
+      // Per-ear runs: mask the resting ear ONLY where cross-hearing is actually possible. A tone
+      // must be loud before it reaches the far cochlea through the skull (~45 dB of interaural
+      // attenuation), so masking a quiet tone protects nothing and just fills that ear with noise.
+      // The old floor — max(−70, tone−18) — stopped the mask descending with the tone, so once the
+      // tone passed −52 dBFS the "mask" was LOUDER than the tone it was meant to sit under: the
+      // resting ear became a wall of noise and the beeps vanished beneath it.
+      // Now: silent for quiet tones; above the gate it rides a true 18 dB under the tone.
+      // Independent of ag.catch, so a silent trial sounds identical — the rush is never a tell.
+      if(ag.pan && ag.curLevel>MASK_FROM) detMask(f, t0-.06, win, ag.curLevel-18, -ag.pan);
       // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
       choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ hear.disabled=false; hear.classList.add('playing'); $('cvNote').innerHTML='Now — tap <b>I hear it</b> the instant you notice it.'; } }, lead*1000));
       // "Nothing" answerable only AFTER the window has fully passed
