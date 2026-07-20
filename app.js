@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v45";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v46";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -987,6 +987,11 @@
     $('pf-back').addEventListener('click',()=>show(order.length?'end':'intro'));
     $('gomethods').addEventListener('click',()=>{ buildMethods(); methodsBack='intro'; show('methods'); });
     $('mdback').addEventListener('click',()=>show(methodsBack||'intro'));
+    // ⌂ Home — the universal, progress-safe escape from any running test: audio stops, the tour
+    // stays saved (the intro offers Resume), nothing is recorded for the interrupted room
+    $('gohome').addEventListener('click',()=>{ stopVoices(); killStim(); clearTimers(); show('intro'); offerResume(); });
+    $('cvhome').addEventListener('click',()=>{ stopCurveAudio(); clearTimers(); killStim(); ag=null; curveInTour=false;
+      $('cvexit').textContent='Done'; pfReturn=false; show('intro'); offerResume(); });
     $('pv-back').addEventListener('click',()=>{ buildProfiles(); show('profiles'); });
     $('pv-test').addEventListener('click',()=>{ if(pvName) testPair(pvName); });
     $('pv-rename').addEventListener('click',()=>{ if(!pvName)return; const nn=prompt('Rename this pair:', pvName); if(!nn)return;
@@ -1480,7 +1485,10 @@
     if(!device) device=suggestName();
     if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
     ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}, caTot:{R:0,L:0,B:0}};
-    $('cvsave').style.display='none';
+    // mid-run there is NO Continue/Done/Redo: a visible "Continue →" during the measurement read
+    // as a normal next-step and silently ABORTED the room, marking it complete. The only mid-run
+    // exit is ⌂ Home (progress-safe). The exit row returns when the curve actually finishes.
+    $('cvsave').style.display='none'; $('cvexit').style.display='none'; $('cvredo').style.display='none';
     show('curve'); agCal();
   }
   async function saveCurveCard(){
@@ -1870,6 +1878,7 @@
     ag.phase='done'; clearTimers();
     $('cvTitle').textContent='Your curve'; $('cvprog').textContent=''; $('cvChoices').innerHTML='';
     $('cvwrap').style.display='block'; $('cvsave').style.display='inline-block';
+    $('cvexit').style.display=''; $('cvredo').style.display='';   // the run is over — Continue/Done/Redo return
     if(ag.mode==='perear'){
       const R=agBuildCurve('R'), L=agBuildCurve('L'), asym=agAsym(R,L);
       // gate on the false-alarm RATE, not a count: per-ear mode presents ~2× the silent trials,

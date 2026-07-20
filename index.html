@@ -188,7 +188,10 @@
         <button class="btn ghost lockbtn" id="lockbtn">↻ Redo</button>
         <button class="btn next" id="next">Next</button>
       </div>
-      <button class="navopen" id="roomsbtn" aria-haspopup="dialog">☰ Rooms &amp; progress</button>
+      <div class="navrow2">
+        <button class="navopen" id="roomsbtn" aria-haspopup="dialog">☰ Rooms &amp; progress</button>
+        <button class="navopen" id="gohome" aria-label="Leave the tour — progress is saved">⌂ Home</button>
+      </div>
       <div class="chapdots" id="chapdots"></div>
     </div>
   </section>
@@ -293,6 +296,7 @@
     <div class="fpwrap" id="cvwrap" style="display:none"><div class="fpbox" id="cvcard"></div></div>
     <div class="choices on" id="cvChoices"></div>
     <div class="row">
+      <button class="btn ghost" id="cvhome">⌂ Home</button>
       <button class="btn ghost" id="cvexit">Done</button>
       <button class="btn ghost" id="cvredo">Redo</button>
       <button class="btn" id="cvsave">Save curve</button>
