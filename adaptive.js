@@ -83,8 +83,14 @@
 
     // choose next stimulus: argmin expected marginal-α entropy. First 2 trials deliberately easy.
     function next(){
+      // Openers are deliberately easy so the listener hears what they're hunting for. But they are
+      // NON-ADAPTIVE, and on a SEEDED frequency (every one after the first) the prior already knows
+      // roughly where threshold sits, so the second opener buys orientation we already have — two
+      // fixed trials × 9–15 frequency visits is 18–30 wasted presentations per ear. With a seed,
+      // keep ONE opener and place it at the prior's easy shoulder so it still contributes evidence.
+      const seeded = cfg.priorSeed!=null;
       if(t===0){ lastXi=nA-1-Math.round(nA*0.06); return ALPHA[lastXi]; }
-      if(t===1){ lastXi=nA-1-Math.round(nA*0.18); return ALPHA[lastXi]; }
+      if(t===1 && !seeded){ lastXi=nA-1-Math.round(nA*0.18); return ALPHA[lastXi]; }
       // BOLD BRACKET: threshold is off the grid — jump to the extreme (index 1 / nA-2, which still
       // counts as an edge for the streak logic) to find where the listener crosses, then localise.
       if(boldProbe<0){ boldProbe=0; lastXi=1; return ALPHA[1]; }
@@ -168,7 +174,7 @@
     const pSD = span * 0.55 * (P.priorSDscale || 1);
     const cfg = {
       nA: 50, xLo: xLo - span*0.05, xHi: xHi + span*0.05,
-      slope: 7, slopeW: P.slopeW, priorMean: pMean, priorSD: pSD,
+      slope: 7, slopeW: P.slopeW, priorSeed: P.priorSeed, priorMean: pMean, priorSD: pSD,
       nMin: P.nMin || 8, nMax: P.nMax || 16, gamma: P.gamma,   // undefined for 2AFC rooms → makePsi default 0.5
       // ciTarget/ciSolidTarget: stopping thresholds in the room's OWN units (dB). With these set,
       // the run length is genuinely governed by UNCERTAINTY — a clear listener finishes fast, an
