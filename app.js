@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v46";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v47";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -118,7 +118,9 @@
         [dry,send].forEach(gn=>{ gn.gain.cancelScheduledValues(now); gn.gain.setValueAtTime(gn.gain.value, now); gn.gain.linearRampToValueAtTime(0, now+0.04); });
       }catch(e){}
     }
-    function setAz(az2){const {x,z}=pos(az2,dist); panner.positionX.value=x; panner.positionZ.value=z;}
+    function setAz(az2,ramp){const {x,z}=pos(az2,dist); const t=ctx.currentTime;
+      if(ramp){ panner.positionX.linearRampToValueAtTime(x,t+ramp); panner.positionZ.linearRampToValueAtTime(z,t+ramp); }   // smooth step — 40 ms .value writes zippered
+      else { panner.positionX.value=x; panner.positionZ.value=z; } }
     function glide(fromAz,toAz,dur){
       // follow the ARC, not the chord: a single Cartesian ramp cuts inside the circle, passing
       // closer to the head mid-glide (a ~4 dB loudness swell that isn't part of the motion cue).
@@ -168,10 +170,14 @@
     const o=ctx.createOscillator(); o.type='square'; o.frequency.value=3000; o.connect(hp); o.start(when); o.stop(when+.07);
   }
   function grainNote(when,dirty,partialGain){
-    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.5,when+.01);
+    // RMS-match the dirty note: the stray partial ADDS energy, so without compensation "impure"
+    // was also slightly louder (~0.6 dB at the easy end). Scale the base tones down by the energy
+    // the partial contributes (envelope-weighted; 2.42 ≈ τ3/(a1²τ1+a2²τ2) precomputed).
+    const s=dirty?1/Math.sqrt(1+2.42*partialGain*partialGain):1;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.5*s,when+.01);
     g.gain.exponentialRampToValueAtTime(.0008,when+.9); g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=330*rvF; o.connect(g); o.start(when); o.stop(when+1);
-    const g2=ctx.createGain(); g2.gain.setValueAtTime(0,when); g2.gain.linearRampToValueAtTime(.18,when+.01);
+    const g2=ctx.createGain(); g2.gain.setValueAtTime(0,when); g2.gain.linearRampToValueAtTime(.18*s,when+.01);
     g2.gain.exponentialRampToValueAtTime(.0006,when+.7); g2.connect(master);
     const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=660*rvF; o2.connect(g2); o2.start(when); o2.stop(when+1);
     if(dirty){
@@ -200,6 +206,17 @@
     const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000;
     const ng=ctx.createGain(); ng.gain.setValueAtTime(0,when); ng.gain.linearRampToValueAtTime(.05,when+.3); ng.gain.linearRampToValueAtTime(0,when+1.9);
     nb.connect(hp); hp.connect(ng); ng.connect(shelf); nb.start(when); nb.stop(when+2);
+  }
+  function warbleTone(freq,when,dur,amp){
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when);
+    g.gain.linearRampToValueAtTime(amp,when+.06);
+    g.gain.setValueAtTime(amp,when+dur-.08); g.gain.linearRampToValueAtTime(0,when+dur);
+    g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=freq;
+    const fm=ctx.createOscillator(); fm.frequency.value=5;
+    const fg=ctx.createGain(); fg.gain.value=freq*0.025;
+    fm.connect(fg); fg.connect(o.frequency);
+    fm.start(when); fm.stop(when+dur+.05); o.connect(g); o.start(when); o.stop(when+dur+.05);
   }
   function shimmerBurst(f,t,dur,gain){
     const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(dur+.2);
@@ -289,7 +306,7 @@
   function pulsePattern(when,lateIdx,lateMs){
     const step=.32;
     for(let i=0;i<6;i++){
-      const t=when+i*step+(i===lateIdx?lateMs/1000:0);
+      const t=when+i*step+(i===lateIdx?pulseSign*lateMs/1000:0);
       const g=ctx.createGain(); g.gain.setValueAtTime(.5,t); g.gain.exponentialRampToValueAtTime(.0006,t+.12);
       const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1200;
       lp.connect(g); g.connect(master);
@@ -330,7 +347,7 @@
   function silkPhrase(when,sibGain){
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.3,when+.05);
     g.gain.setValueAtTime(.3,when+.85); g.gain.linearRampToValueAtTime(0,when+1.05); g.connect(master);
-    const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=220;
+    const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=220*rvF;   // carrier roves; the 7 kHz sibilance band (the measured variable's home) stays put
     const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1200;
     o.connect(lp); lp.connect(g); o.start(when); o.stop(when+1.1);
     const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(0.6);
@@ -348,7 +365,7 @@
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(lvl,when+.06);
     g.gain.setValueAtTime(lvl,when+1.2); g.gain.linearRampToValueAtTime(0,when+1.5);
     peak.connect(lp); lp.connect(g); g.connect(master);
-    const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=196;
+    const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=196*rvF;   // carrier roves per trial (the 1.8 kHz scoop is the measured variable and stays put)
     const vib=ctx.createOscillator(); vib.frequency.value=5; const vg=ctx.createGain(); vg.gain.value=3;
     vib.connect(vg); vg.connect(o.frequency); vib.start(when); vib.stop(when+1.6);
     o.connect(peak); o.start(when); o.stop(when+1.6);
@@ -377,7 +394,7 @@
     return Math.sqrt(se/ce);
   }
   function composureChord(when,drive){
-    const sh=ctx.createWaveShaper(); sh.curve=makeDriveCurve(drive);
+    const sh=ctx.createWaveShaper(); sh.curve=makeDriveCurve(drive); sh.oversample='4x';   // suppress the shaper's own aliasing — it added inharmonic hash that wasn't the distortion under test
     const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=5000;
     const lvl=.55*driveTrim(drive);
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(lvl,when+.05);
@@ -438,6 +455,7 @@
   // vs noise" is a real signal-to-noise ratio. (Nyquist-dependent to ~0.4 dB between 44.1/48 kHz.)
   const SNR_TONE_K=0.182;
   let snrOff=0;
+  let pulseIdx=3, pulseSign=1;                        // Pulse room: anomalous-beat slot + late/early, frozen per trial
   function snrFreeze(){ snrOff=Math.random()*0.9; }   // one masker realisation per TRIAL, shared by A and B
   function snrMasked(t, dur, ratio, withTone){
     const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(3.2);
@@ -539,6 +557,10 @@
      claim:'Between the notes: true black. No hiss, no veil, just nothing.',
      learn:'"Black background" is a low noise floor — nothing added beneath quiet passages. You just resolved near-silence, which is exactly what the phrase means.',
      notice:'A note, then silence — twice. One silence hides a faint hiss. <b>Tap the one that hid it.</b>'},
+    {group:'res',tag:'Digits',title:'Three digits in the noise',tests:'speech in noise',mode:'digits',
+     claim:'The everyday test: following a voice while noise tries to bury it.',
+     learn:'Three spoken digits play inside babble made from the same voice, and the measured number is the signal-to-noise ratio where you still catch all three. Speech and noise ride the same chain at the same instant, so this reading barely cares that nothing is calibrated — it is the sturdiest number in the whole app.',
+     notice:'Noise, with three digits spoken inside it. <b>Tap the three digits you heard, in order.</b>'},
     {group:'res',tag:'Noise',title:'In the noise',tests:'signal in noise',mode:'stair',
      claim:'Clarity: a signal stays findable even when noise is trying to bury it.',
      learn:'Your ear analyses sound in narrow bands, and a tone becomes audible once it rises far enough above the noise inside its own band. Because the tone and the noise travel the same path at the same moment, this reading barely moves when you change the volume — it is the one measurement here that hardly cares about calibration.',
@@ -592,7 +614,7 @@
      learn:'A performer’s expression is 1–2 dB shadings between notes. Any compression in the chain flattens those gradations into sameness.',
      notice:'The same note twice, at slightly different levels. <b>Tap the louder one.</b>'},
   ];
-  const ROMANS=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX','XXI','XXII','XXIII'];
+  const ROMANS=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX','XXI','XXII','XXIII','XXIV','XXV','XXVI','XXVII'];
   const DEVCOLORS=['#7BA79C','#E27A45','#D9A24B','#B7A6E3'];
 
   // ---------- adaptive 2AFC staircase params + stimulus (keyed by tag) ----------
@@ -602,7 +624,10 @@
     Foundation:{type:'D', q:'Which held a tone?', dur:1.4, start:40, floor:16, ceil:63, hard:.90, easy:1.15, log:true, betterHigh:false, anchors:[50,20], physLo:16, fmt:v=>Math.round(v)+' Hz',
       play:(lv,t,on)=>{marker(t); if(on) subTone(lv, t+.12, 1.15, lv<45?.85:.7);}},
     Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:13000, floor:8000, ceil:20000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[10000,17000], physLo:7000, physHi:20500, fmt:v=>(v/1000).toFixed(1)+' kHz',
-      play:(lv,t,on)=>{marker(t); if(on) shimmerBurst(lv, t+.15, .8, .16);}},
+      // warble tone, not bandpassed noise: the Q=8 noise skirts leaked audible energy well BELOW
+      // the nominal frequency, so listeners detected the skirt and the treble ceiling read high.
+      // A frequency-modulated sine (±2.5% at 5 Hz — standard audiometric warble) has no skirts.
+      play:(lv,t,on)=>{marker(t); if(on) warbleTone(lv, t+.15, .8, .16);}},
     Whisper:{type:'D', q:'Which pad hid a tick?', dur:1.7, start:.04, floor:.002, ceil:.2, hard:.78, easy:1.5, log:true, betterHigh:false, anchors:[.04,.008], physLo:0.00002, fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
       play:(lv,t,on)=>{pad(t,1.6,.2); if(on) tick(t+.5+Math.random()*.7, lv);}},
     Silence:{type:'X', q:'Which hid a hiss?', dur:2.4, answerAltered:true, start:.04, floor:.004, ceil:.1, hard:.72, easy:1.6, log:true, betterHigh:false, anchors:[.05,.006], physLo:0.000045, fmt:v=>Math.round(20*Math.log10(v/.45))+' dB',
@@ -619,7 +644,14 @@
       play:(lv,t,on)=>snrMasked(t, 2.0, lv, on)},
     Grain:{type:'X', q:'Which was pure?', dur:1.15, answerAltered:false, start:.1, floor:.008, ceil:.35, hard:.78, easy:1.4, log:true, betterHigh:false, anchors:[.15,.02], physLo:0.005, fmt:v=>'partial '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>grainNote(t, alt, lv)},
-    Composure:{type:'X', q:'Which stayed clean?', dur:1.8, answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], physLo:0.15, fmt:v=>'drive '+v.toFixed(1),
+    // fmt maps drive k → measured %THD of tanh soft-clip on a sine (harmonic projection, 8 harmonics):
+    // "~25% THD" is a real number an engineer can check; "drive 3.0" was an internal knob
+    Composure:{type:'X', q:'Which stayed clean?', dur:1.8, answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], physLo:0.15,
+      fmt:v=>{const T=[[0.15,0.19],[0.3,0.73],[0.5,1.96],[0.8,4.61],[1.2,8.92],[2,17.3],[3,25.0],[4.5,31.7],[6,35.2],[9,38.3]];
+        let i=0; while(i<T.length-1&&T[i+1][0]<v)i++;
+        const [k0,t0]=T[i],[k1,t1]=T[Math.min(i+1,T.length-1)];
+        const t=k1===k0?t0:t0+(t1-t0)*(v-k0)/(k1-k0);
+        return '~'+(t<1?t.toFixed(1):Math.round(t))+'% THD';},
       play:(lv,t,alt)=>composureChord(t, alt?lv:0)},
     Grip:{type:'X', q:'Which was tighter?', dur:1.7, answerAltered:false, start:.15, floor:.02, ceil:.5, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[.35,.06], physLo:0.02, fmt:v=>'bloom '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>bassNote(t, alt, lv)},
@@ -629,11 +661,18 @@
       play:(lv,t,alt)=>silkPhrase(t, .05+(alt?lv:0))},
     Snap:{type:'X', q:'Which truly hit?', dur:.9, answerAltered:false, start:.035, floor:.004, ceil:.08, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.04,.006], physLo:0.002, fmt:v=>Math.round(v*1000)+' ms attack',
       play:(lv,t,alt)=>snapHit(t, alt?lv:.001)},
+    // the anomalous beat's position AND direction (late/early) re-randomise per trial — a fixed
+    // "beat 4 is always late" was learnable without listening to the timing at all
     Pulse:{type:'X', q:'Which groove was tight?', dur:2.15, answerAltered:false, start:40, floor:5, ceil:80, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[45,8], physLo:6, fmt:v=>Math.round(v)+' ms',
-      play:(lv,t,alt)=>pulsePattern(t, 3, alt?lv:0)},
+      onTrial:()=>{ pulseIdx=2+Math.floor(Math.random()*3); pulseSign=Math.random()<.5?-1:1; },
+      play:(lv,t,alt)=>pulsePattern(t, pulseIdx, alt?lv:0)},
     Shade:{type:'X', q:'Which was louder?', dur:.95, answerAltered:true, start:1.5, floor:.3, ceil:4, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[3,.5], physLo:0.25, fmt:v=>v.toFixed(2)+' dB',
       play:(lv,t,alt)=>dynNote(t, alt?lv:0)},
-    Centre:{type:'X', q:'Which sat dead centre?', dur:1.5, answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], physLo:0.02, physHi:1.0, fmt:v=>Math.round(v*100)+'% off',
+    // fmt reports the interaural LEVEL difference the pan offset creates (equal-power law:
+    // ILD = 20·log10(tan((1+p)·π/4))) — "0.9 dB off" matches the literature's ~1 dB claim the
+    // room's copy cites; "28% off" was an internal knob reading
+    Centre:{type:'X', q:'Which sat dead centre?', dur:1.5, answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], physLo:0.02, physHi:1.0,
+      fmt:v=>{const p=Math.min(v,0.98); return (20*Math.log10(Math.tan((1+p)*Math.PI/4))).toFixed(1)+' dB off';},
       play:(lv,t,alt)=>centreNote(t, alt?(Math.random()<.5?1:-1)*lv:0)},
     Duet:{type:'X', q:'Which felt wider?', dur:2.0, answerAltered:true, start:.8, floor:.1, ceil:1, hard:.72, easy:1.5, log:true, betterHigh:false, anchors:[.9,.15], physLo:0.04, physHi:1.111, fmt:v=>'width '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>duetChord(t, alt, 12*lv, .9*lv)},
@@ -642,7 +681,9 @@
     // newly-adaptive 2AFC rooms
     Flyby:{type:'X', q:'Which passed closer?', answerAltered:true, start:2.2, floor:1.06, ceil:6, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[3.2,1.2], physLo:1.0, physHi:5.5, fmt:v=>v.toFixed(1)+'× gap', dur:2.6,
       play:(lv,t,alt)=>{const far=5.5; flyby(t, Math.random()<.5?1:-1, alt?far/lv:far, 2.4);}},
-    Halls:{type:'X', q:'Which room was bigger?', answerAltered:true, start:.55, floor:.12, ceil:1.1, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[.9,.3], physLo:0.05, fmt:v=>Math.round(v*100)+'% larger', dur:2.7,
+    // anchors tightened toward the ~5% reverb-time JND the literature supports (ref .07, was .3 —
+    // the old ref meant even a reference-grade listener was only asked to resolve 30% size steps)
+    Halls:{type:'X', q:'Which room was bigger?', answerAltered:true, start:.55, floor:.05, ceil:1.1, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[.85,.07], physLo:0.03, fmt:v=>Math.round(v*100)+'% larger', dur:2.7,
       play:(lv,t,alt)=>hallPluckSec(t, alt?1.1*(1+lv):1.1)},
   };
 
@@ -654,6 +695,7 @@
     Whisper:'Tap the pad that hid a faint tick',
     Silence:'Tap the silence that wasn’t truly black',
     Noise:'Tap the noise burst that hid a steady tone',
+    Digits:'Tap the three digits you heard, in order',
     Grain:'Tap the cleaner, purer of the two notes',
     Composure:'Tap the one that stayed clean under load',
     Grip:'Tap the tighter bass — the one that stops dead',
@@ -686,7 +728,7 @@
   let choiceTimers=[], orbitInt=null;
   // curated default tour (~11 non-redundant rooms across all four domains) — keeps the set
   // short. Every other room stays available on the select screen, just off by default.
-  const DEFAULT_ROOMS = new Set(['Stage','Orbit','Depth','Crowd','Whisper','Noise','Grain','Foundation','Air','Presence','Snap','Shade']);
+  const DEFAULT_ROOMS = new Set(['Stage','Orbit','Depth','Crowd','Whisper','Digits','Grain','Foundation','Air','Presence','Snap','Shade']);   // Digits replaces Noise in the default tour (same principle, everyday percept)
   let selected = CH.map(c=>DEFAULT_ROOMS.has(c.tag));
   let device='';
   let db={devices:{}}, storageOK=false, cmpVisible={};
@@ -746,6 +788,7 @@
       return {q:9*t, f:16*t};
     }
     if(c.mode==='count') return {q:5*7.5, f:10*7.5};
+    if(c.mode==='digits') return {q:9*5, f:15*5};
     if(c.mode==='curve') return {q:9*6*1.6+16, f:9*12*1.6+16};   // 9 pitches × trials + volume calibration
     const per={locate:7,sweep:8.5,depth:7.5,separate:10,orbit:11}[c.mode]||8;
     const S=SPATIAL[c.tag]||{minR:4,maxR:8};
@@ -1229,15 +1272,15 @@
   }
 
   function startChapter(){
-    guessLocked=false; st=null; sp=null; cnt=null; stopVoices();
+    guessLocked=false; st=null; sp=null; cnt=null; dig=null; $('choices').classList.remove('digitpad'); stopVoices();
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
     setReplay(true); $('skipbtn').classList.add('on');
     const c=chap();
-    const isStair=c.mode==='stair', isOrbit=c.mode==='orbit', isCount=c.mode==='count', isCurve=c.mode==='curve';
+    const isStair=c.mode==='stair', isOrbit=c.mode==='orbit', isCount=c.mode==='count', isCurve=c.mode==='curve', isDigits=c.mode==='digits';
     const isField = c.mode==='locate'||c.mode==='sweep'||c.mode==='depth'||c.mode==='separate';
     $('fieldwrap').classList.toggle('hidden', !(isField));
     $('fieldwrapO').classList.toggle('hidden', !isOrbit);
-    $('choices').classList.toggle('on', isStair||isCount||isCurve);
+    $('choices').classList.toggle('on', isStair||isCount||isCurve||isDigits);
     // the hearing-curve room is a self-contained measurement on its own screen — offer one
     // button to launch it (Skip still available); the rest run inline here.
     if(isCurve){
@@ -1246,10 +1289,12 @@
       buildChoices(['▶ Measure my curve'], null, startCurveRoom);
       return;
     }
-    $('hint').textContent = isStair ? '👆 '+(ASK[c.tag]||'Tap A or B below')
-      : isCount ? '👆 Tap how many voices you count'
-      : '👆 Tap the field where you hear it — one tap, no dragging';
+    $('hint').textContent = isStair ? (ASK[c.tag]||'Tap A or B below')
+      : isCount ? 'Tap how many voices you count'
+      : isDigits ? 'Tap the three digits you heard, in order'
+      : 'Tap the field where you hear it — one tap, no dragging';
     if(isStair) setupStair(c);
+    else if(isDigits) setupDigits(c);
     else if(isCount) setupCount(c);
     else if(isOrbit) setupSpatial(c);
     else setupSpatial(c);
@@ -1445,6 +1490,116 @@
     showResultBtns(false);   // Redo only (no "sharpen" for a counting task)
     advanceUI();
   }
+  // ---------- digits-in-noise: three spoken digits inside babble made from the same voice ----------
+  // The calibration-robust paradigm from the boothless-audiometry literature (Potgieter 2016 etc):
+  // speech and masker share the transducer at the same moment, so the measured SRT is a RATIO and
+  // level/frequency-response error largely cancels. Babble is built from the digit corpus itself,
+  // so signal and noise share one long-term spectrum. Voice is synthetic (documented in Methods).
+  const DIG={log:false, hard:.9, floor:-16, ceil:6, anchors:[0,-12], betterHigh:false,
+    gamma:0.002, nMin:8, nMax:14, physLo:-18, physHi:7, fmt:v=>'SRT '+(v>0?'+':'')+Math.round(v)+' dB'};
+  const DIG_NOISE_RMS=0.055;                 // masker RMS at master; digits ride at RMS·10^(SNR/20)
+  let dig=null, DIGBUF=null;
+  function loadDigits(){
+    if(DIGBUF) return Promise.resolve(DIGBUF);
+    if(!window.SR_DIGITS) return Promise.reject(new Error('digit corpus missing'));
+    const toBuf=b64=>{ const bin=atob(b64), u=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+      return new Promise((res,rej)=>ctx.decodeAudioData(u.buffer,res,rej)); };
+    return Promise.all(window.SR_DIGITS.map(toBuf)).then(digits=>{
+      // babble: 18 randomly-offset digit tokens summed into 3.5 s — same spectrum as the speech
+      const sr=ctx.sampleRate, len=Math.round(sr*3.5);
+      const bb=ctx.createBuffer(1,len,sr), d=bb.getChannelData(0);
+      for(let k=0;k<18;k++){
+        const src=digits[Math.floor(Math.random()*10)].getChannelData(0);
+        const at=Math.floor(Math.random()*(len-src.length));
+        for(let i=0;i<src.length;i++) d[at+i]+=src[i];
+      }
+      let q=0; for(let i=0;i<len;i++) q+=d[i]*d[i];
+      const g=1/Math.sqrt(q/len);            // normalise babble to unit RMS; playback gain sets level
+      for(let i=0;i<len;i++) d[i]*=g;
+      DIGBUF={digits, babble:bb};
+      return DIGBUF;
+    });
+  }
+  function digitTriplet(snrDb, trip){
+    const t0=ctx.currentTime+0.15, dur=2.9;
+    const nb=ctx.createBufferSource(); nb.buffer=DIGBUF.babble; nb.loop=true; nb.loopStart=0; nb.loopEnd=DIGBUF.babble.duration;
+    nb.start(t0, Math.random()*2.0);
+    const ng=ctx.createGain(); ng.gain.setValueAtTime(0,t0); ng.gain.linearRampToValueAtTime(DIG_NOISE_RMS,t0+.15);
+    ng.gain.setValueAtTime(DIG_NOISE_RMS,t0+dur-.2); ng.gain.linearRampToValueAtTime(0,t0+dur);
+    nb.connect(ng); ng.connect(master); nb.stop(t0+dur+.05);
+    // digits: corpus is RMS-normalised to 0.10, so scale to noiseRMS·10^(SNR/20)
+    const dgGain=DIG_NOISE_RMS*Math.pow(10,snrDb/20)/0.10;
+    let at=t0+0.55;
+    trip.forEach(d=>{
+      const s=ctx.createBufferSource(); s.buffer=DIGBUF.digits[d];
+      const g=ctx.createGain(); g.gain.value=dgGain;
+      s.connect(g); g.connect(master); s.start(at); at+=DIGBUF.digits[d].duration+0.22;
+    });
+    return dur;
+  }
+  function setupDigits(c){
+    $('precision').querySelector('.plabel span').textContent='Precision';
+    showPrecisionUI();
+    dig={eng:null, trial:0, trip:null, entered:[], warm:true, log:[], done:false};
+    $('status').textContent='Loading the voice…';
+    loadDigits().then(()=>{ if(!dig) return;
+      dig.eng=window.SR_PSI.forRoom(DIG);
+      digitsTrial();
+    }).catch(()=>{ $('status').textContent='Could not load the voice — Skip this room.'; });
+  }
+  function digitsTrial(){
+    const keys=[];
+    for(let i=0;i<3;i++){ let d; do{ d=Math.floor(Math.random()*10); }while(keys.includes(d)); keys.push(d); }
+    dig.trip=keys; dig.entered=[];
+    dig.curX=dig.eng.z.next(); dig.curLevel=dig.warm? 6 : dig.eng.levelOf(dig.curX);
+    const btns=buildChoices(['0','1','2','3','4','5','6','7','8','9'], null, digitsPick);
+    $('choices').classList.add('digitpad');
+    const play=()=>{
+      choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+      dig.entered=[]; setChoicesEnabled(false); setReplay(false); roveTrial();
+      $('status').innerHTML = dig.warm
+        ? '<span class="pts">Practice</span> <span style="color:var(--muted)">· loud and clear — this doesn’t count</span>'
+        : `Trial ${dig.trial+1} <span style="color:var(--muted)">of ≤${dig.eng.nMax}</span> · <span class="pts">listen…</span>`;
+      const dur=digitTriplet(dig.curLevel, dig.trip);
+      choiceTimers.push(setTimeout(()=>{ setChoicesEnabled(true); setReplay(true);
+        $('status').innerHTML='Which three digits, in order? <span style="color:var(--muted)">· · ·</span>'; },(dur+0.2)*1000));
+    };
+    replayFn=play; play();
+  }
+  function digitsPick(i){
+    if(!dig || dig.done || dig.entered.length>=3) return;
+    dig.entered.push(i);
+    const dots=dig.entered.join(' ')+' '+['·','·','·'].slice(dig.entered.length).join(' ');
+    $('status').innerHTML='Which three digits, in order? <span class="pts">'+dots.trim()+'</span>';
+    if(dig.entered.length<3) return;
+    setChoicesEnabled(false); setReplay(false); killStim();
+    const hit=dig.entered.every((d,k)=>d===dig.trip[k]);
+    const truth=dig.trip.join(' ');
+    if(dig.warm){ dig.warm=false;
+      $('status').innerHTML=(hit?'✓ '+truth:'○ It was <b>'+truth+'</b>')+' <span style="color:var(--muted)">— now the noise closes in</span>';
+      choiceTimers.push(setTimeout(digitsTrial, 1100)); return;
+    }
+    dig.eng.z.record(dig.curX, hit); dig.trial++;
+    dig.log.push([Math.round(dig.curLevel*10)/10, hit?1:0]);
+    const st=dig.eng.z.stats();
+    setPrecision(st.conf, DIG.fmt(dig.eng.levelOf(st.mean)));
+    $('status').innerHTML = hit ? '✓ All three.' : '○ It was <b>'+truth+'</b>.';
+    if(st.usable||st.forceStop){ choiceTimers.push(setTimeout(finishDigits, 600)); return; }
+    choiceTimers.push(setTimeout(digitsTrial, 900));
+  }
+  function finishDigits(){
+    if(!dig||dig.done) return; dig.done=true; guessLocked=true; clearTimers();
+    const st=dig.eng.z.stats(), thr=dig.eng.levelOf(st.mean);
+    const b1=dig.eng.levelOfRaw(st.ci[0]), b2=dig.eng.levelOfRaw(st.ci[1]);
+    const pct=pctFromThreshold(DIG,thr);
+    recordRoom(pct, DIG.fmt(thr), {val:thr, lo:Math.min(b1,b2), hi:Math.max(b1,b2), trials:dig.log});
+    $('status').innerHTML=`You follow the voice down to <span class="pts">${DIG.fmt(thr)}</span> · +${pct} <span style="color:var(--muted)">· ${Math.round(st.conf*100)}% locked in</span>`;
+    showLearn(); appendTier(tierLine('Digits',pct));
+    showResultBtns(!st.solid);
+    advanceUI();
+  }
+
   // ---------- audiogram: a personalised Hz × dB curve (your ears + these headphones) ----------
   // For each frequency we find the quietest audible level with a single-interval YES/NO track: one
   // bounded listen window, "I hear it" vs "Nothing", plus ~20% SILENT catch trials for false-alarm
@@ -1655,7 +1810,9 @@
   }
   function agStartRun(mode){
     ag.mode=mode; ag.ears = mode==='perear'?['R','L']:['B']; ag.ei=0;
-    ag.pts={R:{},L:{},B:{}}; ag.ptsMeta={R:{},L:{},B:{}}; ag.faTot={R:0,L:0,B:0}; ag.caTot={R:0,L:0,B:0}; ag.phase='run';
+    ag.pts={R:{},L:{},B:{}}; ag.ptsMeta={R:{},L:{},B:{}}; ag.faTot={R:0,L:0,B:0}; ag.caTot={R:0,L:0,B:0};
+    ag.log={R:{},L:{},B:{}};   // raw [level, heard] per frequency — exported, and reused by the gamma refit
+    ag.phase='run';
     $('cvwrap').style.display='block'; agLiveDraw();       // reveal the curve canvas; it fills in as we go
     agEar();
   }
@@ -1806,6 +1963,7 @@
     if(!heard && ag.curLevel>=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10)-2) ag.noneMax=(ag.noneMax||0)+1;   // "Nothing" at max level
     else if(heard) ag.noneMax=0;
     ag.eng.z.record(ag.curX, heard); ag.trial++; ag.earTrials=(ag.earTrials||0)+1;
+    if(ag.log){ const f=ag.plan[ag.fi]; (ag.log[ag.curEar][f]=ag.log[ag.curEar][f]||[]).push([Math.round(ag.curLevel*10)/10, heard?1:0]); }
     const st=ag.eng.z.stats();
     if(st.usable||st.forceStop){
       const f=ag.plan[ag.fi];
@@ -1874,12 +2032,34 @@
     if(ag.mode==='perear') window.SR_FP.renderCurve($('cvcard'), { device, ears:{R:agBuildCurve('R'), L:agBuildCurve('L')} });
     else window.SR_FP.renderCurve($('cvcard'), { device, curve:agBuildCurve('B') });
   }
+  // gamma feedback: the estimator assumes a 3% "yes to silence" rate; a click-happy listener's
+  // real rate can be 10–25%, which biases thresholds low near the ceiling. Each ear whose
+  // MEASURED catch-trial false-alarm rate runs high is refitted from its raw trial log with the
+  // measured rate as the model's guess asymptote. (AG_ROOM is linear with dir=1, so x = level.)
+  function agRefitEar(ear){
+    const fa=ag.faTot[ear]||0, ca=ag.caTot[ear]||0;
+    if(ca<4 || !ag.log || !ag.log[ear]) return false;
+    const emp=fa/ca; if(emp<=0.08) return false;
+    const g=clamp(emp,0.03,0.30);
+    const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
+    Object.keys(ag.log[ear]).forEach(f=>{
+      const trials=ag.log[ear][f]; if(!trials||trials.length<3) return;
+      const eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, {gamma:g}));
+      trials.forEach(t=>eng.z.record(t[0], !!t[1]));
+      const st=eng.z.stats(), lvl=eng.levelOf(st.mean);
+      const loL=eng.levelOfRaw(st.ci[0]), hiL=eng.levelOfRaw(st.ci[1]);
+      ag.pts[ear][f]=lvl;
+      ag.ptsMeta[ear][f]={ci:Math.abs(hiL-loL)/2, cens: lvl>=pHi-3||lvl<=pLo+3, refit:Math.round(g*100)/100};
+    });
+    return true;
+  }
   async function finishCurve(){
     ag.phase='done'; clearTimers();
     $('cvTitle').textContent='Your curve'; $('cvprog').textContent=''; $('cvChoices').innerHTML='';
     $('cvwrap').style.display='block'; $('cvsave').style.display='inline-block';
     $('cvexit').style.display=''; $('cvredo').style.display='';   // the run is over — Continue/Done/Redo return
     if(ag.mode==='perear'){
+      const refitR=agRefitEar('R'), refitL=agRefitEar('L');   // must run BEFORE the curves are built
       const R=agBuildCurve('R'), L=agBuildCurve('L'), asym=agAsym(R,L);
       // gate on the false-alarm RATE, not a count: per-ear mode presents ~2× the silent trials,
       // so a fixed count over-flagged exactly the mode whose job is finding an asymmetry
@@ -1902,15 +2082,19 @@
       if(!faHi && Math.abs(asym.max)>=15 && (hiCens || Math.abs(asym.max)>=30)){
         note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
       }
+      if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
       $('cvNote').innerHTML=note;
-      // persist the false-alarm verdict WITH the curve: the asymmetry note is gated by it here,
-      // so every later surface that re-shows the note must be able to apply the same gate
-      await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym, faHi}, 'yesno-perear'); await saveDB();
+      // persist the false-alarm verdict WITH the curve (gates every later surface), plus the raw
+      // [level, heard] trial log and the measured FA rates — the export carries the actual data
+      await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym, faHi,
+        log:{R:ag.log&&ag.log.R, L:ag.log&&ag.log.L},
+        faRate:{R:(ag.caTot.R?Math.round(100*ag.faTot.R/ag.caTot.R)/100:null), L:(ag.caTot.L?Math.round(100*ag.faTot.L/ag.caTot.L)/100:null)}}, 'yesno-perear'); await saveDB();
     } else {
+      const refitB=agRefitEar('B');
       const curve=agBuildCurve('B');
       window.SR_FP.renderCurve($('cvcard'), { device, curve });
       const faHiB=(ag.caTot&&ag.caTot.B>0) ? (ag.faTot.B||0)/ag.caTot.B>=0.25 : false;   // same RATE gate as per-ear
-      $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.';
+      $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.'+(refitB?' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.':'');
       await loadDB(); upsertCurve(device, curve, 'yesno'); await saveDB();
     }
   }
@@ -1994,7 +2178,7 @@
         const t0=performance.now();
         orbitInt=setInterval(()=>{
           const f=Math.min(1,(performance.now()-t0)/(dur*1000));
-          const az=startAz+dir*sweep*f; v.setAz(az);
+          const az=startAz+dir*sweep*f; v.setAz(az, 0.045);   // ramped — the orbit no longer zippers
           if(f>=1){clearInterval(orbitInt); orbitInt=null; if(!guessLocked)$('status').textContent='It stopped. Tap where you heard it land.';}
         },40);
       };
@@ -2438,7 +2622,7 @@
           if(p!=null){
             bar.innerHTML='<div class="track"><div class="fill"></div></div><span class="pct"></span>';
             const f=bar.querySelector('.fill'); f.style.width=p+'%'; f.style.background=col;
-            bar.querySelector('.pct').textContent=label;   // textContent: imported thr can't inject markup
+            const pctEl=bar.querySelector('.pct'); pctEl.textContent=label; pctEl.style.color=col;   // value carries its pair's legend colour; textContent: imported thr can't inject
           } else bar.innerHTML='<div class="track"></div><span class="pct">—</span>';
           row.appendChild(bar);
         });
@@ -2701,8 +2885,23 @@
       el.appendChild(n); el.appendChild(v); el.appendChild(d); box.appendChild(el);
     });
     if(nCurves>=2){
+      // real drift check: earliest vs latest curve ≥28 days apart, same ear+frequency, ≥2 kHz,
+      // censored points excluded. rel is referenced to each run's own 1 kHz, so a volume change
+      // between sessions cancels — a ≥10 dB worsening in rel is a real shape change, not a knob.
+      const runs=hist.filter(h=>h.curve);
+      const days=(new Date(runs[runs.length-1].at)-new Date(runs[0].at))/864e5;
+      let worst=null;
+      if(days>=28){
+        const a=curvePoints(runs[0].curve), b=curvePoints(runs[runs.length-1].curve);
+        const am={}; a.forEach(p=>{ if(!p.cens) am[p.ear+'|'+p.f]=p.rel; });
+        b.forEach(p=>{ if(p.cens||p.f<2000) return; const q=am[p.ear+'|'+p.f]; if(q==null) return;
+          const d=q-p.rel;                      // positive = needs more level now = worse
+          if(d>=10 && (!worst||d>worst.d)) worst={d, f:p.f, ear:p.ear}; });
+      }
       const cn=document.createElement('div'); cn.className='pvdsub';
-      cn.textContent='Curve measured '+nCurves+' times. A large (10 dB or more), persistent worsening at one pitch — not explained by a different volume — is worth a hearing check.';
+      cn.textContent = worst
+        ? 'Between these runs ('+Math.round(days)+' days apart), your '+(worst.ear==='L'?'left ear':worst.ear==='R'?'right ear':'hearing')+' needed ~'+Math.round(worst.d)+' dB more at '+(worst.f>=1000?(worst.f/1000)+' kHz':worst.f+' Hz')+' relative to its own 1 kHz. Seal, room noise and an off day all move this — but if it persists on a calm retest, it is worth a hearing check. Screening, not a diagnosis.'
+        : 'Curve measured '+nCurves+' times. A large (10 dB or more), persistent worsening at one pitch — not explained by a different volume — is worth a hearing check.';
       box.appendChild(cn);
     }
     box.style.display='block';

@@ -146,8 +146,9 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 /* target the text field by id — NOT `#device input`, which would also style the noise
    checkbox (id-specificity beats `.optrow input`, blowing the checkbox up to 300px). */
 #devinput{
-  width:min(80vw,300px); background:var(--surface); border:1px solid var(--line); border-radius:12px;
-  color:var(--stone); font-family:var(--ui); font-size:16px; padding:13px 16px; text-align:center; margin-top:14px;
+  width:min(80vw,300px); background:var(--surface); border:1px solid var(--line); border-radius:10px;
+  border-bottom:2px solid var(--sage);   /* reads as a FIELD, not another button pill */
+  color:var(--stone); font-family:var(--ui); font-size:16px; padding:13px 16px; text-align:left; margin-top:14px;
   align-self:center;   /* flex item with a fixed width would sit left otherwise */
 }
 #devinput:focus{outline:2px solid var(--sage); outline-offset:2px}
@@ -181,7 +182,7 @@ h2{font-family:var(--disp); font-weight:400; font-size:clamp(22px,6vw,26px); mar
 .field-wrap.hidden{display:none}
 svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-action:none}
 .arc{fill:none; stroke:var(--line); stroke-width:1.5}
-.arcfaint{fill:none; stroke:var(--line); stroke-width:1; opacity:.4}
+.arcfaint{fill:none; stroke:var(--line); stroke-width:1.25; opacity:.6}
 .headdot{fill:var(--muted)}
 .lbl{fill:var(--muted); font-family:var(--ui); font-size:10px; letter-spacing:.18em; text-transform:uppercase}
 .guess{fill:var(--sage); opacity:0; transition:opacity .15s}
@@ -200,6 +201,9 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 
 /* ---- choices ---- */
 .choices{display:none; gap:12px; justify-content:center; margin:14px auto 8px; flex-wrap:wrap}
+/* digit keypad: ten compact keys, 5 per row */
+.choices.digitpad{gap:8px; max-width:300px}
+.choices.digitpad .choice{min-width:0; flex:0 0 calc(20% - 7px); padding:13px 0; font-size:19px; border-radius:12px}
 .choices.on{display:flex}
 .choice{min-width:86px; padding:20px 18px; border-radius:16px; border:1px solid var(--line); background:var(--surface); color:var(--stone); font-family:var(--disp); font-size:22px; cursor:pointer; transition:transform .1s ease, border-color .2s, background .2s;}
 .choice small{display:block; font-family:var(--ui); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-top:6px}
@@ -305,7 +309,7 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .pfhead:active{opacity:.7}
 .pfname{font-family:var(--disp); font-size:16px; color:var(--stone); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0}
 .pfmeta{font-size:11px; letter-spacing:.06em; color:var(--muted); white-space:nowrap; flex:0 0 auto}
-.pfchev{color:var(--sage); font-size:20px; line-height:1; flex:0 0 auto}
+.pfchev{color:var(--sage); font-size:20px; line-height:1; flex:0 0 auto; margin-left:6px}
 .pfdots{display:flex; flex-wrap:wrap; gap:5px; margin:10px 0 4px}
 .pfdot{width:14px; height:14px; border-radius:50%; border:1px solid var(--line); background:transparent; padding:0; cursor:pointer; transition:transform .1s}
 .pfdot.filled{border-color:transparent}

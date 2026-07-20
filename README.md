@@ -1,7 +1,7 @@
 # Stone Room — a listening lab
 
 A free, installable web app that does two things at once: **measures what you hear through
-the headphones you own** and **trains your ears**. Twenty-five short rooms each put one
+the headphones you own** and **trains your ears**. Twenty-six short rooms each put one
 audiophile claim to the test — soundstage, detail, sub-bass, treble air, sibilance, timing,
 micro-dynamics — plus a **per-ear hearing + headphone curve** (pulsed yes/no detection with
 contralateral masking and silent catch trials). Most rooms run an **adaptive Bayesian

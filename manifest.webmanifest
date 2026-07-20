@@ -1,7 +1,7 @@
 {
   "name": "Stone Room — a listening lab",
   "short_name": "Stone Room",
-  "description": "A free listening lab: measure your hearing and your headphones together. 25 adaptive rooms including a per-ear hearing curve.",
+  "description": "A free listening lab: measure your hearing and your headphones together. 26 adaptive rooms including a per-ear hearing curve and speech-in-noise.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

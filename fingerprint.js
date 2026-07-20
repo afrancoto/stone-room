@@ -20,7 +20,7 @@
     Orbit:     { group:'space', name:'360 imaging',   fmt:v=>'±'+Math.round(v)+'°' },
     Depth:     { group:'space', name:'Depth layers',  fmt:v=>'±'+Math.round(v)+'°' },
     Separation:{ group:'space', name:'Separation',    fmt:v=>'±'+Math.round(v)+'°' },
-    Centre:    { group:'space', name:'Centre image',  fmt:v=>'drift '+Math.round(v*100)+'%' },   // "% off" read as a discount
+    Centre:    { group:'space', name:'Centre image',  fmt:v=>(20*Math.log10(Math.tan((1+Math.min(v,0.98))*Math.PI/4))).toFixed(1)+' dB' },   // ILD, matches the room's readout
     Duet:      { group:'space', name:'Stereo width',  fmt:v=>Math.round(v*100)+'%' },
     Flyby:     { group:'space', name:'Distance',      fmt:v=>v.toFixed(1)+'× gap' },
     Echo:      { group:'space', name:'Reflections',   fmt:v=>Math.round(v*1000)+' ms' },
@@ -28,9 +28,12 @@
     Whisper:   { group:'detail',name:'Buried detail', fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under' },
     Silence:   { group:'detail',name:'Noise floor',   fmt:v=>Math.round(20*Math.log10(v/.45))+' dB' },
     Noise:     { group:'detail',name:'Signal in noise',fmt:v=>Math.round(20*Math.log10(Math.max(v,1e-4)))+' dB' },
+    Digits:    { group:'detail',name:'Speech in noise',fmt:v=>'SRT '+(v>0?'+':'')+Math.round(v)+' dB' },
     Grain:     { group:'detail',name:'Timbre purity', fmt:v=>Math.round(v*100)+'% partial' },
     Halls:     { group:'detail',name:'Decay / rooms', fmt:v=>Math.round(v*100)+'% Δ' },
-    Composure: { group:'detail',name:'Composure',     fmt:v=>'drive '+v.toFixed(1) },
+    Composure: { group:'detail',name:'Composure',     fmt:v=>{const T=[[0.15,0.19],[0.5,1.96],[1.2,8.92],[2,17.3],[3,25.0],[4.5,31.7],[9,38.3]];
+      let i=0; while(i<T.length-1&&T[i+1][0]<v)i++; const [k0,t0]=T[i],[k1,t1]=T[Math.min(i+1,T.length-1)];
+      const t=k1===k0?t0:t0+(t1-t0)*(v-k0)/(k1-k0); return '~'+(t<1?t.toFixed(1):Math.round(t))+'% THD';} },
     Grip:      { group:'tone',  name:'Bass grip',     fmt:v=>Math.round(v*100)+'% bloom' },
     Presence:  { group:'tone',  name:'Midrange',      fmt:v=>v.toFixed(1)+' dB dip' },
     Silk:      { group:'tone',  name:'Sibilance',     fmt:v=>'+'+Math.round(20*Math.log10((.05+v)/.05))+' dB' },

@@ -14,7 +14,7 @@
 
   const INTRO = {
     hook: "Measure your hearing. Train your ears. Know your headphones.",
-    line: "Twenty-five rooms, including a per-ear hearing curve. Each measures one claim the reviews make — as your ears actually hear it through your pair — and saves the shape so you can compare.",
+    line: "Twenty-six rooms, including a per-ear hearing curve and a speech-in-noise test. Each measures one claim the reviews make — as your ears actually hear it through your pair — and saves the shape so you can compare.",
     what: "Each room plays a sound and asks one simple question. Answer, and it hunts your exact limit — telling you, in real numbers, where your headphones and your hearing actually land. You learn what the words mean by hearing them.",
     gap: "Other free tools do half the job: they train your ears with no number attached, or they publish lab readings of a unit that isn't on your head. This one measures what YOU hear through YOUR pair — ears and headphones as one chain — and saves it, so you can compare pairs and watch your own hearing over time.",
     tips: "Best in a quiet room, at a moderate volume, with any phone spatializer, Dolby Atmos and EQ switched off.",
@@ -73,15 +73,15 @@
       tiers: { reference: "Reference — you feel exactly how near it swept.", strong: "Strong; the closer pass is obvious.", fair: "You sense closeness, but near ties fool you.", weak: "Both passes feel the same distance." }
     },
     Echo: {
-      benchmark: "A reflection under ~10 ms after a click fuses into one sound; past that it splits off as a distinct echo.",
-      science: "Your ears fuse a quick reflection with its source — the precedence effect — and only hear a separate echo as the gap grows. A longer gap means a farther wall; revealing drivers keep the two clicks distinct instead of blurring them.",
+      benchmark: "A wall a metre farther away delays its echo by about 6 ms, there and back — and trained listeners resolve gap changes of a few milliseconds.",
+      science: "Here the click and its echo arrive clearly apart, and what's measured is how finely you resolve a CHANGE in that gap — the difference between a nearer and a farther wall. Revealing drivers keep the two clicks' edges distinct; smeared transients blur the gap and the walls with it.",
       models: "Open-backs like the HD 800 S and Beyerdynamic DT 1990 Pro expose reflections clearly.",
       hit: ["Farther wall — got it.", "You heard the gap.", "Right room."],
       miss: ["Stretching the gap.", "A clearer echo.", "Easing them apart."],
       tiers: { reference: "Reference — you read the wall from the gap alone.", strong: "Strong; you separate close reflections cleanly.", fair: "Big gaps are clear; short ones fuse on you.", weak: "Source and echo blur into one." }
     },
     Duet: {
-      benchmark: "Headphones give near-total left/right isolation, so width rides purely on how decorrelated the two channels are.",
+      benchmark: "Headphones give near-total left/right isolation, so width rides on how much the two channels differ — here, deliberate level and detune differences between your ears.",
       science: "Perceived width tracks interaural correlation: identical channels sound narrow and central, decorrelated ones spread wide and enveloping. With no acoustic crosstalk between cups, a headphone lays that decorrelation bare — matched, low-distortion drivers keep the spread honest.",
       models: "The HD 800 S and HiFiMan Arya throw an unusually wide, enveloping image.",
       hit: ["Wider one — got it.", "You felt the spread.", "Wall to wall."],
@@ -113,7 +113,7 @@
       tiers: { reference: "Reference retrieval — nothing hides under the music from you.", strong: "Strong; you surface faint detail with ease.", fair: "Clear ticks land; the faintest slip past.", weak: "The quiet details stay buried." }
     },
     Silence: {
-      benchmark: "0 dB SPL is the reference threshold of hearing near 3–4 kHz — below that a hiss simply isn't there.",
+      benchmark: "What's measured is relative: how far below the music a hiss must fall before it vanishes for you — on this chain, at your volume. Uncalibrated, absolute silence can't be claimed; the depth of your floor can.",
       science: "A black background means the driver and its source add no audible noise of their own. Sensitive headphones expose faint amp or source hiss; low-noise electronics and, in sealed designs, good isolation keep the silence truly silent.",
       models: "Well-isolating closed-backs like the Dan Clark Stealth and Sony MDR-Z1R rest on a quiet floor.",
       hit: ["Spotted the hiss.", "You heard through it.", "Right silence."],
@@ -202,11 +202,19 @@
     },
     Shade: {
       benchmark: "Trained ears resolve about a 1 dB change in level — and near 0.25 dB in the midrange at higher volume.",
-      science: "Shade is the small swells and dips — 1 or 2 dB — that give a phrase its breathing life. A resolving, low-distortion driver preserves those gradations; a compressed or ringing one flattens loud and soft toward the same middle. Clean amplification with headroom keeps the quietest shadings from vanishing.",
+      science: "Shade is the small swells and dips — 1 or 2 dB — that give a phrase its breathing life. Honestly framed: this room mostly measures YOUR smallest reliable level step through this chain; differences between competent headphones here are subtle, so the reading is about your resolution more than the driver. Clean amplification with headroom keeps the quietest shadings from vanishing.",
       models: "Stax electrostatics, the Focal Utopia, and the Sennheiser HD 800S are prized for reading the faintest level shadings.",
       hit: ["You caught the swell.", "Heard the shading.", "Louder — and you knew."],
       miss: ["Widened the gap.", "Made the step bigger.", "Easier to hear."],
       tiers: { reference: "The faintest 1 dB swell reads clearly — fully alive.", strong: "Reads most shadings; the subtlest slip past.", fair: "Big moves land, small ones blur.", weak: "Loud and soft flatten together — no shading." }
+    },
+    Digits: {
+      benchmark: "Published digits-in-noise tests place typical hearing near −8 to −10 dB SNR. This room's voice is synthetic, so hold the absolute number gently — and your own comparisons (pair vs pair, month vs month) firmly.",
+      science: "The speech and the noise ride the same chain at the same instant, so the measured threshold is a ratio — turn the volume up and both move together. That's why digits-in-noise screens work on ordinary uncalibrated headphones, and why this is the sturdiest number in the app. The babble here is built from the same voice as the digits, so signal and masker share one spectrum.",
+      models: "Less about the driver than almost any room: your own speech-in-noise ability and your room dominate. Struggling here while the tones test reads fine is itself worth knowing.",
+      hit: ["All three, out of the noise.", "You held the voice.", "Caught them clean."],
+      miss: ["Lifting the voice a little.", "A touch clearer next.", "The noise wins that one."],
+      tiers: { reference: "Exceptional — you follow speech deep into noise that swallows it for most people.", strong: "Strong — busy rooms cost you less than most.", fair: "Fair — you need the voice to stand a bit proud of the noise.", weak: "Noise takes the voice from you early — if conversation in crowds is hard, that's the real-world echo of this number." }
     },
     Noise: {
       benchmark: "Struggling to follow a voice in a busy room is the complaint that sends most people to an audiologist — and hearing a signal buried in noise is the ability behind it.",
@@ -258,6 +266,10 @@
     { term:'"micro-dynamics"', tag:'Shade', line:(v,p)=> v==null||!isFinite(v) ? null
       : v<=0.5 ? `You resolve level steps of ~${v.toFixed(1)} dB — micro-dynamic shading is real listening currency for you.`
       : `You resolve ~${v.toFixed(1)} dB steps — micro-dynamics talk finer than that is below your floor.` },
+    { term:'"intelligibility" · voices in a crowd', tag:'Digits', line:(v,p)=> v==null ? null
+      : v<=-9 ? `You follow speech down to ${Math.round(v)} dB SNR — crowded-room conversation is an ability you can bank on, and "vocal clarity" claims are testable by you.`
+      : v<=-4 ? `Your speech-in-noise floor is ~${Math.round(v)} dB SNR. Pairs praised for "clear, forward vocals" will earn their keep in busy places.`
+      : `Speech needs to stand ${v>0?'above':'near'} the noise for you (${Math.round(v)} dB SNR). If crowds are hard work, that's this number in daily life — worth a quiet-room retest, and worth knowing.` },
     { term:'"clarity" · hearing into a mix', tag:'Noise', line:(v,p)=>
       p>=70 ? `You pull a signal well out of the noise around it — the ability reviewers gesture at with "clarity" is genuinely strong in you.`
       : p>=40 ? `You need a signal to stand moderately clear of surrounding noise. Quiet rooms will flatter your listening more than new gear will.`
@@ -303,7 +315,7 @@
     { h:'What it CAN stand behind',
       p:['<b>Shape.</b> The relative form of your curve — which bands need more level than your own 1 kHz — survives the missing calibration, because every point shares the same uncalibrated chain.',
          '<b>Differences.</b> Left versus right cancels the unknowns outright — same chain, same instant, so whatever the volume was, it was the same volume for both ears. Pair versus pair, and today versus last spring, hold the <b>listener</b> fixed instead of the chain: overall level is exactly what changes between runs, so those comparisons are only as good as the loudness match you set. Shape survives that better than absolute level does.',
-         '<b>Ratios.</b> Where a room measures a signal against a masker in the <b>same frequency band</b>, played through the same transducer at the same moment — as "In the noise" does — output-level error, and most of the headphone\'s frequency response, cancel in the ratio. This is why speech-in-noise screens work on uncalibrated consumer headphones: a smartphone digits-in-noise test found speech reception thresholds consistent across five headphone types, including standard Android earphones (Potgieter et al., 2016). It is the principle the "In the noise" room borrows.',
+         '<b>Ratios.</b> Where a room measures a signal against a masker in the <b>same frequency band</b>, played through the same transducer at the same moment — as "In the noise" does — output-level error, and most of the headphone\'s frequency response, cancel in the ratio. This is why speech-in-noise screens work on uncalibrated consumer headphones: a smartphone digits-in-noise test found speech reception thresholds consistent across five headphone types, including standard Android earphones (Potgieter et al., 2016). It is the principle the "In the noise" and digits-in-noise rooms are built on. (The digits use a synthetic voice — documented, and swappable for recordings later — so the SRT compares best against your own runs rather than published population norms.)',
          '<b>Repeatability.</b> The one claim an uncalibrated instrument can genuinely earn: does it give you the same answer twice? Measure any room again and the app shows you its own agreement, unedited.'] },
     { h:'How repeatable should a hearing test be?',
       p:['Benchmarks worth holding this app to, from published work on real listeners: unsupervised home audiometry on consumer earphones reported a mean absolute test-retest difference of 4.7 dB, with 74% of retests within 5 dB and an intraclass correlation of 0.85; automated audiometry in clinical conditions reported 3.3–3.6 dB average agreement with 91% within 5 dB; standard booth audiometry is generally taken as repeatable to 5–10 dB.',
