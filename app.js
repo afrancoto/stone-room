@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v51";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v53";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1630,6 +1630,19 @@
   // distraction. Below it the resting ear stays silent — which is most trials for a normal ear.
   const MASK_FROM=-45;
   const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03, nMin:6, nMax:12, physLo:-94, physHi:-10, fmt:v=>Math.round(v)+' dBFS'};   // phys clamps: auto-widen can never wander past what we can actually play
+  // ---- WINDOW PLACEMENT ----------------------------------------------------------------------
+  // We can only play an ~84 dB window (physLo…physHi). WHERE that window sits against a listener's
+  // ears is set by their volume knob, which we can neither read nor set. Their thresholds SPAN a
+  // wide range across frequency — and 1 kHz is near everyone's most sensitive region, so every
+  // other frequency needs MORE level, never less. Therefore the anchor must NOT be centred: it
+  // belongs near the QUIET end, leaving maximum headroom above it for the worse frequencies.
+  // (Centring 1 kHz would leave ~40 dB of headroom and guarantee a high-frequency loss censors.)
+  const AG_ANCHOR_LO=-86, AG_ANCHOR_HI=-64;   // target band for the 1 kHz anchor (≈ 24–36 dB above the floor)
+  // Fine positioning does not need the user's knob at all: OUR OWN output gain is mathematically
+  // the same control, and we know its offset exactly. Sliding our gain DOWN (quieter) is always
+  // safe and silent. Sliding UP is bounded by digital headroom — that is the only case where the
+  // listener genuinely has to touch the volume.
+  const agLevel=()=>0.85*Math.pow(10, (ag&&ag.calOffset||0)/20);
   let ag=null;
 
   // hearing-curve as a tour room: launch the curve screen, then rejoin the tour on "Continue →"
@@ -1641,10 +1654,10 @@
     if(oi<order.length-1){ oi++; loadChapter(); } else finish();
   }
   function startCurve(){
-    initAudio(); ctx.resume(); stopVoices(); rvF=1; anchorMaster(0.85);
+    initAudio(); ctx.resume(); stopVoices(); rvF=1; anchorMaster(0.85);   // base level; ag.calOffset applies once the run starts
     if(!device) device=suggestName();
     if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
-    ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}, caTot:{R:0,L:0,B:0}};
+    ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}, caTot:{R:0,L:0,B:0}, calOffset:0};
     // mid-run there is NO Continue/Done/Redo: a visible "Continue →" during the measurement read
     // as a normal next-step and silently ABORTED the room, marking it complete. The only mid-run
     // exit is ⌂ Home (progress-safe). The exit row returns when the curve actually finishes.
@@ -1672,11 +1685,14 @@
   function agCal(){
     $('cvTitle').textContent='Set your volume';
     $('cvNote').innerHTML='A steady <b>1 kHz</b> tone will play. Turn your device volume until it’s clearly but comfortably present — then leave it there. That’s your reference for the whole test.';
-    $('cvprog').textContent=''; $('cvwrap').style.display='none';
+    $('cvprog').textContent='Setup 1 of 3 · volume'; $('cvwrap').style.display='none';
     const box=$('cvChoices'); box.innerHTML='';
-    const play=document.createElement('button'); play.className='btn'; play.textContent='▶ Play 1 kHz';
-    const go=document.createElement('button'); go.className='btn ghost'; go.textContent='Volume set — begin'; go.style.display='none'; go.style.marginLeft='8px';
-    play.onclick=()=>{ stopCurveAudio(); const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18, 0); ag.calTimer=setTimeout(step,720); }; step(); play.textContent='↺ Again'; go.style.display='inline-block'; };
+    const play=document.createElement('button'); play.className='btn half'; play.textContent='▶ Play 1 kHz';
+    const go=document.createElement('button'); go.className='btn half'; go.textContent='Volume set — begin'; go.style.display='none';
+    // the SOLID button is always the next action: once the tone has played, "begin" takes the
+    // solid style and the replay demotes to ghost — the eye lands on the right thing
+    play.onclick=()=>{ stopCurveAudio(); const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18, 0); ag.calTimer=setTimeout(step,720); }; step();
+      play.textContent='↺ Again'; play.classList.add('ghost'); go.style.display='inline-block'; };
     go.onclick=()=>{ stopCurveAudio(); killStim(); agPrecheck(); };
     box.appendChild(play); box.appendChild(go);
   }
@@ -1685,7 +1701,7 @@
   // left/right tone check (headphones on, sides not swapped), then (2) a quiet-room listen.
   function agPrecheck(){ ag.phase='pre'; ag.pcLevel=-14; $('cvwrap').style.display='none'; agPcChannel('L'); }
   function agPcChannel(side){
-    ag.phase='pre'; ag.pcSide=side; ag.pcMiss=0; $('cvprog').textContent='Check · headphones';
+    ag.phase='pre'; ag.pcSide=side; ag.pcMiss=0; $('cvprog').textContent='Setup 2 of 3 · headphone check';
     $('cvTitle').textContent='Headphone check';
     $('cvNote').innerHTML='Headphones on. A two-note chime is playing in <b>one</b> ear — which side is it on? If it’s faint, nudge your volume up.';
     const box=$('cvChoices'); box.innerHTML='';
@@ -1696,7 +1712,7 @@
     box.appendChild(mk('I don’t hear it','N','nothing this time','alt'));
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.pcPlay)ag.pcPlay(); }; box.appendChild(rep);
     const play=()=>{ stopCurveAudio(); clearTimers();
-      anchorMaster(0.85);
+      anchorMaster(agLevel());   // setup and measurement share one scale
       const pan = side==='L'?-1:1;
       // a low-mid two-note chime, not a lone quiet 1 kHz sine: the check must prove the CHANNEL,
       // not the listener — a notched or high-frequency loss in the tested ear shouldn't fail it.
@@ -1721,7 +1737,7 @@
     agPcQuiet();                                            // both sides correct → quiet check
   }
   function agPcFail(kind){
-    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Check · headphones';
+    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Setup 2 of 3 · headphone check';
     $('cvTitle').textContent = kind==='swapped' ? 'Channels look swapped' : kind==='silent' ? 'One side stayed quiet' : 'Sounds like a speaker';
     $('cvNote').innerHTML = kind==='swapped'
       ? 'That tone was in your <b>other</b> ear — your left/right channels look reversed, so a per-ear result would be mislabelled. Check the L/R on your headphones, or run the both-ears test instead.'
@@ -1734,7 +1750,7 @@
     box.appendChild(retry); box.appendChild(anyway);
   }
   function agPcQuiet(){
-    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Check · quiet room';
+    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Setup 3 of 3 · quiet room';
     $('cvTitle').textContent='Quiet check';
     $('cvNote').innerHTML='Headphones confirmed. Now the room — <b>stop and listen</b> for a few seconds with nothing playing. Background sound (a fan, traffic, a hum) hides the quietest tones and bends the curve.';
     const box=$('cvChoices'); box.innerHTML='';
@@ -1782,7 +1798,7 @@
           const verdict = avg<=-55 ? {t:'Sounds like a quiet room.', ok:true}
             : avg<=-45 ? {t:'There’s some background noise.', ok:false}
             : {t:'That’s a noisy room for this test.', ok:false};
-          $('cvprog').textContent='Check · quiet room';
+          $('cvprog').textContent='Setup 3 of 3 · quiet room';
           $('cvNote').innerHTML = verdict.t+' <span style="color:var(--muted)">(rough reading: your mic averaged '
             +Math.round(avg)+' dBFS, peaks near '+Math.round(pk)+'. A phone mic isn’t calibrated, so this compares your room to itself — it is not a decibel measurement.)</span>'
             +(verdict.ok?' Good to go.':' A quieter spot — or turning off a fan — makes the quietest tones measurable rather than guessed.');
@@ -1800,11 +1816,14 @@
       micBtn=mic;
     }
     listen.onclick=()=>{ stopCurveAudio(); clearTimers(); anchorMaster(0.0001);
-      $('cvNote').innerHTML='Listening… stay still.'; let n=4; $('cvprog').textContent='Quiet check · '+n+'s';
+      // countdown ON the button, button disabled: it counted down only in the tiny top label
+      // while the still-live button begged to be pressed again — which restarted the timer
+      listen.disabled=true; let n=4; listen.textContent='Listening… '+n;
+      $('cvNote').innerHTML='Listening… stay still.';
       const tick=()=>{ if(!ag||ag.phase!=='pre')return; n--;
-        if(n>0){ $('cvprog').textContent='Quiet check · '+n+'s'; ag.calTimer=setTimeout(tick,1000); }
-        else { $('cvprog').textContent='Check · quiet room'; $('cvNote').innerHTML='In that quiet, did you hear any background noise (a fan, traffic, a hum)?';
-          silent.style.display=''; noisy.style.display=''; listen.textContent='↺ Listen again'; anchorMaster(0.85); } };
+        if(n>0){ listen.textContent='Listening… '+n; ag.calTimer=setTimeout(tick,1000); }
+        else { $('cvNote').innerHTML='In that quiet, did you hear any background noise (a fan, traffic, a hum)?';
+          silent.style.display=''; noisy.style.display=''; listen.disabled=false; listen.textContent='↺ Listen again'; anchorMaster(0.85); } };
       ag.calTimer=setTimeout(tick,1000); };
     silent.onclick=()=>agMode();
     noisy.onclick=()=>{ $('cvNote').innerHTML='A quieter spot gives a truer curve — but you can carry on. Just treat the very quietest tones as rough.';
@@ -1818,7 +1837,7 @@
   // per-ear (the only way to see a left/right difference) vs both-ears quick
   function agMode(){
     ag.phase='mode'; $('cvwrap').style.display='none';
-    $('cvTitle').textContent='How to test'; $('cvprog').textContent='';
+    $('cvTitle').textContent='How to test'; $('cvprog').textContent='Setup done — choose a mode';
     $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. In each-ear mode a <b>faint steady rush</b> sits in the resting ear the whole time, swelling when a tone has to get loud — deliberate, so that ear can’t secretly help. Both-ears is quicker.';
     const box=$('cvChoices'); box.innerHTML='';
     const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
@@ -1928,7 +1947,7 @@
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.replay)ag.replay(); }; box.appendChild(rep);
     const play=()=>{
       clearTimers(); hear.disabled=true; none.disabled=true; hear.classList.remove('playing');
-      anchorMaster(0.85);   // constant reference each trial
+      anchorMaster(agLevel());   // constant reference each trial (includes the auto-range offset)
       $('cvNote').textContent = (ag.pan && ag.curLevel>MASK_FROM && !ag.rushSaid)
         ? 'Listen… a soft rush in your other ear keeps it from helping on the louder tones.' : 'Listen…';
       if(ag.pan && ag.curLevel>MASK_FROM) ag.rushSaid=true;   // explain the rush the first time it appears
@@ -2007,13 +2026,9 @@
         if(drift>6){ ag.volDrift=ag.volDrift||{}; ag.volDrift[ag.curEar]=Math.round(drift); }
         ag.pts[ag.curEar][1000]=ag.refFirst;
       }
-      // REFERENCE ANCHORING: 1 kHz is the run's anchor and is measured first. If it pinned at a
-      // rail, the volume puts this listener OUTSIDE the measurable window — every later frequency
-      // would pin the same way (a flat line of beyond-reach dots, no curve, max trials wasted).
-      // Stop here, have them nudge the volume, and re-measure the reference until it lands inside.
-      if(f===1000 && ag.fi===0 && !ag.phaseB && !ag.phaseC && ag.ptsMeta[ag.curEar][1000].cens){
-        agRefRetune(lvl<=pLo+3 ? 'down' : 'up'); return;
-      }
+      // WINDOW PLACEMENT on the anchor (1 kHz, measured first). Not "is it censored" but "does it
+      // leave enough room ABOVE for the frequencies that will need more level".
+      if(f===1000 && ag.fi===0 && !ag.phaseB && !ag.phaseC && !ag.phaseD && agPlaceWindow(lvl, ag.ptsMeta[ag.curEar][1000].cens)) return;
       agNextPoint(); return;
     }
     // FAST FLOOR EXIT: hearing our quietest playable level over and over means the true threshold
@@ -2026,21 +2041,44 @@
         ag.pts[ag.curEar][f2]=pLo2; ag.prevThr=pLo2;
         ag.ptsMeta[ag.curEar][f2]={ci:null, cens:true};
         ag.floorStreak=0; agLiveDraw();
-        if(f2===1000 && ag.fi===0 && !ag.phaseB && !ag.phaseC){ agRefRetune('down'); return; }
+        if(f2===1000 && ag.fi===0 && !ag.phaseB && !ag.phaseC && !ag.phaseD && agPlaceWindow(pLo2, true)) return;
         agNextPoint(); return;
       }
     } else ag.floorStreak=0;
     choiceTimers.push(setTimeout(agTrial,340));
   }
-  // volume out of range for the measurement: pause, coach the knob, re-measure the reference
-  function agRefRetune(dir){
+  // Window placement, applied to the 1 kHz anchor. Returns true if it took over the flow.
+  // Rule: the anchor must sit near the QUIET end, because every other frequency needs MORE level.
+  function agPlaceWindow(lvl, cens){
+    const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
+    const tooLoud  = cens ? lvl<=pLo+3 : lvl<AG_ANCHOR_LO;
+    const tooQuiet = (cens && lvl>=pHi-3) || lvl>AG_ANCHOR_HI;
+    if(tooLoud && (ag.calOffset||0)>-36){
+      // AUTO-RANGE, silent: slide OUR OWN output down so their thresholds rise into the window.
+      // Always-safe direction, and the anchor is re-measured at the new offset — so the entire
+      // run shares ONE offset and every later point stays comparable to the anchor.
+      ag.calOffset=(ag.calOffset||0)-12; anchorMaster(agLevel());
+      delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
+      if(ag.log&&ag.log[ag.curEar]) delete ag.log[ag.curEar][1000];
+      ag.floorStreak=0; ag.autoRanged=true;
+      $('cvprog').textContent='Fitting to your volume';
+      $('cvNote').innerHTML='Fitting the test to your volume… <span style="color:var(--muted)">no need to touch anything.</span>';
+      choiceTimers.push(setTimeout(agFreq,700)); return true;
+    }
+    if(tooQuiet){ agRefRetune('up', Math.round(lvl-AG_ANCHOR_HI)); return true; }   // out of digital headroom → the knob
+    ag.headroom=Math.round(pHi-lvl);   // dB available above the anchor for the worse frequencies
+    return false;
+  }
+  // Only reachable in the LOUD direction: we've run out of digital headroom, so the volume knob is
+  // genuinely the only remaining control. (The quiet direction auto-ranges silently — see above.)
+  function agRefRetune(dir, shortBy){
     clearTimers(); killStim();
     ag.retunes=(ag.retunes||0)+1;
-    $('cvprog').textContent='Check · volume';
-    $('cvTitle').textContent = dir==='down' ? 'A touch quieter' : 'A touch louder';
-    $('cvNote').innerHTML = dir==='down'
-      ? 'You heard even the quietest tone this test can make — at this volume there is nothing left to measure, and the curve would be a flat line of “beyond reach” marks. Turn your volume <b>down a step or two</b>, then re-measure the reference. (Then don’t touch the knob again until the end.)'
-      : 'Even the loudest tone didn’t come through. Turn your volume <b>up a step or two</b>, then re-measure the reference.';
+    $('cvprog').textContent='Setup · volume';
+    $('cvTitle').textContent='A little louder, please';
+    $('cvNote').innerHTML='At this volume your 1 kHz reference sits near the top of what the test can play — and every other pitch needs <b>more</b> level than 1 kHz, so the weaker bands would run off the end and read “beyond reach”.'
+      +(shortBy>0?' We need roughly <b>'+shortBy+' dB</b> more room.':'')
+      +' Turn the volume <b>up a step or two</b>, then re-measure the reference. After that, leave the knob alone until the end.';
     const box=$('cvChoices'); box.innerHTML='';
     const redo=document.createElement('button'); redo.className='choice alt'; redo.innerHTML='Volume adjusted<small>re-measure 1 kHz</small>';
     redo.onclick=()=>{ delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
@@ -2162,6 +2200,9 @@
       if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
       if(ag.volDrift){ const worst=Math.max(...Object.values(ag.volDrift));
         note+=' <b>Volume check:</b> the 1 kHz reference read '+worst+' dB different at the end than at the start — the volume or the fit moved mid-test, and every relative point moved with it. Treat this curve as rough and redo with the knob untouched.'; }
+      // headroom honesty: say when the window itself, not the ear, set the limit
+      const anyCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>ag.ptsMeta[e][f].cens));
+      if(anyCens && ag.headroom!=null) note+=' Some points ran past what this volume could play (about '+ag.headroom+' dB of room above your 1 kHz reference) — those are the open dots, and a louder setting on a calm retry may bring them inside.';
       $('cvNote').innerHTML=note;
       // persist the false-alarm verdict WITH the curve (gates every later surface), plus the raw
       // [level, heard] trial log and the measured FA rates — the export carries the actual data
