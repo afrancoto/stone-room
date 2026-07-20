@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v53";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v54";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -735,7 +735,7 @@
   let lastPct=0;
   const SCHEMA=3;                 // profile schema version (v3 superset of stoneroom_results_v2)
   let currentRunId=null;          // one id per measurement occasion (tour / standalone curve / single retake)
-  let fromProfile=false;          // true when the room-select was opened from a profile (device preset → skip naming)
+  let pendingRoom=null;           // room chosen before a pair was named — launched after the device screen
   let pvName=null;                // the pair whose detail view (#pfview) is open
   let methodsBack='intro';        // where the methods page returns to
   let pfReturn=false;             // a standalone curve was launched from the profile view → Done returns there
@@ -970,29 +970,26 @@
   }
   // ---- in-progress run persistence (resume after a page refresh, or start anew) ----
   const RUN_KEY='stoneroom_run_v1';
+  // a "run" is now ONE room in progress — not a plan. Resume offers that room again (mid-room
+  // estimator state can't be restored, so it restarts; the copy says so honestly).
   function saveRun(){
     if(!order.length) return;
-    try{ localStorage.setItem(RUN_KEY, JSON.stringify({v:APP_VERSION, device, order, oi, score, chScore, chPct, roomThr, roomVal, roomDone, runId:currentRunId, ts:Date.now()})); }catch(e){}
+    try{ localStorage.setItem(RUN_KEY, JSON.stringify({v:APP_VERSION, device, room:CH[order[oi]].tag, idx:order[oi], runId:currentRunId, ts:Date.now()})); }catch(e){}
   }
   function clearRun(){ try{ localStorage.removeItem(RUN_KEY); }catch(e){} }
   // only offer a resume for the SAME app version — CH indices could shift between releases
   function loadRun(){ try{ const r=localStorage.getItem(RUN_KEY); if(!r) return null; const o=JSON.parse(r);
-    return (o && o.v===APP_VERSION && Array.isArray(o.order) && o.order.length) ? o : null; }catch(e){ return null; } }
+    return (o && o.v===APP_VERSION && typeof o.idx==='number' && CH[o.idx] && CH[o.idx].tag===o.room) ? o : null; }catch(e){ return null; } }
   function offerResume(){
     const run=loadRun(); if(!run) return;
-    const done=run.order.filter(i=>(run.chPct&&run.chPct[i]!=null)||(run.roomDone&&run.roomDone[i])).length;
-    $('resumetext').innerHTML=`Resume your last run? <b>${(run.device||'Headphones').replace(/</g,'&lt;')}</b> · room ${Math.min((run.oi||0)+1,run.order.length)} of ${run.order.length}${done?` · ${done} done`:''}`;
+    $('resumetext').innerHTML=`You left <b>${esc(CH[run.idx].title)}</b> unfinished on <b>${esc(run.device||'Headphones')}</b>. It starts over from the beginning.`;
+    $('resumebtn').textContent='Run it again';
     $('resumebar').removeAttribute('hidden');
   }
   function restoreRun(run){
-    initAudio(); ctx.resume();
     device=run.device||suggestName();
-    currentRunId=run.runId||uid('r');    // keep the resumed tour on ONE history entry
-    order=run.order.slice(); score=run.score||0;
-    chScore=run.chScore||{}; chPct=run.chPct||{}; roomThr=run.roomThr||{}; roomVal=run.roomVal||{}; roomDone=run.roomDone||{};
-    oi=Math.max(0, Math.min(run.oi||0, order.length-1));
-    $('score').textContent=score; $('devlabel').textContent=device;
-    show('game'); loadChapter();
+    $('resumebar').setAttribute('hidden','');
+    startRoom(run.idx);
   }
 
   function deviceNames(){ return Object.keys(db.devices).sort((a,b)=>(db.devices[b].date||'').localeCompare(db.devices[a].date||'')); }
@@ -1078,24 +1075,25 @@
     });
     $('savecard').addEventListener('click',saveCard);
     $('calreplay').addEventListener('click',runCal);
-    $('calgo').addEventListener('click',()=>{ fromProfile=false; buildSelect(); show('select');});
+    $('calgo').addEventListener('click',()=>{ buildSelect(); show('select');});
     $('calback').addEventListener('click',()=>show('intro'));
-    $('selstart').addEventListener('click',()=>{ if(fromProfile){ fromProfile=false; startGame(); } else { buildDevice(); show('device'); } });
-    $('selback').addEventListener('click',()=>{ if(fromProfile){ fromProfile=false; buildProfiles(); show('profiles'); } else show('intro'); });
+    $('selstart').addEventListener('click',()=>{ if(device){ buildProfiles(); openProfile(device); } else { buildDevice(); show('device'); } });
+    $('selback').addEventListener('click',()=>{ if(device&&hasDevice(device)){ buildProfiles(); show('profiles'); } else show('intro'); });
     $('devback').addEventListener('click',()=>{ if(deepRoom>=0){ show('intro'); } else { buildSelect(); show('select'); } });
     try{ noiseReset = localStorage.getItem('stoneroom_noise')==='1'; }catch(e){}
     $('optnoise').checked = noiseReset;
     $('optnoise').addEventListener('change',e=>{ noiseReset=e.target.checked; try{ localStorage.setItem('stoneroom_noise', noiseReset?'1':'0'); }catch(_){} });
-    $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName()); startGame(); });
+    $('devgo').addEventListener('click',()=>{ device=safeName(($('devinput').value.trim())||suggestName());
+      if(pendingRoom!=null){ const i=pendingRoom; pendingRoom=null; startRoom(i); } else { buildSelect(); show('select'); } });
     $('endcurve').addEventListener('click',()=>{ pfReturn=false; startCurve(); });    // post-tour shortcut: re-measure the curve for this pair
     $('cvexit').addEventListener('click',()=>{ if(curveInTour){ finishCurveRoom(); } else { stopCurveAudio();
       if(pfReturn){ pfReturn=false; buildProfiles(); openProfile(device); } else show(order.length?'end':'intro'); } });
     $('cvredo').addEventListener('click',()=>{ stopCurveAudio(); startCurve(); });
     $('cvsave').addEventListener('click',saveCurveCard);
-    $('again').addEventListener('click',startGame);
-    $('reselect').addEventListener('click',()=>{ fromProfile=false; buildSelect(); show('select');});
+    $('again').addEventListener('click',()=>{ buildSelect(); show('select'); });
+    $('reselect').addEventListener('click',()=>{ buildSelect(); show('select');});
     $('cmpback').addEventListener('click',()=>{ buildProfiles(); show('profiles'); });   // Back → Profiles (Compare lives under it)
-    $('cmpnew').addEventListener('click',()=>{ fromProfile=false; buildSelect(); show('select');});
+    $('cmpnew').addEventListener('click',()=>{ buildSelect(); show('select');});
     $('next').addEventListener('click',nextChapter);
     $('lockbtn').addEventListener('click',redoRoom);        // "↻ Redo" on the result
     $('contbtn').addEventListener('click',sharpenRoom);     // "Sharpen ↑" on the result
@@ -1103,12 +1101,12 @@
     $('fieldO').addEventListener('pointerdown',e=>onTap(e,true));
     document.addEventListener('keydown',onKeydown);
     $('replay').addEventListener('click',()=>{ if(!guessLocked && !$('replay').disabled) replayFn(); });
-    $('selall').addEventListener('click',()=>{selected=CH.map(()=>true); paintChips();});
-    $('selnone').addEventListener('click',()=>{selected=CH.map(()=>false); paintChips();});
+    $('selall').style.display='none';
+    $('selnone').style.display='none';
     $('infobtn').addEventListener('click',()=>openInfo(chap().tag));
     $('infoclose').addEventListener('click',closeInfo);
     $('modal').addEventListener('click',e=>{ if(e.target===$('modal')) closeInfo(); });
-    $('roomsbtn').addEventListener('click',openRoomNav);
+    $('roomsbtn').addEventListener('click',()=>{ stopVoices(); killStim(); clearTimers(); buildSelect(); show('select'); });
     $('navclose').addEventListener('click',closeRoomNav);
     $('navskip').addEventListener('click',()=>{ closeRoomNav(); skipRoom(); });
     $('roomnav').addEventListener('click',e=>{ if(e.target===$('roomnav')) closeRoomNav(); });
@@ -1173,7 +1171,9 @@
         b.innerHTML=`<div class="cname">${c.tag}<span class="ctime">${fmtRange(estRoom(c))}</span></div><div class="cq">${c.tests}</div><div class="cclaim">${c.claim}</div><div class="cscore"></div>`;
         const sc=b.querySelector('.cscore');
         if(pct!=null){ sc.textContent = pct+'%'+(thr?' · '+thr:''); }   // textContent: an imported thr can't inject markup
-        b.addEventListener('click',()=>{selected[i]=!selected[i]; paintChips();});
+        // ONE ROOM AT A TIME: a chip is a launcher, not a checkbox. No plan to assemble, no
+        // "Continue" — tap a room, run it, land back here (or on the profile) with the reading.
+        b.addEventListener('click',()=>launchRoom(i));
         grid.appendChild(b);
       });
       sec.appendChild(grid); wrap.appendChild(sec);
@@ -1181,49 +1181,43 @@
     paintChips();
   }
   function paintChips(){
-    document.querySelectorAll('#selscroll .chip').forEach(b=>{ b.classList.toggle('on', selected[+b.dataset.idx]); });
-    document.querySelectorAll('#selscroll .ggroup').forEach((sec,gi)=>{
-      const gk=Object.keys(GROUPS)[gi];
-      const idxs=CH.map((c,i)=>c.group===gk?i:-1).filter(i=>i>=0);
-      sec.querySelector('.ghead button').textContent = idxs.every(i=>selected[i]) ? 'skip group' : 'take group';
-    });
-    $('selstart').disabled = !selected.some(Boolean);
-    const est=CH.reduce((a,c,i)=>{ if(selected[i]){const e=estRoom(c); a.n++; a.q+=e.q; a.f+=e.f;} return a; },{n:0,q:0,f:0});
-    $('seltime').innerHTML = est.n
-      ? `${est.n} room${est.n>1?'s':''} · <b>≈${fmtMin(est.q)} min</b> locking readings early · ≈${fmtMin(est.f)} min at full precision`
-      : 'No rooms selected';
+    // no selection state any more — chips only show whether this pair has a reading yet
+    document.querySelectorAll('#selscroll .ggroup').forEach(sec=>{ const t=sec.querySelector('.ghead button'); if(t) t.style.display='none'; });
+    const dv = device && hasDevice(device) ? db.devices[device] : null;
+    const done = dv&&dv.rooms ? CH.filter(c=>{const v=dv.rooms[c.tag]; return v!=null&&(typeof v==='number'||v.pct!=null);}).length : 0;
+    $('seltime').innerHTML = device
+      ? `<b>${esc(device)}</b> · ${done} of ${CH.length} rooms measured — tap any room to run it`
+      : 'Tap a room to run it';
+  }
+  const esc=s=>String(s==null?'':s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  // launch a single room: name the pair first if we don't have one yet
+  function launchRoom(i){
+    if(!device){ pendingRoom=i; buildDevice(); show('device'); return; }
+    startRoom(i);
+  }
+  function startRoom(i){
+    initAudio(); ctx.resume();
+    order=[i]; oi=0; score=0; chScore={0:0}; chPct={}; roomThr={}; roomVal={}; roomDone={};
+    currentRunId=uid('r');           // one room = one measurement occasion
+    $('score').textContent='0'; $('devlabel').textContent=device;
+    saveRun();                       // so an interrupted room can be offered again
+    show('game'); loadChapter();
   }
 
   // interleave the tour so no two adjacent rooms share a domain — round-robin across the four
   // groups, preserving each group's internal order. This "one around each" ordering breaks the
   // monotony of a block of near-identical rooms WITHOUT interleaving at the trial level (which
   // would add task-switching noise and slow every reading). Each room still runs as one clean run.
-  function interleaveByDomain(idxs){
-    const gk=Object.keys(GROUPS);
-    const buckets=gk.map(g=>idxs.filter(i=>CH[i].group===g));
-    const out=[]; let added=true;
-    while(added){ added=false;
-      for(const b of buckets){ if(b.length){ out.push(b.shift()); added=true; } }
-    }
-    return out;
-  }
 
-  function startGame(){
-    initAudio(); ctx.resume();
-    order = interleaveByDomain(CH.map((_,i)=>i).filter(i=>selected[i]));
-    if(!order.length) order=CH.map((_,i)=>i);
-    score=0; oi=0; chScore={}; chPct={}; roomThr={}; roomVal={}; roomDone={};
-    currentRunId=uid('r');           // one measurement occasion for this whole tour
-    order.forEach(i=>{chScore[i]=0;});
-    $('score').textContent='0'; $('devlabel').textContent=device;
-    show('game'); loadChapter();
-  }
+  // (the multi-room "tour" was retired — startRoom() is the single entry point; interleaveByDomain
+  // and the plan-position UI it fed are no longer used)
 
   function loadChapter(){
     const c=chap();
-    const remQ=order.slice(oi).reduce((a,ci)=>a+estRoom(CH[ci]).q,0);
-    $('timeleft').textContent = order.length>1 ? ` · ~${fmtMin(remQ)} min left` : '';
-    $('chapno').textContent=ROMANS[oi]; $('chaptag').textContent=c.tag; $('chaptitle').textContent=c.title;
+    $('timeleft').textContent = ' · '+fmtRange(estRoom(c));   // this room's own length, not a plan's
+    $('chapdots').style.display='none';                       // progress-through-a-plan is gone
+    $('roomsbtn').textContent='☰ All rooms';
+    $('chapno').textContent=''; $('chaptag').textContent=c.tag; $('chaptitle').textContent=c.title;
     $('claim').textContent=c.claim; $('notice').innerHTML=c.notice;
     const cd=$('chapdots'); cd.innerHTML=''; order.forEach((ci,i)=>{const d=document.createElement('div');d.className='cdot'+(i===oi?' now':(chPct[ci]!=null||roomDone[ci])?' done':'');cd.appendChild(d);});
     $('learn').classList.remove('on'); $('next').classList.remove('on'); hideCheckpointBtns();
@@ -1650,8 +1644,7 @@
   function finishCurveRoom(){
     curveInTour=false; $('cvexit').textContent='Done'; stopCurveAudio();
     roomDone[order[oi]]=true;                       // mark the curve room complete (unscored)
-    show('game');
-    if(oi<order.length-1){ oi++; loadChapter(); } else finish();
+    nextChapter();
   }
   function startCurve(){
     initAudio(); ctx.resume(); stopVoices(); rvF=1; anchorMaster(0.85);   // base level; ag.calOffset applies once the run starts
@@ -2491,14 +2484,15 @@
 
   function advanceUI(){
     $('hint').textContent='';                        // room done — clear the interaction hint
-    $('skipbtn').classList.remove('on');             // finished — no skipping now, press Next
-    const lastC=oi>=order.length-1;
-    $('next').textContent=lastC?'See result':'Next'; $('next').classList.add('on');
+    $('skipbtn').classList.remove('on');
+    $('next').textContent='Done →'; $('next').classList.add('on');   // one room = one unit of work
   }
+  // finishing a room returns you to this pair's results, where the new reading is in context and
+  // the next room is one tap away — there is no plan to advance through any more
   function nextChapter(){
-    stopVoices(); hideCheckpointBtns();
-    if(oi<order.length-1){ oi++; loadChapter(); }
-    else finish();
+    stopVoices(); hideCheckpointBtns(); clearRun();
+    if(device && hasDevice(device)){ buildProfiles(); openProfile(device); }
+    else { buildSelect(); show('select'); }
   }
 
   // ---------- info sheet ----------
@@ -2542,8 +2536,7 @@
   // leave the current room unscored (it's excluded from the total) and move on, or finish
   function skipRoom(){
     stopVoices(); hideCheckpointBtns(); guessLocked=true; $('skipbtn').classList.remove('on');
-    if(oi<order.length-1){ oi++; loadChapter(); }
-    else finish();
+    nextChapter();   // one room at a time: leaving a room lands on this pair’s results
   }
 
   // ---------- share / copy ----------
@@ -3034,18 +3027,11 @@
   // open a pair for testing: pick which rooms to run in the room-select, with this pair active
   function testPair(name){
     initAudio(); ctx.resume();
-    device=safeName(name); fromProfile=true;
+    device=safeName(name); pendingRoom=null;
     buildSelect(); show('select');
   }
   // retake (or first-take) a single room for a chosen pair — a fresh occasion (new runId → new history row)
-  function retakeRoom(name, chIdx){
-    initAudio(); ctx.resume();
-    device=name; currentRunId=uid('r');
-    order=[chIdx]; oi=0; score=0; chScore={}; chPct={}; roomThr={}; roomVal={}; roomDone={};
-    chScore[chIdx]=0;
-    $('score').textContent='0'; $('devlabel').textContent=device;
-    show('game'); loadChapter();
-  }
+  function retakeRoom(name, chIdx){ device=safeName(name); startRoom(chIdx); }   // same path as every other launch
 
   // ---------- lab (?lab=1): stimulus variants for live listening sessions — invisible otherwise ----------
   // Whisper redesign candidates. The shipped room's pad (<420 Hz) and tick (>2.2 kHz) occupy

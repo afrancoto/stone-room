@@ -14,7 +14,7 @@
 
   const INTRO = {
     hook: "Measure your hearing. Train your ears. Know your headphones.",
-    line: "Twenty-six rooms, including a per-ear hearing curve and a speech-in-noise test. Each measures one claim the reviews make — as your ears actually hear it through your pair — and saves the shape so you can compare.",
+    line: "Twenty-six rooms, including a per-ear hearing curve and a speech-in-noise test. Run them one at a time — each measures one claim the reviews make — as your ears actually hear it through your pair — and saves the shape so you can compare.",
     what: "Each room plays a sound and asks one simple question. Answer, and it hunts your exact limit — telling you, in real numbers, where your headphones and your hearing actually land. You learn what the words mean by hearing them.",
     gap: "Other free tools do half the job: they train your ears with no number attached, or they publish lab readings of a unit that isn't on your head. This one measures what YOU hear through YOUR pair — ears and headphones as one chain — and saves it, so you can compare pairs and watch your own hearing over time.",
     tips: "Best in a quiet room, at a moderate volume, with any phone spatializer, Dolby Atmos and EQ switched off.",
