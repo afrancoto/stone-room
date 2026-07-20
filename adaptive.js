@@ -16,7 +16,13 @@
     const span0 = cfg.xHi - cfg.xLo;               // initial span — anchors conf/slope so widening is stable
     const priorSDabs = cfg.priorSD || span0*0.5;
     // slope β in units of 1/x, fixed (absolute) so the psychometric shape survives widening.
-    const bMid = (cfg.slope || 6) / span0;
+    // PREFER cfg.slopeW: the 10–90% width of the psychometric function in the room's OWN level
+    // units (dB, or log-units for log rooms). The legacy span-relative form made the assumed
+    // width proportional to the room's range — for the audiogram that meant the model believed
+    // the "sometimes I hear it" zone was ~54 dB wide, so the posterior could never tighten to
+    // the stopping target, the credible-interval stop never fired, and the trial CAP ended every
+    // run. The count only *looked* adaptive. 4.4/width is the logistic 10–90% relation.
+    const bMid = cfg.slopeW ? (4.4/cfg.slopeW) : ((cfg.slope || 6) / span0);
     const BETA = [bMid*0.4, bMid*0.7, bMid, bMid*1.5, bMid*2.2];
     const LAM = [0.0, 0.01, 0.02, 0.04, 0.06];     // lapse grid (Wichmann & Hill rectangular, capped)
     const nB = BETA.length, nL = LAM.length, nC = nA*nB*nL;
@@ -136,7 +142,9 @@
         usable: t>=cfg.nMin && (ciW<=cfg.ciUsable || dryRuns>=3),
         solid:  t>=cfg.nMin && ciW<=cfg.ciSolid,
         precise: t>=cfg.nMin && ciW<=cfg.ciSolid,
-        forceStop: t >= cfg.nMax + (widenLo+widenHi)*4    // extra trials to localise a widened grid
+        // extra trials to localise a widened grid — but capped: at *4 a doubly-widened frequency
+        // could run past 20 trials, which reads as the search flailing rather than converging
+        forceStop: t >= cfg.nMax + Math.min((widenLo+widenHi)*2, 6)
       };
     }
     // raise the trial ceiling so a "Sharpen" request can keep adding trials past the initial cap
@@ -160,9 +168,13 @@
     const pSD = span * 0.55 * (P.priorSDscale || 1);
     const cfg = {
       nA: 50, xLo: xLo - span*0.05, xHi: xHi + span*0.05,
-      slope: 7, priorMean: pMean, priorSD: pSD,
+      slope: 7, slopeW: P.slopeW, priorMean: pMean, priorSD: pSD,
       nMin: P.nMin || 8, nMax: P.nMax || 16, gamma: P.gamma,   // undefined for 2AFC rooms → makePsi default 0.5
-      ciUsable: span*0.28, ciSolid: span*0.16
+      // ciTarget/ciSolidTarget: stopping thresholds in the room's OWN units (dB). With these set,
+      // the run length is genuinely governed by UNCERTAINTY — a clear listener finishes fast, an
+      // ambiguous one earns more trials — instead of every run ending at the cap or at nMin.
+      ciUsable: P.ciTarget!=null ? P.ciTarget : span*0.28,
+      ciSolid:  P.ciSolidTarget!=null ? P.ciSolidTarget : span*0.16
     };
     const eng = makePsi(cfg);
     // clamp to a generous range that extends 1.5× the span past each end (sign-agnostic — works

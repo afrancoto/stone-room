@@ -277,7 +277,7 @@ ${g}${mark}
       if(!c.length) return ''; let s='';
       // censored points (pinned at a rail / mercy-skipped) carry no measurement — they are drawn
       // as open glyphs but EXCLUDED from the GP fit, so the band widens honestly where data ran out
-      const fit=c.filter(p=>!p.cens);
+      const fit=c.filter(p=>!p.cens&&!p.live);   // a provisional point must not drag the smoothed line
       if(fit.length>=3){
         const uu=fit.map(p=>Math.log10(p.f)), uLo=Math.min.apply(null,uu), uHi=Math.max.apply(null,uu);
         const N=64, us=[]; for(let i=0;i<N;i++) us.push(uLo+(uHi-uLo)*i/(N-1));
@@ -292,7 +292,10 @@ ${g}${mark}
       if(!/polyline/.test(s)) s+=`<polyline points="${c.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
       c.forEach(p=>{ const col=byVal?(p.rel>=-6?COL.good:p.rel>=-20?COL.gold:COL.ember):stroke;
         const cx=x(p.f).toFixed(1), cy=y(p.rel);
-        if(p.cens){   // pinned at the test's loudest — true threshold may sit BELOW this: open dot + down-tick
+        if(p.live){   // the point being measured right now: hollow ring, so it reads as "still moving"
+          s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="4.6" fill="none" stroke="${col}" stroke-width="1.6" stroke-dasharray="3 2.4" opacity="0.9"/>`;
+          s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="1.6" fill="${col}"/>`;
+        } else if(p.cens){   // pinned at the test's loudest — true threshold may sit BELOW this: open dot + down-tick
           s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="3.4" fill="${COL.bg}" stroke="${col}" stroke-width="1.4"/>`;
           s+=`<path d="M ${cx-3} ${(cy+6.5).toFixed(1)} L ${(+cx+3).toFixed(1)} ${(cy+6.5).toFixed(1)} L ${cx} ${(cy+11).toFixed(1)} Z" fill="${col}" opacity="0.85"/>`;
         } else s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="3.4" fill="${col}" stroke="${COL.bg}" stroke-width="1"/>`; });

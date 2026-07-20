@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v56";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v57";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1687,7 +1687,14 @@
   // tone level above which cross-hearing becomes plausible and contralateral masking is worth its
   // distraction. Below it the resting ear stays silent — which is most trials for a normal ear.
   const MASK_FROM=-45;
-  const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03, nMin:6, nMax:12, physLo:-94, physHi:-10, fmt:v=>Math.round(v)+' dBFS'};   // phys clamps: auto-widen can never wander past what we can actually play
+  // slopeW: a real tone-detection psychometric function runs 10→90% over roughly 9 dB. Stating it
+  // in dB (instead of the old span-relative slope, which implied a ~54 dB transition) is what lets
+  // the posterior actually tighten — and therefore what makes the TRIAL COUNT ADAPTIVE: a run ends
+  // when its credible interval reaches ciTarget, so a clear listener finishes a tone in ~4 trials
+  // and an ambiguous one earns up to ~15, instead of every tone ending at a fixed cap.
+  // phys clamps: auto-widen can never wander past what we can actually play.
+  const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03,
+    slopeW:9, ciTarget:12, ciSolidTarget:8, nMin:4, nMax:16, physLo:-94, physHi:-10, fmt:v=>Math.round(v)+' dBFS'};
   // ---- WINDOW PLACEMENT ----------------------------------------------------------------------
   // We can only play an ~84 dB window (physLo…physHi). WHERE that window sits against a listener's
   // ears is set by their volume knob, which we can neither read nor set. Their thresholds SPAN a
@@ -1986,7 +1993,13 @@
     ag.catchCap=Math.max(2, Math.round((ag.eng.nMax||12)*0.35));   // ≤ ~4 silent trials per frequency
     const earLbl = ag.mode==='perear' ? EAR_NAME[ag.curEar]+' · ' : '';
     $('cvTitle').textContent = earLbl + (f>=1000?(f/1000)+' kHz':f+' Hz');
-    $('cvprog').textContent = `${EAR_NAME[ag.curEar]} · tone ${ag.fi+1} of ${ag.plan.length}`;
+    // honest progress: the plan GROWS (gap-filling, double-checks, the reference re-test), so a
+    // fixed "of 9" was a promise the run then broke. Name the phase instead of faking a total.
+    const base=AG_BASE_PLAN.length;
+    $('cvprog').textContent = ag.phaseD ? `${EAR_NAME[ag.curEar]} · re-checking the reference`
+      : ag.phaseC ? `${EAR_NAME[ag.curEar]} · double-checking a reading`
+      : ag.phaseB ? `${EAR_NAME[ag.curEar]} · filling a gap in the curve`
+      : `${EAR_NAME[ag.curEar]} · tone ${Math.min(ag.fi+1,base)} of ${base}`;
     agTrial();
   }
   function agTrial(){
@@ -2009,7 +2022,7 @@
     }
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.replay)ag.replay(); }; box.appendChild(rep);
     const play=()=>{
-      clearTimers(); hear.disabled=true; none.disabled=true; hear.classList.remove('playing');
+      clearTimers(); hear.disabled=true; none.disabled=true; $('cvbeat').classList.remove('on');
       anchorMaster(agLevel());   // constant reference each trial (includes the auto-range offset)
       $('cvNote').textContent = (ag.pan && ag.curLevel>MASK_FROM && !ag.rushSaid)
         ? 'Listen… a soft rush in your other ear keeps it from helping on the louder tones.' : 'Listen…';
@@ -2029,9 +2042,11 @@
       // Independent of ag.catch, so a silent trial sounds identical — the rush is never a tell.
       if(ag.pan && ag.curLevel>MASK_FROM) detMask(f, t0-.06, win, ag.curLevel-18, -ag.pan);
       // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
-      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ hear.disabled=false; hear.classList.add('playing'); $('cvNote').innerHTML='Now — tap <b>I hear it</b> the instant you notice it.'; } }, lead*1000));
+      // the listening window is shown by its OWN indicator, not by tinting an answer button —
+      // a button that lights up while you decide reads like a hint about which one to press
+      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ hear.disabled=false; $('cvbeat').classList.add('on'); $('cvNote').innerHTML='Now — tap <b>I hear it</b> the instant you notice it.'; } }, lead*1000));
       // "Nothing" answerable only AFTER the window has fully passed
-      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ none.disabled=false; hear.classList.remove('playing'); $('cvNote').innerHTML='Heard it, or nothing?'; } }, Math.max((lead+win)*1000, 260)));
+      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ none.disabled=false; $('cvbeat').classList.remove('on'); $('cvNote').innerHTML='Heard it, or nothing?'; } }, Math.max((lead+win)*1000, 260)));
     };
     ag.replay=play; play();
   }
@@ -2068,11 +2083,17 @@
     else if(heard) ag.noneMax=0;
     ag.eng.z.record(ag.curX, heard); ag.trial++; ag.earTrials=(ag.earTrials||0)+1;
     if(ag.log){ const f=ag.plan[ag.fi]; (ag.log[ag.curEar][f]=ag.log[ag.curEar][f]||[]).push([Math.round(ag.curLevel*10)/10, heard?1:0]); }
+    {                                        // live feedback: move the graph on EVERY answer
+      const s0=ag.eng.z.stats();
+      const lo0=ag.eng.levelOfRaw(s0.ci[0]), hi0=ag.eng.levelOfRaw(s0.ci[1]);
+      ag.live={ear:ag.curEar, f:ag.plan[ag.fi], lvl:ag.eng.levelOf(s0.mean), ci:Math.abs(hi0-lo0)/2};
+      agLiveDraw();
+    }
     const st=ag.eng.z.stats();
     if(st.usable||st.forceStop){
       const f=ag.plan[ag.fi];
       const lvl=ag.eng.levelOf(st.mean);
-      ag.pts[ag.curEar][f]=lvl; ag.prevThr=lvl;
+      ag.pts[ag.curEar][f]=lvl; ag.prevThr=lvl; ag.live=null;   // locked — no longer provisional
       // CI half-width from the UNCLAMPED posterior: when a CI straddles a rail, clamping both
       // endpoints to the rail collapsed the width to ~0 — the least-certain points entered the
       // GP as the most trusted and the band drew tightest exactly where the data ran out.
@@ -2196,7 +2217,15 @@
     if(!fs.length) return [];
     const ref = pts[1000]!=null ? pts[1000] : pts[fs[0]];
     const meta=(ag.ptsMeta&&ag.ptsMeta[ear])||{};
-    return fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci)||null, cens: !!(meta[f]&&meta[f].cens) }));
+    const out=fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci)||null, cens: !!(meta[f]&&meta[f].cens) }));
+    // the frequency being measured RIGHT NOW, drawn provisionally so the graph moves with every
+    // answer: its position is the running estimate and its band is the live confidence interval,
+    // which visibly tightens as the trials close in
+    if(ag.live && ag.live.ear===ear && pts[ag.live.f]==null){
+      out.push({ f:ag.live.f, rel: Math.round((ref - ag.live.lvl)*10)/10, ci: ag.live.ci, live:true });
+      out.sort((a,b)=>a.f-b.f);
+    }
+    return out;
   }
   // L−R asymmetry in the high band (≥2 kHz, where a sensorineural loss shows). +ve = left worse.
   function agAsym(R,L){
