@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v47";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v48";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2922,8 +2922,59 @@
     show('game'); loadChapter();
   }
 
+  // ---------- lab (?lab=1): stimulus variants for live listening sessions — invisible otherwise ----------
+  // Whisper redesign candidates. The shipped room's pad (<420 Hz) and tick (>2.2 kHz) occupy
+  // disjoint bands, so no masking occurs. Each variant creates REAL in-band masking a different
+  // way; the session's job is choosing which one sounds like "detail buried under music".
+  function labPad(when,dur,gain,lpFreq){          // V1: pad with its lowpass raised into the tick's band
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=lpFreq; lp.Q.value=.6;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when);
+    g.gain.linearRampToValueAtTime(gain,when+.4);
+    g.gain.setValueAtTime(gain,when+dur-.5); g.gain.linearRampToValueAtTime(0,when+dur);
+    lp.connect(g); g.connect(master);
+    [110,110.7,165.3].forEach(f=>{const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f; o.connect(lp); o.start(when); o.stop(when+dur+.05);});
+  }
+  function labTickLow(when,gain){                 // V2: the tick moved down into the pad's band
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=330; bp.Q.value=2;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.005); g.gain.exponentialRampToValueAtTime(Math.max(gain*0.0025,1e-7),when+.055);
+    bp.connect(g); g.connect(master);
+    const o=ctx.createOscillator(); o.type='square'; o.frequency.value=330; o.connect(bp); o.start(when); o.stop(when+.07);
+  }
+  function labAir(when,dur,gain){                 // V3: soft noise "air" layer 1.5–4.5 kHz over the warm pad
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(dur+.3);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2600; bp.Q.value=.7;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.4);
+    g.gain.setValueAtTime(gain,when+dur-.5); g.gain.linearRampToValueAtTime(0,when+dur);
+    nb.connect(bp); bp.connect(g); g.connect(master); nb.start(when); nb.stop(when+dur+.05);
+  }
+  function labPlayWhisper(variant, hard){
+    initAudio(); ctx.resume(); killStim(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
+    const t=ctx.currentTime+.1, lv=hard?.008:.04, tickAt=t+.6+Math.random()*.5;
+    if(variant===0){ pad(t,1.6,.2); tick(tickAt,lv); }
+    else if(variant===1){ labPad(t,1.6,.2,4000); tick(tickAt,lv); }
+    else if(variant===2){ pad(t,1.6,.2); labTickLow(tickAt,lv); }
+    else { pad(t,1.6,.2); labAir(t,1.6,.1); tick(tickAt,lv); }
+  }
+  function buildLab(){
+    const box=$('labpanel'); box.innerHTML='';
+    const h=document.createElement('div'); h.className='bghead'; h.textContent='Lab · Whisper masker variants'; box.appendChild(h);
+    const sub=document.createElement('div'); sub.className='pvdsub';
+    sub.textContent='Each plays the pad with a tick at an easy (.04) or near-threshold (.008) level. V0 = shipped (no real masking). Listen for: does the tick feel BURIED IN the music rather than beside it — and is there any beating, roughness or other tell?';
+    box.appendChild(sub);
+    [['V0 · shipped',0],['V1 · brighter pad',1],['V2 · tick moved low',2],['V3 · pad + air',3]].forEach(([name,v])=>{
+      const row=document.createElement('div'); row.className='labrow';
+      const lbl=document.createElement('span'); lbl.className='labname'; lbl.textContent=name;
+      const easy=document.createElement('button'); easy.className='btn ghost half'; easy.textContent='▶ easy';
+      easy.onclick=()=>labPlayWhisper(v,false);
+      const hardB=document.createElement('button'); hardB.className='btn ghost half'; hardB.textContent='▶ faint';
+      hardB.onclick=()=>labPlayWhisper(v,true);
+      row.appendChild(lbl); row.appendChild(easy); row.appendChild(hardB); box.appendChild(row);
+    });
+    box.style.display='block';
+  }
   // ---------- boot ----------
   buildIntro(); applyCoffeeLinks(); wire();
+  if(new URLSearchParams(location.search).has('lab')) buildLab();
   // platform-aware setup guidance — Android codec instructions on an iPhone read as broken homework
   const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   if(isIOS){
