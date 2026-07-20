@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v49";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v50";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -751,11 +751,16 @@
   let rvF=1;
   function roveTrial(){
     rvF = Math.pow(2, (Math.random()*6-3)/12);     // ±3 semitones base transpose
-    if(master) master.gain.setValueAtTime(0.85*(0.62+Math.random()*0.38), ctx.currentTime); // −4..0 dB
+    anchorMaster(0.85*(0.62+Math.random()*0.38)); // −4..0 dB
   }
   // silence the currently-playing A/B stimulus the instant the listener answers (stop-on-pick).
   // Safe because every trial re-anchors master.gain at its start (roveTrial / agTrial), so this
   // only mutes the leftover tail; it never leaves the output stuck at zero.
+  // re-anchor the master bus SAFELY: killStim leaves a 35 ms ramp-to-zero scheduled, and a bare
+  // setValueAtTime does NOT cancel it — the ramp resumes from the new value and lands at 0, so
+  // anything played immediately after an answer was muted (the silent pre-check chime bug).
+  function anchorMaster(v){ if(!master) return; const now=ctx.currentTime;
+    master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(v, now); }
   function killStim(){
     if(!master) return;
     const now=ctx.currentTime;
@@ -1128,7 +1133,7 @@
   }
 
   function runCal(){
-    rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // clear any leftover rove
+    rvF=1; anchorMaster(0.85);   // clear any leftover rove
     const seq=[-90,0,90], bar=$('calbar'), dot=$('caldot');
     bar.classList.add('play');
     seq.forEach((az,i)=>{ setTimeout(()=>{ const v=makeVoice('bell',az,1.6,0.6); v.playOnce(ctx.currentTime+.02);
@@ -1636,7 +1641,7 @@
     if(oi<order.length-1){ oi++; loadChapter(); } else finish();
   }
   function startCurve(){
-    initAudio(); ctx.resume(); stopVoices(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
+    initAudio(); ctx.resume(); stopVoices(); rvF=1; anchorMaster(0.85);
     if(!device) device=suggestName();
     if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
     ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}, caTot:{R:0,L:0,B:0}};
@@ -1679,7 +1684,7 @@
     box.appendChild(mk('I don’t hear it','N','nothing this time','alt'));
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.pcPlay)ag.pcPlay(); }; box.appendChild(rep);
     const play=()=>{ stopCurveAudio(); clearTimers();
-      if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
+      anchorMaster(0.85);
       const pan = side==='L'?-1:1;
       // a low-mid two-note chime, not a lone quiet 1 kHz sine: the check must prove the CHANNEL,
       // not the listener — a notched or high-frequency loss in the tested ear shouldn't fail it.
@@ -1735,7 +1740,7 @@
       const mic=document.createElement('button'); mic.className='btn ghost half'; mic.textContent='🎙 Measure the room';
       mic.onclick=async()=>{
         mic.disabled=true; stopCurveAudio(); clearTimers();
-        if(master) master.gain.setValueAtTime(0.0001, ctx.currentTime);
+        anchorMaster(0.0001);
         let stream=null;
         try{
           stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, autoGainControl:false, noiseSuppression:false}});
@@ -1776,18 +1781,18 @@
         }finally{
           if(stream) stream.getTracks().forEach(t=>t.stop());     // release the mic immediately
           if(ag&&ag.micNodes){ ag.micNodes.forEach(n=>{ try{n.disconnect();}catch(e){} }); ag.micNodes=null; }
-          if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
+          anchorMaster(0.85);
           mic.disabled=false;
         }
       };
       micBtn=mic;
     }
-    listen.onclick=()=>{ stopCurveAudio(); clearTimers(); if(master) master.gain.setValueAtTime(0.0001, ctx.currentTime);
+    listen.onclick=()=>{ stopCurveAudio(); clearTimers(); anchorMaster(0.0001);
       $('cvNote').innerHTML='Listening… stay still.'; let n=4; $('cvprog').textContent='Quiet check · '+n+'s';
       const tick=()=>{ if(!ag||ag.phase!=='pre')return; n--;
         if(n>0){ $('cvprog').textContent='Quiet check · '+n+'s'; ag.calTimer=setTimeout(tick,1000); }
         else { $('cvprog').textContent='Check · quiet room'; $('cvNote').innerHTML='In that quiet, did you hear any background noise (a fan, traffic, a hum)?';
-          silent.style.display=''; noisy.style.display=''; listen.textContent='↺ Listen again'; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime); } };
+          silent.style.display=''; noisy.style.display=''; listen.textContent='↺ Listen again'; anchorMaster(0.85); } };
       ag.calTimer=setTimeout(tick,1000); };
     silent.onclick=()=>agMode();
     noisy.onclick=()=>{ $('cvNote').innerHTML='A quieter spot gives a truer curve — but you can carry on. Just treat the very quietest tones as rough.';
@@ -1906,7 +1911,7 @@
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.replay)ag.replay(); }; box.appendChild(rep);
     const play=()=>{
       clearTimers(); hear.disabled=true; none.disabled=true; hear.classList.remove('playing');
-      if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);   // constant reference each trial
+      anchorMaster(0.85);   // constant reference each trial
       $('cvNote').textContent = (ag.pan && ag.curLevel>MASK_FROM && !ag.rushSaid)
         ? 'Listen… a soft rush in your other ear keeps it from helping on the louder tones.' : 'Listen…';
       if(ag.pan && ag.curLevel>MASK_FROM) ag.rushSaid=true;   // explain the rush the first time it appears
@@ -2957,7 +2962,7 @@
     nb.connect(bp); bp.connect(g); g.connect(master); nb.start(when); nb.stop(when+dur+.05);
   }
   function labPlayWhisper(variant, hard){
-    initAudio(); ctx.resume(); killStim(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
+    initAudio(); ctx.resume(); killStim(); rvF=1; anchorMaster(0.85);
     const t=ctx.currentTime+.1, lv=hard?.008:.04, tickAt=t+.6+Math.random()*.5;
     if(variant===0){ pad(t,1.6,.2); tick(tickAt,lv); }
     else if(variant===1){ labPad(t,1.6,.2,4000); tick(tickAt,lv); }
