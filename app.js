@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v43";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v44";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1840,7 +1840,12 @@
 
   function setupSpatial(c){
     const S=SPATIAL[c.tag];
-    sp={c, S, mode:c.mode, round:0, errs:[], done:false, minR:S.minR, maxR:S.maxR};
+    // difficulty CYCLES beyond the ladder instead of pinning at the hardest entry. Pinning meant
+    // every Sharpen round ran at max eccentricity/speed, whose errors are intrinsically larger —
+    // so the median acuity ROSE with extra rounds even when the answers were good ("sharpening
+    // made me worse"). Cycling resamples the same difficulty mix, so more rounds = convergence.
+    const diffLen=(S.ecc||S.spd||S.spread||S.dur||[]).length || S.maxR;
+    sp={c, S, mode:c.mode, round:0, errs:[], done:false, minR:S.minR, maxR:S.maxR, diffLen};
     showPrecisionUI();
     spatialRound();
   }
@@ -1849,7 +1854,7 @@
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
     setReplay(true); roveTrial();
     kbActive=false; kbAz=0; kbRad = sp.mode==='orbit'?112 : sp.mode==='depth'?90 : 110;
-    const c=sp.c, S=sp.S, r=sp.round;
+    const c=sp.c, S=sp.S, r=sp.round % sp.diffLen;   // difficulty index cycles; sp.round still counts rounds
     if(c.mode==='locate'){
       const ecc=S.ecc[Math.min(r,S.ecc.length-1)];
       const az=(Math.random()<.5?-1:1)*jit(ecc,6), key=rndTimbre();
