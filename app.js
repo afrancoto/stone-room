@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v50";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v51";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1656,7 +1656,19 @@
     try{ await sharePNG(svg, `stone-room-curve-${device.replace(/[^\w-]+/g,'_')}.png`); }
     catch(e){ flashSaved('could not save curve'); }
   }
-  function stopCurveAudio(){ if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
+  function agBedStart(pan){
+    agBedStop();
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(3); nb.loop=true;
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=6000;
+    const g=ctx.createGain(); g.gain.value=0.0013;
+    const sp=ctx.createStereoPanner(); sp.pan.value=pan;
+    nb.connect(lp); lp.connect(g); g.connect(sp); sp.connect(master);
+    nb.start();
+    liveStim.delete(nb);               // exempt from killStim — the bed must survive every answer
+    ag.bed={nb,g};
+  }
+  function agBedStop(){ if(ag&&ag.bed){ try{ ag.bed.g.gain.linearRampToValueAtTime(0,ctx.currentTime+.05); ag.bed.nb.stop(ctx.currentTime+.12); }catch(e){} ag.bed=null; } }
+  function stopCurveAudio(){ agBedStop(); if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
   function agCal(){
     $('cvTitle').textContent='Set your volume';
     $('cvNote').innerHTML='A steady <b>1 kHz</b> tone will play. Turn your device volume until it’s clearly but comfortably present — then leave it there. That’s your reference for the whole test.';
@@ -1807,7 +1819,7 @@
   function agMode(){
     ag.phase='mode'; $('cvwrap').style.display='none';
     $('cvTitle').textContent='How to test'; $('cvprog').textContent='';
-    $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. When a tone has to get loud, a <b>soft rush</b> joins in the resting ear; that’s deliberate, and it keeps that ear from secretly helping. Both-ears is quicker.';
+    $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. In each-ear mode a <b>faint steady rush</b> sits in the resting ear the whole time, swelling when a tone has to get loud — deliberate, so that ear can’t secretly help. Both-ears is quicker.';
     const box=$('cvChoices'); box.innerHTML='';
     const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
     const both=document.createElement('button'); both.className='choice alt'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agStartRun('both');
@@ -1823,8 +1835,13 @@
   }
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.fi=0; ag.prevThr=null;
-    ag.earTrials=0; ag.phaseB=false; ag.phaseC=false;      // per-ear tally + infill-pass + verify-pass flags
+    ag.earTrials=0; ag.phaseB=false; ag.phaseC=false; ag.phaseD=false; ag.refFirst=null; ag.floorStreak=0;
     ag.warm = ag.ei===0;                                   // one obvious practice tone before the first ear
+    // CONSTANT resting-ear bed (per-ear mode): a faint fixed noise floor (~−58 dBFS) for the whole
+    // ear, so the rush is a steady presence that swells on loud tones — not a thing that flickers
+    // in and out trial by trial ("sometimes white noise, sometimes not — weird"). At −58 its skull
+    // crossover (~−103) cannot touch the test ear.
+    if(ag.pan) agBedStart(-ag.pan); else agBedStop();
     ag.plan = AG_BASE_PLAN.slice();                         // base octaves; Phase-B appends inter-octaves
     agFreq();
   }
@@ -1983,9 +2000,55 @@
       const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
       ag.ptsMeta[ag.curEar][f]={ ci: Math.abs(hiL-loL)/2, cens: lvl>=pHi-3 || lvl<=pLo+3 };
       agLiveDraw();                                        // redraw the curve as each point locks
+      // volume-sentinel comparison: keep the ORIGINAL anchor (the one the run was measured
+      // against) and record the drift for the honesty note
+      if(f===1000 && ag.phaseD && ag.refFirst!=null){
+        const drift=Math.abs(lvl-ag.refFirst);
+        if(drift>6){ ag.volDrift=ag.volDrift||{}; ag.volDrift[ag.curEar]=Math.round(drift); }
+        ag.pts[ag.curEar][1000]=ag.refFirst;
+      }
+      // REFERENCE ANCHORING: 1 kHz is the run's anchor and is measured first. If it pinned at a
+      // rail, the volume puts this listener OUTSIDE the measurable window — every later frequency
+      // would pin the same way (a flat line of beyond-reach dots, no curve, max trials wasted).
+      // Stop here, have them nudge the volume, and re-measure the reference until it lands inside.
+      if(f===1000 && ag.fi===0 && !ag.phaseB && !ag.phaseC && ag.ptsMeta[ag.curEar][1000].cens){
+        agRefRetune(lvl<=pLo+3 ? 'down' : 'up'); return;
+      }
       agNextPoint(); return;
     }
+    // FAST FLOOR EXIT: hearing our quietest playable level over and over means the true threshold
+    // is beyond the rail — lock it censored after a few confirmations instead of grinding nMax
+    // trials of guaranteed "I hear it" at every frequency (the high-volume thrash).
+    if(heard && ag.curLevel<=((AG_ROOM.physLo!=null?AG_ROOM.physLo:-94)+4)){
+      ag.floorStreak=(ag.floorStreak||0)+1;
+      if(ag.floorStreak>=4){
+        const f2=ag.plan[ag.fi], pLo2=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
+        ag.pts[ag.curEar][f2]=pLo2; ag.prevThr=pLo2;
+        ag.ptsMeta[ag.curEar][f2]={ci:null, cens:true};
+        ag.floorStreak=0; agLiveDraw();
+        if(f2===1000 && ag.fi===0 && !ag.phaseB && !ag.phaseC){ agRefRetune('down'); return; }
+        agNextPoint(); return;
+      }
+    } else ag.floorStreak=0;
     choiceTimers.push(setTimeout(agTrial,340));
+  }
+  // volume out of range for the measurement: pause, coach the knob, re-measure the reference
+  function agRefRetune(dir){
+    clearTimers(); killStim();
+    ag.retunes=(ag.retunes||0)+1;
+    $('cvprog').textContent='Check · volume';
+    $('cvTitle').textContent = dir==='down' ? 'A touch quieter' : 'A touch louder';
+    $('cvNote').innerHTML = dir==='down'
+      ? 'You heard even the quietest tone this test can make — at this volume there is nothing left to measure, and the curve would be a flat line of “beyond reach” marks. Turn your volume <b>down a step or two</b>, then re-measure the reference. (Then don’t touch the knob again until the end.)'
+      : 'Even the loudest tone didn’t come through. Turn your volume <b>up a step or two</b>, then re-measure the reference.';
+    const box=$('cvChoices'); box.innerHTML='';
+    const redo=document.createElement('button'); redo.className='choice alt'; redo.innerHTML='Volume adjusted<small>re-measure 1 kHz</small>';
+    redo.onclick=()=>{ delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
+      if(ag.log&&ag.log[ag.curEar]) delete ag.log[ag.curEar][1000];
+      ag.floorStreak=0; agFreq(); };
+    const anyway=document.createElement('button'); anyway.className='choice alt'; anyway.innerHTML='Continue anyway<small>curve will be rough</small>';
+    anyway.onclick=()=>{ agNextPoint(); };
+    box.appendChild(redo); box.appendChild(anyway);
   }
   // advance past the current frequency: base plan → Phase-B infill → verify pass → next ear/finish
   function agNextPoint(){
@@ -1998,6 +2061,15 @@
       if(!ag.phaseC){
         ag.phaseC=true; const vf=agPlanVerify(ag.curEar);
         if(vf.length){ ag.plan=ag.plan.concat(vf); choiceTimers.push(setTimeout(agFreq,320)); return; }
+      }
+      if(!ag.phaseD){
+        ag.phaseD=true;
+        // VOLUME SENTINEL: re-test the 1 kHz anchor at the end of the ear. If it moved, the knob
+        // (or the fit) moved mid-run — and every relative point silently moved with it.
+        if(ag.pts[ag.curEar][1000]!=null && !(ag.ptsMeta[ag.curEar][1000]||{}).cens){
+          ag.refFirst=ag.pts[ag.curEar][1000];
+          ag.plan=ag.plan.concat([1000]); choiceTimers.push(setTimeout(agFreq,320)); return;
+        }
       }
       ag.ei++;
       if(ag.ei>=ag.ears.length){ finishCurve(); return; }
@@ -2059,7 +2131,7 @@
     return true;
   }
   async function finishCurve(){
-    ag.phase='done'; clearTimers();
+    ag.phase='done'; clearTimers(); agBedStop();
     $('cvTitle').textContent='Your curve'; $('cvprog').textContent=''; $('cvChoices').innerHTML='';
     $('cvwrap').style.display='block'; $('cvsave').style.display='inline-block';
     $('cvexit').style.display=''; $('cvredo').style.display='';   // the run is over — Continue/Done/Redo return
@@ -2088,6 +2160,8 @@
         note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
       }
       if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
+      if(ag.volDrift){ const worst=Math.max(...Object.values(ag.volDrift));
+        note+=' <b>Volume check:</b> the 1 kHz reference read '+worst+' dB different at the end than at the start — the volume or the fit moved mid-test, and every relative point moved with it. Treat this curve as rough and redo with the knob untouched.'; }
       $('cvNote').innerHTML=note;
       // persist the false-alarm verdict WITH the curve (gates every later surface), plus the raw
       // [level, heard] trial log and the measured FA rates — the export carries the actual data
@@ -2099,7 +2173,7 @@
       const curve=agBuildCurve('B');
       window.SR_FP.renderCurve($('cvcard'), { device, curve });
       const faHiB=(ag.caTot&&ag.caTot.B>0) ? (ag.faTot.B||0)/ag.caTot.B>=0.25 : false;   // same RATE gate as per-ear
-      $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.'+(refitB?' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.':'');
+      $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.'+(refitB?' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.':'')+(ag.volDrift?' <b>Volume check:</b> the 1 kHz reference moved '+Math.max(...Object.values(ag.volDrift))+' dB between start and end — redo with the knob untouched for a trustworthy curve.':'');
       await loadDB(); upsertCurve(device, curve, 'yesno'); await saveDB();
     }
   }

@@ -250,7 +250,9 @@ ${g}${mark}
       .concat(((data.ears&&data.ears.R)||[]).filter(p=>p&&isFinite(p.rel)).map(p=>p.rel))
       .concat(((data.ears&&data.ears.L)||[]).filter(p=>p&&isFinite(p.rel)).map(p=>p.rel));
     const minRel=allRel.length?Math.min.apply(null,allRel):0;
-    const fmin=125, fmax=16000, yMax=6, yMin=Math.min(-54, Math.floor((minRel-8)/10)*10);
+    // window hugs the data in BOTH directions: shallow data no longer floats in a −54 dB void
+    // (the "not centered" look), deep losses still extend the floor as needed
+    const fmin=125, fmax=16000, yMax=6, yMin=Math.min(-24, Math.floor((minRel-8)/10)*10);
     const x=f=>L + (Math.log10(Math.max(fmin,Math.min(fmax,f))/fmin)/Math.log10(fmax/fmin))*(W-L-R);
     const y=v=>T + (yMax-Math.max(yMin,Math.min(yMax,v)))/(yMax-yMin)*(H-T-B);
     const uMin=Math.log10(fmin), uMax=Math.log10(fmax);
