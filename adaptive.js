@@ -126,7 +126,11 @@
       let cum=0, lo=ALPHA[0], hi=ALPHA[nA-1], gotLo=false;
       for(let i=0;i<nA;i++){ cum+=m[i]; if(!gotLo && cum>=0.025){ lo=ALPHA[i]; gotLo=true; } if(cum>=0.975){ hi=ALPHA[i]; break; } }
       const ciW=Math.abs(hi-lo);
-      const conf=Math.max(0,Math.min(1, 1 - ciW/(span*0.5)));   // vs the CURRENT (possibly widened) span, so a localised-but-widened reading isn't stuck at 0
+      // conf is priced in the FROZEN currency of the quality gates (ciUsable = 0.28·span at
+      // construction), never the current grid span: widening the grid must not BUY confidence.
+      // The old span-relative form let a 2×-wider CI read HIGHER confidence after a widen —
+      // the least certain readings scored best. conf ≥ 0.5 now coincides with `usable`.
+      const conf=Math.max(0,Math.min(1, 1 - ciW/(2*cfg.ciUsable)));
       return {
         mean, sd, ci:[lo,hi], ciW, conf, trial:t, widened:widenLo+widenHi,
         usable: t>=cfg.nMin && (ciW<=cfg.ciUsable || dryRuns>=3),
@@ -173,7 +177,10 @@
     if(P.physHi!=null) hiB=Math.min(hiB, P.physHi);
     return {
       z: eng, dir, span, nMin: cfg.nMin, nMax: cfg.nMax,
-      levelOf(x){ return Math.max(loB, Math.min(hiB, inv(dir*x))); }
+      levelOf(x){ return Math.max(loB, Math.min(hiB, inv(dir*x))); },
+      // UNclamped companion for CI endpoints: clamping both ends of a rail-straddling CI to the
+      // rail collapses its width to ~0 — a censored point would enter the GP as the MOST trusted.
+      levelOfRaw(x){ return inv(dir*x); }
     };
   }
 

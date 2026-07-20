@@ -114,9 +114,18 @@
       // guard missing/NaN val (imported or legacy profiles may carry pct/thr but no numeric val)
       const foundV = (has('Foundation') && isFinite(rooms.Foundation.val)) ? rooms.Foundation.val : null;
       const airV   = (has('Air') && isFinite(rooms.Air.val)) ? rooms.Air.val : null;
+      // an unmeasured edge must NEVER default to the flattering extreme (20 Hz / 20 kHz): the
+      // sage fill is drawn only when BOTH edges were actually measured; otherwise the measured
+      // edge gets its label + a marker and the caption says what is missing
       const lo = foundV!=null ? foundV : 20, hi = airV!=null ? airV : 20000;
       const x1=x(lo), x2=x(hi);
-      g+=round1({x:x1,y:ay,w:Math.max(4,x2-x1),h:8,r:4,fill:COL.sage});
+      if(foundV!=null && airV!=null){
+        g+=round1({x:x1,y:ay,w:Math.max(4,x2-x1),h:8,r:4,fill:COL.sage});
+      } else {
+        const mx=foundV!=null?x1:x2;
+        g+=round1({x:mx-2,y:ay-1,w:4,h:10,r:2,fill:COL.sage});   // lone measured edge as a marker
+        g+=`<text x="${foundV!=null?W-PAD:PAD}" y="${ay-6}" fill="${COL.dim}" font-size="9" text-anchor="${foundV!=null?'end':'start'}" font-family="${FONT}">${foundV!=null?'top end not measured':'low end not measured'}</text>`;
+      }
       if(foundV!=null) g+=`<text x="${x1}" y="${ay-6}" fill="${COL.stone}" font-size="11.5" font-weight="600" text-anchor="start" font-family="${FONT}">${Math.round(lo)} Hz</text>`;
       if(airV!=null) g+=`<text x="${x2}" y="${ay-6}" fill="${COL.stone}" font-size="11.5" font-weight="600" text-anchor="end" font-family="${FONT}">${(hi/1000).toFixed(1)} kHz</text>`;
       // ticks
@@ -218,7 +227,10 @@ ${g}${mark}
     const ell=Math.log10(2)*0.95, sf2=18*18, kf=(a,b)=>sf2*Math.exp(-((a-b)*(a-b))/(2*ell*ell));
     const K=[]; for(let i=0;i<n;i++){ K[i]=[];
       for(let j=0;j<n;j++){ let v=kf(u[i],u[j]);
-        if(i===j){ const c=pts[i].ci, sdn=(c!=null&&isFinite(c))?c/1.96:3; v+=sdn*sdn+1e-6; } K[i][j]=v; } }
+        // a point with NO measured ci (e.g. a mercy-skip) must be the LEAST trusted observation,
+        // never the tightest — the old fallback of 3 dB out-trusted every real measurement and
+        // let an unmeasured "beyond reach" point anchor the smoothed mean
+        if(i===j){ const c=pts[i].ci, sdn=(c!=null&&isFinite(c))?c/1.96:25; v+=sdn*sdn+1e-6; } K[i][j]=v; } }
     const Lm=chol(K); if(!Lm) return null; const al=cholSolve(Lm,yv);
     return us.map(uq=>{ const ks=u.map(ui=>kf(uq,ui));
       let m=0; for(let i=0;i<n;i++) m+=ks[i]*al[i];
@@ -229,7 +241,13 @@ ${g}${mark}
   function renderCurve(el, data){
     const W=372, H=240, L=38, R=20, T=56, B=34;
     const curve=(data.curve||[]).filter(p=>p&&isFinite(p.rel));
-    const fmin=125, fmax=16000, yMax=6, yMin=-54;
+    // the y floor follows the DATA: a fixed −54 clamp drew a −84 dB notch at −54 and collapsed
+    // the uncertainty band to zero height exactly where uncertainty was largest
+    const allRel=curve.map(p=>p.rel)
+      .concat(((data.ears&&data.ears.R)||[]).filter(p=>p&&isFinite(p.rel)).map(p=>p.rel))
+      .concat(((data.ears&&data.ears.L)||[]).filter(p=>p&&isFinite(p.rel)).map(p=>p.rel));
+    const minRel=allRel.length?Math.min.apply(null,allRel):0;
+    const fmin=125, fmax=16000, yMax=6, yMin=Math.min(-54, Math.floor((minRel-8)/10)*10);
     const x=f=>L + (Math.log10(Math.max(fmin,Math.min(fmax,f))/fmin)/Math.log10(fmax/fmin))*(W-L-R);
     const y=v=>T + (yMax-Math.max(yMin,Math.min(yMax,v)))/(yMax-yMin)*(H-T-B);
     const uMin=Math.log10(fmin), uMax=Math.log10(fmax);
@@ -238,8 +256,9 @@ ${g}${mark}
     // centered title block (eyebrow above device name — no overlap with the axis note or legend)
     g+=`<text x="${W/2}" y="19" fill="${COL.muted}" font-size="9.5" letter-spacing="2" text-anchor="middle" font-family="${FONT}">HEARING + HEADPHONE CURVE</text>`;
     g+=`<text x="${W/2}" y="38" fill="${COL.gold}" font-size="14.5" font-weight="600" text-anchor="middle" font-family="${FONT}">${esc(data.device||'')}</text>`;
-    // dB grid + labels
-    [0,-20,-40].forEach(v=>{
+    // dB grid + labels — every 20 dB down to the (data-derived) floor
+    const gridVals=[]; for(let v=0; v>=yMin+6; v-=20) gridVals.push(v);
+    gridVals.forEach(v=>{
       g+=`<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="${COL.line}" opacity="${v===0?0.9:0.4}"${v===0?' stroke-dasharray="4 4"':''}/>`;
       g+=`<text x="${L-6}" y="${y(v)+3}" fill="${COL.dim}" font-size="9" text-anchor="end" font-family="${FONT}">${v}</text>`;
     });
@@ -251,10 +270,13 @@ ${g}${mark}
     // smooth GP mean + ±1σ band over the data's own frequency span; fall back to a straight polyline
     const drawSeries=(c,stroke,byVal)=>{
       if(!c.length) return ''; let s='';
-      if(c.length>=3){
-        const uu=c.map(p=>Math.log10(p.f)), uLo=Math.min.apply(null,uu), uHi=Math.max.apply(null,uu);
+      // censored points (pinned at a rail / mercy-skipped) carry no measurement — they are drawn
+      // as open glyphs but EXCLUDED from the GP fit, so the band widens honestly where data ran out
+      const fit=c.filter(p=>!p.cens);
+      if(fit.length>=3){
+        const uu=fit.map(p=>Math.log10(p.f)), uLo=Math.min.apply(null,uu), uHi=Math.max.apply(null,uu);
         const N=64, us=[]; for(let i=0;i<N;i++) us.push(uLo+(uHi-uLo)*i/(N-1));
-        const gp=gpSmooth(c,us);
+        const gp=gpSmooth(fit,us);
         if(gp){
           const up=us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(gp[i].mean+gp[i].sd).toFixed(1)}`);
           const dn=us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(gp[i].mean-gp[i].sd).toFixed(1)}`).reverse();
@@ -308,5 +330,5 @@ ${g}${mark}
     }
   };
 
-  window.SR_FP={ render, renderCurve, toPNG, SAMPLE, META };   // META exported so the profile list and the card share one vocabulary
+  window.SR_FP={ render, renderCurve, toPNG, SAMPLE, META, rankWord };   // META + rankWord exported: the list and the end screen share ONE vocabulary and ONE rank ladder
 })();

@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v44";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v45";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -19,9 +19,19 @@
   const LY = 95, RAD = 150;
   let ctx, master, reverb, hallSmall, hallMed, hallLarge, _noise;
 
+  const liveStim=new Set();   // every scheduled source registers here so killStim can truly end a trial
   function initAudio(){
     if(ctx) return;
     ctx = new (window.AudioContext||window.webkitAudioContext)();
+    // register every source at creation: stop() is one-shot per spec (all primitives schedule it
+    // at creation), so a silenced trial's leftovers are removed by disconnect() instead. Without
+    // this, killStim only muted the master bus — the next trial re-anchored master.gain and
+    // UN-MUTED the previous interval's scheduled tail, which landed asymmetrically on interval A
+    // (+~2 dB extra masking in the Noise room, a leftover near-threshold tone in the audiogram).
+    ['createOscillator','createBufferSource'].forEach(k=>{
+      const orig=ctx[k].bind(ctx);
+      ctx[k]=function(){ const n=orig(); liveStim.add(n); n.addEventListener('ended',()=>liveStim.delete(n)); return n; };
+    });
     const comp = ctx.createDynamicsCompressor();
     // limiter-style safety only: signal below ~-6 dBFS passes linearly, so the level
     // differences the lab rooms measure (Shade, Silk, Silence…) reach the ears intact
@@ -150,7 +160,10 @@
     const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=2200;
     // 5 ms attack (not an instantaneous onset) so a faint tick isn't a broadband CLICK you can
     // detect far below where the intended level threshold sits.
-    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.005); g.gain.exponentialRampToValueAtTime(.0005,when+.055);
+    // decay target is RELATIVE to the level: the absolute .0005 floor inverted the envelope for
+    // gain<.0005 (auto-widened trials for sharp ears), pinning the presented peak +up to 28 dB
+    // above the level the engine believed it was testing
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(gain,when+.005); g.gain.exponentialRampToValueAtTime(Math.max(gain*0.0025,1e-7),when+.055);
     hp.connect(g); g.connect(master);
     const o=ctx.createOscillator(); o.type='square'; o.frequency.value=3000; o.connect(hp); o.start(when); o.stop(when+.07);
   }
@@ -196,14 +209,17 @@
     nb.connect(bp); bp.connect(g); g.connect(master); nb.start(t); nb.stop(t+dur+.05);
   }
   function snapHit(when,attack){
+    // decays end at FIXED absolute times, not attack+Δ: sliding the decay with the attack made a
+    // slower attack also a LONGER (≈1–2 dB louder) event — a loudness anti-cue on the easy trials
+    // that pinned the lapse dimension when a listener followed level instead of edge sharpness
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.8,when+attack);
-    g.gain.exponentialRampToValueAtTime(.001,when+attack+.35); g.connect(master);
+    g.gain.exponentialRampToValueAtTime(.001,when+.36); g.connect(master);
     const o=ctx.createOscillator(); o.type='sine';
     o.frequency.setValueAtTime(180,when); o.frequency.exponentialRampToValueAtTime(60,when+.25);
     o.connect(g); o.start(when); o.stop(when+.7);
     const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(0.3);
     const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=3000; bp.Q.value=.7;
-    const ng=ctx.createGain(); ng.gain.setValueAtTime(0,when); ng.gain.linearRampToValueAtTime(.45,when+attack); ng.gain.exponentialRampToValueAtTime(.0008,when+attack+.07);
+    const ng=ctx.createGain(); ng.gain.setValueAtTime(0,when); ng.gain.linearRampToValueAtTime(.45,when+attack); ng.gain.exponentialRampToValueAtTime(.0008,when+.12);
     nb.connect(bp); bp.connect(ng); ng.connect(master); nb.start(when); nb.stop(when+.25);
   }
   function duetChord(when,wide,detuneCents,panAmt){
@@ -288,10 +304,12 @@
     const end = when + .7 + a*1.3;                     // more bloom = longer ring-on (stays inside the slot)
     const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(.85,when+.02);
     g.gain.setValueAtTime(.85,when+.2);
-    if(a>0.001){
-      g.gain.linearRampToValueAtTime(.85-a*0.6, when+.42);    // sag...
-      g.gain.linearRampToValueAtTime(.85-a*0.25, when+.62);   // ...partial recovery (the wobble)
-    }
+    // BOTH notes share the same envelope timeline — the old `if(a>0.001)` gate gave the altered
+    // note a 0.42 s longer sustain even at vanishing amt, a FIXED structural cue that made the
+    // room trivially easy below its intended range. Now every bloom cue (sag depth, overtones,
+    // ring-on length) scales continuously with amt and vanishes as amt → 0.
+    g.gain.linearRampToValueAtTime(.85-a*0.6, when+.42);    // sag… (flat hold when a=0)
+    g.gain.linearRampToValueAtTime(.85-a*0.25, when+.62);   // …partial recovery (the wobble)
     g.gain.exponentialRampToValueAtTime(.001, end);
     g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=55*rvF; o.connect(g); o.start(when); o.stop(end+.1);
@@ -340,11 +358,22 @@
     for(let i=0;i<n;i++){const x=i/(n-1)*2-1; c[i]=k?Math.tanh(k*x)/Math.tanh(k):x;}
     return c;
   }
+  // one 55 Hz-period probe matching the REAL Composure chord (3 band-limited saws at .33): the
+  // trim must be calibrated on a signal with the chord's own crest factor. Calibrating on a sine
+  // (crest 1.41 vs the chord's ~2.8) under-corrected, leaving the driven interval up to ~1.9 dB
+  // LOUDER than the clean one over the top half of the range — a loudness cue wearing a
+  // distortion label, in a room that asks "which stayed clean?".
+  const DRIVE_PROBE=(()=>{ const N=1024, H=24, p=new Float32Array(N);
+    for(let i=0;i<N;i++){ const t=i/N; let x=0;
+      for(const m of [2,3,4])                    // 110/165/220 Hz = 2/3/4 × the 55 Hz common period
+        for(let h=1;h<=H;h++) x+=.33*(2/Math.PI)*Math.sin(2*Math.PI*m*h*t)/h;
+      p[i]=x; }
+    return p; })();
   function driveTrim(k){
     // soft-clipping raises RMS at equal peak — trim the driven chord back to the clean level
     if(!k) return 1;
     let se=0, ce=0;
-    for(let i=0;i<512;i++){const x=.6*Math.sin(2*Math.PI*i/512); const y=Math.tanh(k*x)/Math.tanh(k); se+=x*x; ce+=y*y;}
+    for(let i=0;i<DRIVE_PROBE.length;i++){const x=DRIVE_PROBE[i]; const y=Math.tanh(k*x)/Math.tanh(k); se+=x*x; ce+=y*y;}
     return Math.sqrt(se/ce);
   }
   function composureChord(when,drive){
@@ -572,7 +601,7 @@
   const ADAPT={
     Foundation:{type:'D', q:'Which held a tone?', dur:1.4, start:40, floor:16, ceil:63, hard:.90, easy:1.15, log:true, betterHigh:false, anchors:[50,20], physLo:16, fmt:v=>Math.round(v)+' Hz',
       play:(lv,t,on)=>{marker(t); if(on) subTone(lv, t+.12, 1.15, lv<45?.85:.7);}},
-    Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:13000, floor:8000, ceil:20000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[10000,17000], physHi:20500, fmt:v=>(v/1000).toFixed(1)+' kHz',
+    Air:{type:'D', q:'Which held a shimmer?', dur:1.1, start:13000, floor:8000, ceil:20000, hard:1.08, easy:.88, log:true, betterHigh:true, anchors:[10000,17000], physLo:7000, physHi:20500, fmt:v=>(v/1000).toFixed(1)+' kHz',
       play:(lv,t,on)=>{marker(t); if(on) shimmerBurst(lv, t+.15, .8, .16);}},
     Whisper:{type:'D', q:'Which pad hid a tick?', dur:1.7, start:.04, floor:.002, ceil:.2, hard:.78, easy:1.5, log:true, betterHigh:false, anchors:[.04,.008], physLo:0.00002, fmt:v=>Math.round(20*Math.log10(.2/v))+' dB under',
       play:(lv,t,on)=>{pad(t,1.6,.2); if(on) tick(t+.5+Math.random()*.7, lv);}},
@@ -604,14 +633,14 @@
       play:(lv,t,alt)=>pulsePattern(t, 3, alt?lv:0)},
     Shade:{type:'X', q:'Which was louder?', dur:.95, answerAltered:true, start:1.5, floor:.3, ceil:4, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[3,.5], physLo:0.25, fmt:v=>v.toFixed(2)+' dB',
       play:(lv,t,alt)=>dynNote(t, alt?lv:0)},
-    Centre:{type:'X', q:'Which sat dead centre?', dur:1.5, answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], physLo:0.02, fmt:v=>Math.round(v*100)+'% off',
+    Centre:{type:'X', q:'Which sat dead centre?', dur:1.5, answerAltered:false, start:.25, floor:.03, ceil:.5, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.28,.05], physLo:0.02, physHi:1.0, fmt:v=>Math.round(v*100)+'% off',
       play:(lv,t,alt)=>centreNote(t, alt?(Math.random()<.5?1:-1)*lv:0)},
-    Duet:{type:'X', q:'Which felt wider?', dur:2.0, answerAltered:true, start:.8, floor:.1, ceil:1, hard:.72, easy:1.5, log:true, betterHigh:false, anchors:[.9,.15], physLo:0.04, fmt:v=>'width '+Math.round(v*100)+'%',
+    Duet:{type:'X', q:'Which felt wider?', dur:2.0, answerAltered:true, start:.8, floor:.1, ceil:1, hard:.72, easy:1.5, log:true, betterHigh:false, anchors:[.9,.15], physLo:0.04, physHi:1.111, fmt:v=>'width '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>duetChord(t, alt, 12*lv, .9*lv)},
     Echo:{type:'X', q:'Which wall was further?', dur:.85, answerAltered:true, start:.1, floor:.012, ceil:.3, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[.12,.02], physLo:0.006, fmt:v=>'+'+Math.round(v*1000)+' ms',
       play:(lv,t,alt)=>clickEcho(t, .12+(alt?lv:0))},
     // newly-adaptive 2AFC rooms
-    Flyby:{type:'X', q:'Which passed closer?', answerAltered:true, start:2.2, floor:1.06, ceil:6, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[3.2,1.2], physLo:1.0, fmt:v=>v.toFixed(1)+'× gap', dur:2.6,
+    Flyby:{type:'X', q:'Which passed closer?', answerAltered:true, start:2.2, floor:1.06, ceil:6, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[3.2,1.2], physLo:1.0, physHi:5.5, fmt:v=>v.toFixed(1)+'× gap', dur:2.6,
       play:(lv,t,alt)=>{const far=5.5; flyby(t, Math.random()<.5?1:-1, alt?far/lv:far, 2.4);}},
     Halls:{type:'X', q:'Which room was bigger?', answerAltered:true, start:.55, floor:.12, ceil:1.1, hard:.9, easy:1.4, log:true, betterHigh:false, anchors:[.9,.3], physLo:0.05, fmt:v=>Math.round(v*100)+'% larger', dur:2.7,
       play:(lv,t,alt)=>hallPluckSec(t, alt?1.1*(1+lv):1.1)},
@@ -685,7 +714,16 @@
   // silence the currently-playing A/B stimulus the instant the listener answers (stop-on-pick).
   // Safe because every trial re-anchors master.gain at its start (roveTrial / agTrial), so this
   // only mutes the leftover tail; it never leaves the output stuck at zero.
-  function killStim(){ if(master){ const now=ctx.currentTime; master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(master.gain.value, now); master.gain.linearRampToValueAtTime(0, now+0.035); } }
+  function killStim(){
+    if(!master) return;
+    const now=ctx.currentTime;
+    master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(master.gain.value, now); master.gain.linearRampToValueAtTime(0, now+0.035);
+    // then actually END the trial: disconnect every source scheduled so far, AFTER the 35 ms bus
+    // ramp has reached silence (disconnect is instantaneous — doing it mid-ramp would click).
+    // New sources created by the next trial are not in this snapshot.
+    const snap=[...liveStim]; liveStim.clear();
+    setTimeout(()=>{ snap.forEach(n=>{ try{n.disconnect();}catch(e){} }); }, 50);
+  }
 
   const $=id=>document.getElementById(id);
   const scr={intro:$('intro'),cal:$('cal'),select:$('select'),device:$('device'),game:$('game'),end:$('end'),compare:$('compare'),curve:$('curve'),profiles:$('profiles'),pfview:$('pfview'),methods:$('methods')};
@@ -861,8 +899,19 @@
         return;
       }
       const lp=db.devices[localName]; sum.merged++; if(!Array.isArray(lp.history)) lp.history=[];
-      const seen=new Set(lp.history.map(h=>h.runId+'|'+h.at));
-      (ip.history||[]).forEach(h=>{ const key=h.runId+'|'+h.at; if(!seen.has(key)){ lp.history.push(h); seen.add(key); sum.readings+=Object.keys(h.rooms||{}).length; } });
+      // dedup by runId ALONE: `at` is a last-write timestamp, not identity — keying on runId+at let
+      // two backups of the SAME run import as two "runs", so the repeatability panel compared a
+      // reading against itself and reported ±0 ("perfect"). Same occasion now MERGES.
+      const byRun={}; lp.history.forEach(h=>{ if(h.runId) byRun[h.runId]=h; });
+      (ip.history||[]).forEach(h=>{
+        const ex=h.runId && byRun[h.runId];
+        if(!ex){ lp.history.push(h); if(h.runId) byRun[h.runId]=h; sum.readings+=Object.keys(h.rooms||{}).length; return; }
+        const newer=(h.at||'')>(ex.at||'');
+        if(!ex.rooms) ex.rooms={};
+        Object.keys(h.rooms||{}).forEach(t=>{ if(newer || ex.rooms[t]==null) ex.rooms[t]=h.rooms[t]; });
+        if(h.curve && (newer || !ex.curve)){ ex.curve=h.curve; ex.curveMethod=h.curveMethod; }
+        if(newer) ex.at=h.at;
+      });
       lp.history.sort((a,b)=>(a.at||'').localeCompare(b.at||''));
       projectFromHistory(lp);
       if(ip.createdAt && (!lp.createdAt || ip.createdAt<lp.createdAt)) lp.createdAt=ip.createdAt;
@@ -1161,6 +1210,14 @@
     const i=order[oi], tag=CH[i].tag;
     if(chScore[i]!=null){ score-=chScore[i]; }
     chScore[i]=0; delete chPct[i]; delete roomThr[tag]; delete roomVal[tag];
+    // un-persist the discarded reading too: recordRoom saves the instant a room finishes, so
+    // without this a Redo-then-skip left the thrown-away number in the profile card, the
+    // repeatability panel and the export — forever
+    if(device && db.devices[device]){
+      const d=db.devices[device];
+      const e=(d.history||[]).find(h=>h.runId===currentRunId);
+      if(e && e.rooms && e.rooms[tag]!=null){ delete e.rooms[tag]; projectFromHistory(d); persistFull(); }
+    }
     $('score').textContent=score;
     hideCheckpointBtns();
     loadChapter();
@@ -1207,6 +1264,7 @@
   function setChoicesEnabled(on){[...$('choices').children].forEach(b=>b.disabled=!on);}
 
   function setupStair(c){
+    $('precision').querySelector('.plabel span').textContent='Precision';
     const A=ADAPT[c.tag];
     const eng=window.SR_ZEST.forRoom(A);
     // one unscored familiarisation trial at an obvious level first: a listener still learning
@@ -1310,6 +1368,7 @@
   function setupCount(c){
     cnt={ability:3.4, n:3, prevN:0, best:3, trial:0, minR:4, maxR:10, wrong:0, done:false, history:[]};   // maxR 10: the 2-hit credit rule needs room to prove a level
     showPrecisionUI();
+    $('precision').querySelector('.plabel span').textContent='Progress';   // Crowd's meter tracks trials done, not certainty — say so
     countTrial();
   }
   // pick the next ensemble size near the running ability, jittered ±1 so the count is NEVER a
@@ -1420,7 +1479,7 @@
     initAudio(); ctx.resume(); stopVoices(); rvF=1; if(master) master.gain.setValueAtTime(0.85, ctx.currentTime);
     if(!device) device=suggestName();
     if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
-    ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}};
+    ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}, caTot:{R:0,L:0,B:0}};
     $('cvsave').style.display='none';
     show('curve'); agCal();
   }
@@ -1588,7 +1647,7 @@
   }
   function agStartRun(mode){
     ag.mode=mode; ag.ears = mode==='perear'?['R','L']:['B']; ag.ei=0;
-    ag.pts={R:{},L:{},B:{}}; ag.ptsMeta={R:{},L:{},B:{}}; ag.faTot={R:0,L:0,B:0}; ag.phase='run';
+    ag.pts={R:{},L:{},B:{}}; ag.ptsMeta={R:{},L:{},B:{}}; ag.faTot={R:0,L:0,B:0}; ag.caTot={R:0,L:0,B:0}; ag.phase='run';
     $('cvwrap').style.display='block'; agLiveDraw();       // reveal the curve canvas; it fills in as we go
     agEar();
   }
@@ -1667,7 +1726,7 @@
     // ~20% SILENT catch trials — never the first of a frequency (need one real reference), capped —
     // so "I heard nothing" is a normal, expected answer and false alarms can be measured.
     ag.catch = !ag.warm && ag.trial>0 && (ag.catchCount||0)<ag.catchCap && Math.random()<0.2;
-    if(ag.catch) ag.catchCount=(ag.catchCount||0)+1;
+    if(ag.catch){ ag.catchCount=(ag.catchCount||0)+1; if(ag.caTot) ag.caTot[ag.curEar]=(ag.caTot[ag.curEar]||0)+1; }   // presented-catch tally → FA is judged as a RATE
     const f=ag.plan[ag.fi];
     const box=$('cvChoices'); box.innerHTML='';
     const hear=document.createElement('button'); hear.className='choice'; hear.innerHTML='I hear it<small>tap the moment you do</small>'; hear.onclick=()=>agAnswer('hear');
@@ -1709,8 +1768,15 @@
   }
   function agAnswer(ans){
     if(!ag||ag.phase!=='run')return;
+    clearTimers();                         // kill the pending enable-timers too: a stale 'Nothing'-enable
+                                           // re-armed a disabled button after a late 'I hear it' tap and
+                                           // invited a contradictory second record into the wrong slot
     killStim();                            // stop the tone the instant you answer
-    [...$('cvChoices').querySelectorAll('.choice')].forEach(b=>b.disabled=true);
+    // disable EVERY control including Replay: a Replay tapped in the post-lock gap re-fired the
+    // finished trial while ag.fi had already advanced, writing the old frequency's threshold
+    // into the NEXT frequency's slot (tens of dB wrong) and skipping a point — silently
+    ag.replay=null;
+    [...$('cvChoices').querySelectorAll('button')].forEach(b=>b.disabled=true);
     const heard = ans==='hear';
     if(ag.warm){                             // practice tone: teaches the window, never recorded
       ag.warm=false;
@@ -1737,10 +1803,14 @@
       const f=ag.plan[ag.fi];
       const lvl=ag.eng.levelOf(st.mean);
       ag.pts[ag.curEar][f]=lvl; ag.prevThr=lvl;
-      const loL=ag.eng.levelOf(st.ci[0]), hiL=ag.eng.levelOf(st.ci[1]);
-      // cens: the estimate is pinned at the loudest we can play — the TRUE threshold may be worse
-      // than recorded; the card draws these as open "beyond reach" dots, never confident ones
-      ag.ptsMeta[ag.curEar][f]={ ci: Math.abs(hiL-loL)/2, cens: lvl>=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10)-3 };   // Ψ CI half-width → GP noise + honest band
+      // CI half-width from the UNCLAMPED posterior: when a CI straddles a rail, clamping both
+      // endpoints to the rail collapsed the width to ~0 — the least-certain points entered the
+      // GP as the most trusted and the band drew tightest exactly where the data ran out.
+      const loL=ag.eng.levelOfRaw(st.ci[0]), hiL=ag.eng.levelOfRaw(st.ci[1]);
+      // cens is SYMMETRIC: pinned at the loud rail (can't play louder) OR the quiet rail (can't
+      // play quieter) — both mean "the true threshold lies beyond what this chain can measure"
+      const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
+      ag.ptsMeta[ag.curEar][f]={ ci: Math.abs(hiL-loL)/2, cens: lvl>=pHi-3 || lvl<=pLo+3 };
       agLiveDraw();                                        // redraw the curve as each point locks
       agNextPoint(); return;
     }
@@ -1802,7 +1872,10 @@
     $('cvwrap').style.display='block'; $('cvsave').style.display='inline-block';
     if(ag.mode==='perear'){
       const R=agBuildCurve('R'), L=agBuildCurve('L'), asym=agAsym(R,L);
-      const faHi=(ag.faTot.R+ag.faTot.L)>=4;                // click-happy on silent trials → don't over-warn
+      // gate on the false-alarm RATE, not a count: per-ear mode presents ~2× the silent trials,
+      // so a fixed count over-flagged exactly the mode whose job is finding an asymmetry
+      const caShown=(ag.caTot?ag.caTot.R+ag.caTot.L:0);
+      const faHi=caShown>0 && (ag.faTot.R+ag.faTot.L)/caShown>=0.25;
       window.SR_FP.renderCurve($('cvcard'), { device, ears:{R,L} });
       // REVIEW: medical framing — screening only, never a diagnosis, never names a condition.
       let note;
@@ -1827,7 +1900,7 @@
     } else {
       const curve=agBuildCurve('B');
       window.SR_FP.renderCurve($('cvcard'), { device, curve });
-      const faHiB=(ag.faTot.B||0)>=3;   // click-happy on silent trials → flag the reading, same as per-ear
+      const faHiB=(ag.caTot&&ag.caTot.B>0) ? (ag.faTot.B||0)/ag.caTot.B>=0.25 : false;   // same RATE gate as per-ear
       $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.';
       await loadDB(); upsertCurve(device, curve, 'yesno'); await saveDB();
     }
@@ -1839,6 +1912,7 @@
   function listenO(){$('fieldwrapO').classList.remove('listening'); void $('fieldwrapO').offsetWidth; $('fieldwrapO').classList.add('listening');}
 
   function setupSpatial(c){
+    $('precision').querySelector('.plabel span').textContent='Precision';
     const S=SPATIAL[c.tag];
     // difficulty CYCLES beyond the ladder instead of pinning at the hardest entry. Pinning meant
     // every Sharpen round ran at max eccentricity/speed, whose errors are intrinsically larger —
@@ -1850,7 +1924,7 @@
     spatialRound();
   }
   function spatialRound(){
-    guessLocked=false; sp.locked=false;
+    guessLocked=false; sp.locked=false; sp.canAnswer=true;   // sweep sets this false until the glide lands
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
     setReplay(true); roveTrial();
     kbActive=false; kbAz=0; kbRad = sp.mode==='orbit'?112 : sp.mode==='depth'?90 : 110;
@@ -1865,12 +1939,15 @@
       const spd=S.spd[Math.min(r,S.spd.length-1)];
       const from=jit((Math.random()<.5?-1:1)*80,6), to=jit((Math.random()<.5?-1:1)*55,10), key=rndTimbre();
       sp.target={az:to,dist:1.6,mode:'sweep'};
-      const build=()=>{stopVoices(); const v=makeVoice(key,from,1.6,0.55); voices=[v];
+      const build=()=>{stopVoices(); sp.canAnswer=false;   // no taps until the glide has LANDED —
+        // the scored quantity is where it stops, which mid-glide the listener cannot yet know
+        const v=makeVoice(key,from,1.6,0.55); voices=[v];
         choiceTimers.push(setTimeout(()=>{ if(!voices[0])return; v.loop(); v.glide(from,to,spd);
           // silence shortly after landing — left looping parked at the endpoint, this room was
           // just static localization (wait, then point at the parked sound). Now you mark where
           // the MOTION ended, which is what "track the mover" claims to test.
-          choiceTimers.push(setTimeout(()=>{ if(voices[0]===v && !guessLocked){ v.stop(); $('status').textContent='Gone. Tap where it stopped.'; } },(spd+0.35)*1000));
+          choiceTimers.push(setTimeout(()=>{ sp.canAnswer=true;
+            if(voices[0]===v && !guessLocked){ v.stop(); $('status').textContent='Gone. Tap where it stopped.'; } },(spd+0.35)*1000));
         },200));};
       replayFn=()=>{listen(); build();}; $('status').textContent='It moves…'; listen(); build();
     } else if(c.mode==='depth'){
@@ -1919,7 +1996,7 @@
   function svgPoint(e,svg,vb){ const r=svg.getBoundingClientRect(); return {x:((e.clientX-r.left)/r.width)*vb.w+vb.x, y:((e.clientY-r.top)/r.height)*vb.h+vb.y}; }
   const angErr=(a,b)=>Math.abs(a-b);
   function onTap(e,isOrbit){
-    if(!sp || guessLocked) return; e.preventDefault();
+    if(!sp || guessLocked || sp.canAnswer===false) return; e.preventDefault();
     if(isOrbit){
       if(orbitInt) return;
       const {x,y}=svgPoint(e,$('fieldO'),{x:-160,y:-160,w:320,h:320});
@@ -1946,7 +2023,7 @@
     }
   }
   function onKeydown(e){
-    if(!sp || guessLocked || sp._finished || orbitInt) return;
+    if(!sp || guessLocked || sp._finished || orbitInt || sp.canAnswer===false) return;
     const isOrbit=sp.mode==='orbit', step=4;
     if(e.key==='ArrowLeft') kbAz = isOrbit ? (kbAz-step+360)%360 : clamp(kbAz-step,-90,90);
     else if(e.key==='ArrowRight') kbAz = isOrbit ? (kbAz+step)%360 : clamp(kbAz+step,-90,90);
@@ -1989,7 +2066,7 @@
     } else {
       msg = err<12?pick(contentOf(sp.c.tag).hit):err<32?'Close.':pick(contentOf(sp.c.tag).miss);
     }
-    sp.errs.push(effErr);
+    sp.errs.push({eff:effErr, raw:err});   // eff scores; raw feeds the spread stats (see acuityStats)
     $('status').innerHTML=`${msg} <span style="color:var(--muted)">· ${Math.round(err)}° off</span>`;
     afterSpatialRound();
   }
@@ -2005,27 +2082,38 @@
     const we=wrapErr(az,sp.target.az);
     const mirrorAz=((180-sp.target.az)%360+360)%360;
     let effErr=we, msg;
-    if(we>50 && wrapErr(az,mirrorAz)<20){ effErr=45; msg='Mirrored — the classic front/back flip.'; }
+    // a mirror miss keeps its MEASUREMENT (how tight the mirror was) plus a penalty — the old
+    // constant 45 made every mirroring listener identical, collapsed the MAD to zero, and read
+    // "100% locked in" for a run of nothing but front/back flips
+    if(we>50 && wrapErr(az,mirrorAz)<20){ effErr=wrapErr(az,mirrorAz)+35; msg='Mirrored — the classic front/back flip.'; }
     else msg = we<16?pick(contentOf('Orbit').hit):we<40?'In the area.':pick(contentOf('Orbit').miss);
-    sp.errs.push(effErr);
+    sp.errs.push({eff:effErr, raw:we});
     $('status').innerHTML=`${msg} <span style="color:var(--muted)">· ${Math.round(we)}° off</span>`;
     afterSpatialRound();
   }
   function acuityStats(){
-    const e=sp.errs.slice().sort((a,b)=>a-b);
-    const med = e.length%2 ? e[(e.length-1)/2] : (e[e.length/2-1]+e[e.length/2])/2;
-    const mean=e.reduce((a,b)=>a+b,0)/e.length;
-    const varr=e.reduce((a,b)=>a+(b-mean)*(b-mean),0)/e.length;
-    const se=Math.sqrt(varr/e.length);
-    // confidence reflects how CONSISTENT your taps are — not how many rounds you've done (the old
-    // formula multiplied by rounds/maxRounds, so it always climbed). Use the median absolute
-    // deviation about the median (robust to one stray miss) vs the room's reference acuity:
-    // erratic taps stay low even at the last round; tight taps rise early. It can go DOWN.
-    const dev=e.map(v=>Math.abs(v-med)).sort((a,b)=>a-b);
+    // SCORES come from eff (measured error + any penalty); SPREAD statistics come from raw
+    // measured errors ONLY. Feeding penalty constants into the spread collapsed the MAD to zero,
+    // so a run of nothing-but-wrong answers read "100% locked in", auto-stopped at the earliest
+    // legal round, and hid the Sharpen button — maximum confidence for the worst possible run.
+    const eff=sp.errs.map(x=>typeof x==='number'?x:x.eff);
+    const raw=sp.errs.map(x=>typeof x==='number'?x:x.raw);
+    const pen=sp.errs.filter(x=>typeof x!=='number' && x.eff!==x.raw).length;
+    const medOf=a=>{const s=a.slice().sort((p,q)=>p-q); return s.length%2?s[(s.length-1)/2]:(s[s.length/2-1]+s[s.length/2])/2;};
+    const med=medOf(eff);
+    const mean=eff.reduce((a,b)=>a+b,0)/eff.length;
+    const rmean=raw.reduce((a,b)=>a+b,0)/raw.length;
+    const varr=raw.reduce((a,b)=>a+(b-rmean)*(b-rmean),0)/raw.length;
+    const se=Math.sqrt(varr/raw.length);
+    // confidence reflects how CONSISTENT your taps are — MAD about the median of the RAW errors
+    // vs the room's reference acuity: erratic taps stay low even at the last round. It can go DOWN.
+    const rmed=medOf(raw);
+    const dev=raw.map(v=>Math.abs(v-rmed)).sort((a,b)=>a-b);
     const mad = dev.length%2 ? dev[(dev.length-1)/2] : (dev[dev.length/2-1]+dev[dev.length/2])/2;
     let conf = clamp(1 - mad/(sp.S.ref*1.3), 0, 1);
-    if(e.length < sp.minR) conf *= e.length/sp.minR;   // a couple of taps can't be fully certain yet
-    return {med,mean,se,mad,conf};
+    if(raw.length < sp.minR) conf *= raw.length/sp.minR;   // a couple of taps can't be fully certain yet
+    if(pen>=Math.ceil(sp.errs.length/2)) conf=Math.min(conf,0.6);   // mostly-penalised runs are never "locked in"
+    return {med,mean,se,mad,conf,pen};
   }
   function afterSpatialRound(){
     sp.round++;
@@ -2034,8 +2122,9 @@
     // never auto-finish before the room's whole difficulty ladder has been presented — stopping
     // early meant a confident listener was scored on the EASY eccentricities/speeds only, while a
     // wobblier one also faced the hard end: same ability, different numbers.
-    const ladder=(sp.S.ecc||sp.S.spd||sp.S.spread||sp.S.dur||[]).length;
-    const enough = sp.round>=Math.max(sp.minR, ladder) && a.se < sp.S.ref*0.6;
+    // sp.diffLen (ladder length, or maxR for r-derived rooms like Depth) — Depth had no array, so
+    // its ladder floor was 0 and it could auto-finish having shown only the easy eccentricities
+    const enough = sp.round>=Math.max(sp.minR, sp.diffLen) && a.se < sp.S.ref*0.6;
     // normal flow auto-finishes when confident; a Sharpen run continues to maxR
     if(sp.round>=sp.maxR || (!sp.sharpen && enough)){ choiceTimers.push(setTimeout(finishSpatial, 700)); return; }
     choiceTimers.push(setTimeout(()=>spatialRound(), 820));
@@ -2050,7 +2139,7 @@
     $('status').innerHTML=`Your acuity: <span class="pts">${Math.round(a.med)}°</span> · +${pct} <span style="color:var(--muted)">· ${Math.round(a.conf*100)}% locked in</span>`;
     setPrecision(a.conf, `${Math.round(a.med)}° · ${sp.round} rounds`);
     showLearn(); appendTier(tierLine(sp.c.tag,pct));
-    showResultBtns(a.conf < 0.9);    // offer Sharpen unless already highly confident (it extends rounds)
+    showResultBtns(a.conf < 0.9 || a.pen > 0);    // Sharpen stays available whenever any round was penalised
     advanceUI();
   }
 
@@ -2173,12 +2262,17 @@
         + (skipped?` <span style="color:var(--muted)">· ${skipped} skipped</span>`:'')
         + (curveDone?` <span style="color:var(--muted)">· curve measured</span>`:'')
       : (curveDone ? 'Hearing curve measured' : 'nothing locked in this run');
+    // ONE rank ladder: the card's rankWord is the single source (the end screen's own 85% top cut
+    // disagreed with the card's 82% — same screen, two verdicts for a 83% run)
     let rank,verdict;
     if(!nDone && !curveDone){rank='No reading yet'; verdict='Not a failure — an honest instrument declining to guess. A quieter spot, a touch more volume, or a Replay before answering usually unlocks it.';}
-    else if(pct>=.85){rank='Golden ear'; verdict=`Every claim verified on the ${device} — holography, slam, air, silk, the lot. The reviews weren’t poetry after all.`;}
-    else if(pct>=.6){rank='Tuned in'; verdict='Most claims verified. Whatever scored lowest below is the quality worth hunting for in your next album.';}
-    else if(pct>=.35){rank='Warming up'; verdict='Critical listening is a learned skill. Another lap and the claims start proving themselves.';}
-    else{rank='First listen'; verdict='All of this lives in the sound — it takes a few laps to hear it. Pick one group and drill it.';}
+    else{
+      rank=window.SR_FP.rankWord(pctR);
+      verdict = rank==='Golden ear' ? `Every claim verified on the ${device} — holography, slam, air, silk, the lot. The reviews weren’t poetry after all.`
+        : rank==='Tuned in' ? 'Most claims verified. Whatever scored lowest below is the quality worth hunting for in your next album.'
+        : rank==='Warming up' ? 'Critical listening is a learned skill. Another lap and the claims start proving themselves.'
+        : 'All of this lives in the sound — it takes a few laps to hear it. Pick one group and drill it.';
+    }
     $('rank').textContent=rank; $('verdict').textContent=verdict;
     // honest benchmark context + what drives the gap (hearing vs headphones)
     const where = pctR>=80 ? 'a strong run on this chain — trained-ear territory'
@@ -2278,8 +2372,10 @@
     });
     renderCompareRows(names);
   }
-  const deviceTotal=n=>{
-    const rooms=db.devices[n].rooms||{}; const ps=Object.keys(rooms).map(k=>{const v=rooms[k]; return typeof v==='number'?v:(v&&v.pct);}).filter(p=>p!=null);
+  const deviceTotal=(n,only)=>{                 // `only`: optional Set of tags — used by compare's shared-rooms mean
+    const rooms=db.devices[n].rooms||{};
+    const keys=only?Object.keys(rooms).filter(k=>only.has(k)):Object.keys(rooms);
+    const ps=keys.map(k=>{const v=rooms[k]; return typeof v==='number'?v:(v&&v.pct);}).filter(p=>p!=null);
     return ps.length ? Math.round(ps.reduce((a,b)=>a+b,0)/ps.length) : null;
   };
   function renderCompareRows(names){
@@ -2289,9 +2385,17 @@
     // overall score per device, up top
     const th=document.createElement('div'); th.className='bghead'; th.textContent='Overall'; box.appendChild(th);
     const trow=document.createElement('div'); trow.className='cmprow';
-    trow.innerHTML='<div class="rname">Average across rooms</div>';
+    // head-to-head means must cover the SAME rooms: each pair averaged over its own self-selected
+    // room set let a brand-new pair (two easy rooms) "beat" a thoroughly-tested one on zero shared
+    // rooms — inverting the app's own "difference is the headphones" claim
+    let common=null;
+    if(active.length>=2){
+      active.forEach(n=>{ const s=new Set(Object.keys(db.devices[n].rooms||{}).filter(t=>{const v=db.devices[n].rooms[t]; return v!=null&&(typeof v==='number'||v.pct!=null);}));
+        common = common ? new Set([...common].filter(t=>s.has(t))) : s; });
+    }
+    trow.innerHTML='<div class="rname">'+(common ? (common.size ? 'Average across the '+common.size+' room'+(common.size!==1?'s':'')+' all shown pairs ran' : 'No rooms in common yet — run the same rooms on each pair') : 'Average across rooms')+'</div>';
     active.forEach(n=>{
-      const tot=deviceTotal(n), col=DEVCOLORS[names.indexOf(n)%DEVCOLORS.length];
+      const tot=common ? (common.size?deviceTotal(n,common):null) : deviceTotal(n), col=DEVCOLORS[names.indexOf(n)%DEVCOLORS.length];
       const bar=document.createElement('div'); bar.className='cmpbar';
       bar.innerHTML = tot!=null ? `<div class="track"><div class="fill" style="width:${tot}%;background:${col}"></div></div><span class="pct"><b>${tot}%</b></span>` : `<div class="track"></div><span class="pct">—</span>`;
       trow.appendChild(bar);
@@ -2472,10 +2576,15 @@
   // ---- repeatability: the one claim an uncalibrated instrument can genuinely earn. Compare a
   // pair's repeated runs of the SAME room and report the agreement, unedited, against published
   // benchmarks for home/automated/booth audiometry.
-  function curvePoints(c){                     // normalise both stored curve shapes → [{ear,f,rel}]
+  function curvePoints(c){                     // normalise both stored curve shapes → [{ear,f,rel,cens}]
     const out=[];
-    if(c&&c.ears){ ['R','L'].forEach(e=>(c.ears[e]||[]).forEach(p=>{ if(isFinite(p.rel)) out.push({ear:e,f:p.f,rel:p.rel}); })); }
-    else if(Array.isArray(c)) c.forEach(p=>{ if(isFinite(p.rel)) out.push({ear:'B',f:p.f,rel:p.rel}); });
+    const grab=(arr,ear)=>{ if(!Array.isArray(arr)) return;
+      const ref=arr.find(p=>p&&p.f===1000);
+      const refCens=!!(ref&&ref.cens);       // a censored 1 kHz reference poisons every rel in this ear-run
+      arr.forEach(p=>{ if(p&&isFinite(p.rel)) out.push({ear,f:p.f,rel:p.rel,cens:!!p.cens||refCens}); });
+    };
+    if(c&&c.ears){ grab(c.ears.R,'R'); grab(c.ears.L,'L'); }
+    else if(Array.isArray(c)) grab(c,'B');
     return out;
   }
   function curveRepeat(hist){
@@ -2483,10 +2592,11 @@
     if(runs.length<2) return null;
     const diffs=[];
     for(let i=1;i<runs.length;i++){
-      const prev={}; runs[i-1].forEach(p=>{ prev[p.ear+'|'+p.f]=p.rel; });
-      // skip 1 kHz: every run is referenced to its own 1 kHz, so that point is 0 by construction
-      // and would flatter the figure
-      runs[i].forEach(p=>{ if(p.f===1000) return; const q=prev[p.ear+'|'+p.f]; if(q!=null) diffs.push(Math.abs(p.rel-q)); });
+      const prev={}; runs[i-1].forEach(p=>{ prev[p.ear+'|'+p.f]=p; });
+      // skip 1 kHz (0 by construction) AND any pair with a censored side: a point pinned at a
+      // playback rail returns the same sentinel every run — that is the CLAMP repeating, not the
+      // measurement, and it deflated the honesty panel's headline figure
+      runs[i].forEach(p=>{ if(p.f===1000||p.cens) return; const q=prev[p.ear+'|'+p.f]; if(q&&!q.cens) diffs.push(Math.abs(p.rel-q.rel)); });
     }
     if(diffs.length<3) return null;
     const mean=diffs.reduce((a,b)=>a+b,0)/diffs.length;
@@ -2512,10 +2622,17 @@
     const dp=[]; for(let i=1;i<vals.length;i++) dp.push(Math.abs(vals[i].pct-vals[i-1].pct));
     return { runs:vals.length, meanPct: dp.reduce((a,b)=>a+b,0)/dp.length };
   }
+  // one history entry per OCCASION: older profiles may carry duplicate runIds from the pre-v45
+  // import bug — collapse them (newest write wins) so no reading is ever compared to itself
+  function histByRun(dev){
+    const m={}; ((dev&&dev.history)||[]).forEach(h=>{ const k=h.runId||('t'+h.at);
+      if(!m[k] || (h.at||'')>(m[k].at||'')) m[k]=h; });
+    return Object.values(m).filter(h=>h.at).sort((a,b)=>a.at.localeCompare(b.at));
+  }
   function buildDrift(dev){
     const box=$('pvdrift'); box.innerHTML='';
     const M=(window.SR_FP&&window.SR_FP.META)||{};
-    const hist=(dev.history||[]).filter(h=>h.at).sort((a,b)=>a.at.localeCompare(b.at));
+    const hist=histByRun(dev);
     const rows=[];
     CH.forEach(c=>{ if(c.mode==='curve')return;
       const runs=hist.filter(h=>h.rooms&&h.rooms[c.tag]!=null&&((h.rooms[c.tag].pct!=null)||typeof h.rooms[c.tag]==='number'));
