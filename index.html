@@ -79,20 +79,19 @@
     <div class="ver" id="ver"></div>
   </section>
 
-  <!-- calibration -->
+  <!-- channel check: ONE verifiable test of the chain, used before every room -->
   <section id="cal" class="screen">
     <div class="eyebrow">First, a quick check</div>
-    <h2>Left. Centre. Right.</h2>
-    <p class="lede">Three notes travel across the stage. If they clearly move ear to ear, you're set. If they don't — or left and right feel smeared — turn off <em>Dolby Atmos</em> and check <em>Mono audio</em> is off.</p>
+    <h2 id="calTitle">Which ear?</h2>
+    <p class="lede" id="calNote">Headphones on. A two-note chime is playing in <b>one</b> ear — which side do you hear it on?</p>
     <div class="calbar" id="calbar">
       <span class="end" style="text-align:left">◀ Left</span>
       <div class="caltrack"><div class="caldot" id="caldot"></div></div>
       <span class="end" style="text-align:right">Right ▶</span>
     </div>
+    <div class="choices on" id="calChoices"></div>
     <div class="row">
       <button class="btn ghost" id="calback">Back</button>
-      <button class="btn ghost" id="calreplay">↺ Again</button>
-      <button class="btn" id="calgo">It moves — continue</button>
     </div>
   </section>
 

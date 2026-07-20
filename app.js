@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v54";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v55";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -735,6 +735,7 @@
   let lastPct=0;
   const SCHEMA=3;                 // profile schema version (v3 superset of stoneroom_results_v2)
   let currentRunId=null;          // one id per measurement occasion (tour / standalone curve / single retake)
+  let cal=null;                   // channel-check state
   let pendingRoom=null;           // room chosen before a pair was named — launched after the device screen
   let pvName=null;                // the pair whose detail view (#pfview) is open
   let methodsBack='intro';        // where the methods page returns to
@@ -1023,8 +1024,10 @@
   function wire(){
     $('begin').addEventListener('click',async()=>{
       initAudio(); ctx.resume(); await loadDB();
+      // straight to the room picker: the channel check now gates the ROOM, so it runs once per
+      // pair (right before the first measurement) instead of as an unskippable opening ritual
       if(deepRoom>=0){ buildDevice(); show('device'); }
-      else { show('cal'); runCal(); }
+      else { buildSelect(); show('select'); }
     });
     $('goprofiles').addEventListener('click',async()=>{await loadDB(); buildProfiles(); show('profiles');});
     $('endprofiles').addEventListener('click',()=>{buildProfiles(); show('profiles');});
@@ -1074,9 +1077,9 @@
       } else closeDemo();
     });
     $('savecard').addEventListener('click',saveCard);
-    $('calreplay').addEventListener('click',runCal);
-    $('calgo').addEventListener('click',()=>{ buildSelect(); show('select');});
-    $('calback').addEventListener('click',()=>show('intro'));
+
+
+    $('calback').addEventListener('click',()=>{ calStop(); cal=null; $('calbar').classList.remove('play'); show(device&&hasDevice(device)?'profiles':'intro'); });
     $('selstart').addEventListener('click',()=>{ if(device){ buildProfiles(); openProfile(device); } else { buildDevice(); show('device'); } });
     $('selback').addEventListener('click',()=>{ if(device&&hasDevice(device)){ buildProfiles(); show('profiles'); } else show('intro'); });
     $('devback').addEventListener('click',()=>{ if(deepRoom>=0){ show('intro'); } else { buildSelect(); show('select'); } });
@@ -1128,14 +1131,6 @@
   // ---- coffee links ----
   function applyCoffeeLinks(){
     document.querySelectorAll('.coffee').forEach(a=>{ a.href=CONFIG.COFFEE_URL; a.target='_blank'; a.rel='noopener'; });
-  }
-
-  function runCal(){
-    rvF=1; anchorMaster(0.85);   // clear any leftover rove
-    const seq=[-90,0,90], bar=$('calbar'), dot=$('caldot');
-    bar.classList.add('play');
-    seq.forEach((az,i)=>{ setTimeout(()=>{ const v=makeVoice('bell',az,1.6,0.6); v.playOnce(ctx.currentTime+.02);
-      dot.style.left=(50+az/90*46)+'%'; }, i*750); });
   }
 
   function buildDevice(){
@@ -1190,12 +1185,81 @@
       : 'Tap a room to run it';
   }
   const esc=s=>String(s==null?'':s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-  // launch a single room: name the pair first if we don't have one yet
+  // launch a single room: name the pair, then prove the chain, then measure
   function launchRoom(i){
     if(!device){ pendingRoom=i; buildDevice(); show('device'); return; }
     startRoom(i);
   }
+  // ---------- the channel check: ONE verifiable proof of the chain, used before EVERY room -------
+  // This replaces the old "three notes travel across the stage — did they move?" screen, which was
+  // self-reported and therefore proved nothing: a listener on a mono blend, with swapped channels,
+  // or with one dead side could answer "it moves" and every spatial room, the per-ear curve and
+  // every stereo reading downstream would be quietly wrong. Here you must NAME the side, so a
+  // swap, a mono blend and a dead channel are all caught — and the audiogram no longer repeats it.
+  let chainOKFor=null;          // the device name this chain was verified for
+  function startChannelCheck(onPass){
+    initAudio(); ctx.resume();
+    cal={side:'L', level:-14, miss:0, onPass, timer:null};
+    show('cal'); calChannel('L');
+  }
+  function calChannel(side){
+    cal.side=side; cal.miss=0;
+    $('calTitle').textContent='Which ear?';
+    $('calNote').innerHTML='Headphones on. A two-note chime is playing in <b>one</b> ear — which side do you hear it on? If it’s faint, nudge your volume up.';
+    $('caldot').style.left = side==='L' ? '4%' : '96%';
+    $('calbar').classList.add('play');
+    const box=$('calChoices'); box.innerHTML='';
+    const mk=(lbl,val,sub,cls)=>{ const b=document.createElement('button'); b.className='choice'+(cls?' '+cls:''); b.innerHTML=lbl+(sub?'<small>'+sub+'</small>':''); b.onclick=()=>calAnswer(val); return b; };
+    box.appendChild(mk('Left','L')); box.appendChild(mk('Right','R'));
+    const brk=document.createElement('span'); brk.className='brk'; box.appendChild(brk);
+    box.appendChild(mk('Both sides','B','can’t tell them apart','alt'));
+    box.appendChild(mk('I don’t hear it','N','nothing this time','alt'));
+    const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>cal.play&&cal.play(); box.appendChild(rep);
+    const play=()=>{ calStop(); anchorMaster(0.85);
+      const pan = side==='L'?-1:1;
+      const step=()=>{ if(!cal)return; const t=ctx.currentTime+.02;
+        detTone(600, t, .30, cal.level, pan); detTone(900, t+.36, .30, cal.level, pan);
+        cal.timer=setTimeout(step,1150); };
+      step(); };
+    cal.play=play; play();
+  }
+  function calStop(){ if(cal&&cal.timer){ clearTimeout(cal.timer); cal.timer=null; } clearTimers(); }
+  function calAnswer(val){
+    if(!cal) return;
+    calStop(); killStim(); $('calbar').classList.remove('play');
+    if(val==='N'){
+      if(cal.miss<1){ cal.miss++; cal.level=Math.min(-6, cal.level+8);
+        $('calNote').innerHTML='Turning it up — same side. Listen again…'; cal.play(); return; }
+      return calFail('silent');
+    }
+    if(val==='B') return calFail('mono');
+    if(val!==cal.side) return calFail('swapped');
+    if(cal.side==='L'){ calChannel('R'); return; }      // left proven → prove right
+    chainOKFor=device;                                   // both sides proven for this pair
+    const done=cal.onPass; cal=null; if(done) done();
+  }
+  function calFail(kind){
+    $('calTitle').textContent = kind==='swapped' ? 'Channels look swapped' : kind==='mono' ? 'That sounds like mono' : 'One side stayed quiet';
+    $('calNote').innerHTML = kind==='swapped'
+      ? 'That chime was in your <b>other</b> ear — left and right look reversed. Every stage, imaging and per-ear reading would come out mirrored. Check the L/R on your headphones, or continue and read the spatial rooms with suspicion.'
+      : kind==='mono'
+      ? 'It came from both sides at once. That is a <b>mono blend</b> — a speaker, a mono-audio accessibility setting, or a spatializer folding the channels together. Turn off <em>Mono audio</em> and any <em>Dolby Atmos</em> / spatial audio, then try again: without two real channels the spatial rooms and the per-ear curve cannot work.'
+      : 'Even louder, nothing came through on the <b>'+(cal.side==='L'?'left':'right')+'</b>. Either that side isn’t playing (cable, connection, a Bluetooth hiccup) — or that ear needs much more level than the other, which is itself worth knowing. Reconnect and retry, or continue and let the per-ear curve tell the story.';
+    const box=$('calChoices'); box.innerHTML='';
+    const again=document.createElement('button'); again.className='choice alt'; again.innerHTML='Try again<small>re-check both sides</small>';
+    again.onclick=()=>calChannel('L');
+    const anyway=document.createElement('button'); anyway.className='choice alt'; anyway.innerHTML='Continue anyway<small>readings may be off</small>';
+    anyway.onclick=()=>{ chainOKFor=device; const done=cal&&cal.onPass; cal=null; if(done) done(); };
+    box.appendChild(again); box.appendChild(anyway);
+  }
+  // THE gate lives here, not in the callers: every launch path (picker, device screen, profile
+  // dot, profile row, resume) goes through startRoom, so the chain is proven exactly once per pair
+  // before any measurement — and nobody can add a new entry point that skips it.
   function startRoom(i){
+    if(chainOKFor!==device){ startChannelCheck(()=>beginRoom(i)); return; }
+    beginRoom(i);
+  }
+  function beginRoom(i){
     initAudio(); ctx.resume();
     order=[i]; oi=0; score=0; chScore={0:0}; chPct={}; roomThr={}; roomVal={}; roomDone={};
     currentRunId=uid('r');           // one room = one measurement occasion
@@ -1678,7 +1742,7 @@
   function agCal(){
     $('cvTitle').textContent='Set your volume';
     $('cvNote').innerHTML='A steady <b>1 kHz</b> tone will play. Turn your device volume until it’s clearly but comfortably present — then leave it there. That’s your reference for the whole test.';
-    $('cvprog').textContent='Setup 1 of 3 · volume'; $('cvwrap').style.display='none';
+    $('cvprog').textContent='Setup · volume'; $('cvwrap').style.display='none';
     const box=$('cvChoices'); box.innerHTML='';
     const play=document.createElement('button'); play.className='btn half'; play.textContent='▶ Play 1 kHz';
     const go=document.createElement('button'); go.className='btn half'; go.textContent='Volume set — begin'; go.style.display='none';
@@ -1692,9 +1756,14 @@
   // PRE-CHECK — prove the signal chain before measuring. This is what stops the test from reading a
   // phone SPEAKER's bass roll-off or a fan's masking instead of the listener's ears: (1) a VERIFIABLE
   // left/right tone check (headphones on, sides not swapped), then (2) a quiet-room listen.
-  function agPrecheck(){ ag.phase='pre'; ag.pcLevel=-14; $('cvwrap').style.display='none'; agPcChannel('L'); }
+  // the channel half of this used to be a second, duplicate L/R test. It now lives once in the
+  // shared check that gates every room, so if the chain is already proven for this pair we go
+  // straight to the quiet check (which is genuinely audiogram-specific).
+  function agPrecheck(){ ag.phase='pre'; ag.pcLevel=-14; $('cvwrap').style.display='none';
+    if(chainOKFor===device){ agPcQuiet(); return; }
+    agPcChannel('L'); }
   function agPcChannel(side){
-    ag.phase='pre'; ag.pcSide=side; ag.pcMiss=0; $('cvprog').textContent='Setup 2 of 3 · headphone check';
+    ag.phase='pre'; ag.pcSide=side; ag.pcMiss=0; $('cvprog').textContent='Setup · headphone check';
     $('cvTitle').textContent='Headphone check';
     $('cvNote').innerHTML='Headphones on. A two-note chime is playing in <b>one</b> ear — which side is it on? If it’s faint, nudge your volume up.';
     const box=$('cvChoices'); box.innerHTML='';
@@ -1727,10 +1796,11 @@
     if(val==='B'){ agPcFail('speaker'); return; }          // both ears at once → speaker or mono blend
     if(val!==ag.pcSide){ agPcFail('swapped'); return; }     // heard in the other ear → L/R reversed
     if(ag.pcSide==='L'){ agPcChannel('R'); return; }        // left ok → verify right
+    chainOKFor=device;                                      // proven here too — don't ask again this pair
     agPcQuiet();                                            // both sides correct → quiet check
   }
   function agPcFail(kind){
-    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Setup 2 of 3 · headphone check';
+    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Setup · headphone check';
     $('cvTitle').textContent = kind==='swapped' ? 'Channels look swapped' : kind==='silent' ? 'One side stayed quiet' : 'Sounds like a speaker';
     $('cvNote').innerHTML = kind==='swapped'
       ? 'That tone was in your <b>other</b> ear — your left/right channels look reversed, so a per-ear result would be mislabelled. Check the L/R on your headphones, or run the both-ears test instead.'
@@ -1743,7 +1813,7 @@
     box.appendChild(retry); box.appendChild(anyway);
   }
   function agPcQuiet(){
-    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Setup 3 of 3 · quiet room';
+    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Setup · quiet room';
     $('cvTitle').textContent='Quiet check';
     $('cvNote').innerHTML='Headphones confirmed. Now the room — <b>stop and listen</b> for a few seconds with nothing playing. Background sound (a fan, traffic, a hum) hides the quietest tones and bends the curve.';
     const box=$('cvChoices'); box.innerHTML='';
@@ -1791,7 +1861,7 @@
           const verdict = avg<=-55 ? {t:'Sounds like a quiet room.', ok:true}
             : avg<=-45 ? {t:'There’s some background noise.', ok:false}
             : {t:'That’s a noisy room for this test.', ok:false};
-          $('cvprog').textContent='Setup 3 of 3 · quiet room';
+          $('cvprog').textContent='Setup · quiet room';
           $('cvNote').innerHTML = verdict.t+' <span style="color:var(--muted)">(rough reading: your mic averaged '
             +Math.round(avg)+' dBFS, peaks near '+Math.round(pk)+'. A phone mic isn’t calibrated, so this compares your room to itself — it is not a decibel measurement.)</span>'
             +(verdict.ok?' Good to go.':' A quieter spot — or turning off a fan — makes the quietest tones measurable rather than guessed.');
