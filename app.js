@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v70";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v71";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1824,9 +1824,60 @@
   // only where the whole-curve GP is still uncertain. Budget bounds the EXTRAS, never a mandatory.
   const AG_SEARCH_BUDGET={both:75, perear:55};
   const EAR_PAN={R:1, L:-1, B:0}, EAR_NAME={R:'Right ear', L:'Left ear', B:'Both ears'};
-  // tone level above which cross-hearing becomes plausible and contralateral masking is worth its
-  // distraction. Below it the resting ear stays silent — which is most trials for a normal ear.
-  const MASK_FROM=-45;
+  // ---- CONTRALATERAL MASKING, sized from the physics instead of a flat rule -------------------
+  // The old rule (mask whenever the tone passed −45 dBFS, at tone−18 in a Q=1 band) was wrong in
+  // BOTH directions, which an offline power measurement finally showed:
+  //   · TOO LOUD where it didn't matter — a Q=1 band at 1 kHz is 1000 Hz wide against a critical
+  //     band of 133 Hz, so ~7.5× the width was pure hiss doing no masking, and it engaged for
+  //     symmetric listeners who can never cross-hear at all.
+  //   · TOO WEAK where it did — masking is governed by noise power INSIDE one critical band, and
+  //     measured that way the old setting sat 2.3 dB BELOW the shadow it was supposed to cover
+  //     (IA 40). The earlier margin analysis compared broadband power, which flattered it by
+  //     ~13 dB. Undermasking is the failure that silently SHRINKS a real asymmetry.
+  // Now: engage only when the far ear could actually hear the leak, and then sit a clinical
+  // 10 dB above it, in a clinical ⅓-octave band.
+  const MASK_FROM=-45;             // fallback gate only, for the very first tone of the first ear
+  const MASK_Q=4;                  // ⅓-octave at 1 kHz (231 Hz) — the clinical narrow-band masker
+  // in-ERB RMS of the masker at gain 1.0, MEASURED offline (pw/mask_band_measure.js) and
+  // cross-checked against white-noise density × 1 ERB to 0.1 dB. A Web Audio bandpass has unity
+  // gain at centre, so this barely moves with Q — which is why narrowing costs no protection.
+  const MASK_INERB_REF=-27.8;
+  const MASK_MARGIN=10;            // dB above the shadow — standard clinical masking safety
+  // Interaural attenuation: the MINIMUM values clinical audiometry assumes for supra-aural /
+  // circumaural headphones. Using minimums is deliberately conservative — it makes masking start
+  // sooner and sit higher than a typical head needs.
+  const IA_BY_F=[[250,40],[1000,40],[2000,45]];
+  const iaFor=f=>{ for(const [hi,v] of IA_BY_F) if(f<=hi) return v; return 50; };
+  // What the NON-test ear can hear, in this run's own dBFS scale. Second ear: the first ear's
+  // measured curve (the honest answer). First ear: unmeasured, so assume it is at least as
+  // sensitive as the best point measured so far here — conservative, since a MORE sensitive far
+  // ear is what makes cross-hearing possible.
+  function agOtherThr(f){
+    const o = ag.curEar==='R'?'L':'R', P=ag.pts[o]||{};
+    const ks=Object.keys(P).map(Number).filter(x=>P[x]!=null);
+    if(ks.length){
+      if(P[f]!=null) return P[f];
+      ks.sort((a,b)=>Math.abs(Math.log2(a/f))-Math.abs(Math.log2(b/f)));
+      return P[ks[0]];
+    }
+    const M=ag.pts[ag.curEar]||{}, mk=Object.keys(M).map(Number).filter(x=>M[x]!=null);
+    return mk.length ? Math.min.apply(null, mk.map(x=>M[x])) : null;
+  }
+  // The masker level this trial needs, or null for "no masking is warranted".
+  function agMaskPlan(f, L){
+    if(!ag.pan) return null;                       // both-ears mode has no resting ear
+    const IA=iaFor(f), T=agOtherThr(f);
+    // tone RMS is 3 dB under its dBFS amplitude parameter; the far cochlea receives it IA down
+    const shadow = L - 3 - IA;
+    const need = shadow + MASK_MARGIN - MASK_INERB_REF;   // level whose IN-BAND power clears the leak
+    if(T==null) return L>MASK_FROM ? Math.min(need,-12) : null;   // no scale yet → old absolute gate
+    // Engage once the leak comes WITHIN 8 dB BELOW the far ear's threshold, not merely once it
+    // passes it: a leak sitting exactly at threshold is still detected ~50% of the time, and the
+    // cross-hearing sim showed that permissiveness costing real asymmetry. 8 dB down puts the far
+    // ear's hit rate at ~5%, i.e. its guess rate.
+    if(L - IA <= T - 8) return null;               // leak safely inaudible to the far ear: silence is correct
+    return Math.min(need, -12);                    // headroom guard; over-masking is impossible (crossback ≈ tone−80)
+  }
   // slopeW: a real tone-detection psychometric function runs 10→90% over roughly 9 dB. Stating it
   // in dB (instead of the old span-relative slope, which implied a ~54 dB transition) is what lets
   // the posterior actually tighten — and therefore what makes the TRIAL COUNT ADAPTIVE: a run ends
@@ -1929,7 +1980,7 @@
       return;
     }
     const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(3); nb.loop=true;
-    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=1;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=MASK_Q;
     const g=ctx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(amp,t+.3);
     const sp=ctx.createStereoPanner(); sp.pan.value=-ag.pan;
     nb.connect(bp); bp.connect(g); g.connect(sp); sp.connect(master);
@@ -2096,7 +2147,7 @@
       agEarDone(); return;
     }
     ag.curF=r.f; ag.fa=0; ag.faShown=0; ag.noneMax=0; ag.floorStreak=0;
-    ag.reach=null;
+    ag.reach=null; ag.maskIdle=0;
     const fLbl = r.f>=1000?(r.f/1000)+' kHz':r.f+' Hz';
     const earLbl = ag.mode==='perear' ? EAR_NAME[ag.curEar]+' · ' : '';
     $('cvTitle').textContent = earLbl + fLbl;
@@ -2177,7 +2228,7 @@
     // FIRST ear, where the rush sits in the ear about to be tested second; a listener with one weak
     // ear never saw it by the time the rush landed, loud, in their strong ear. Per-EAR, held
     // through the whole trial, for the first two masked trials.
-    const rushNew = ag.pan && ag.curLevel>MASK_FROM && (ag.rushShown||0)<2;
+    const rushNew = ag.pan && agMaskPlan(ag.curF, ag.curLevel)!=null && (ag.rushShown||0)<2;
     if(rushNew) ag.rushShown=(ag.rushShown||0)+1;
     const play=()=>{
       clearTimers(); hear.disabled=true; none.disabled=true; $('cvbeat').classList.remove('on');
@@ -2194,7 +2245,15 @@
       // must be loud before it crosses the skull, ~45 dB of interaural attenuation). Above the
       // gate the CONTINUOUS visit mask engages 18 dB under the tone and stays steady (see
       // agMaskEnsure) — with openAtP seeding, ordinary visits never trip it at all.
-      if(ag.pan && (ag.curLevel>MASK_FROM || ag.maskN)) agMaskEnsure(f, ag.curLevel-18);   // engage above the gate; once engaged, TRACK (never flicker off mid-visit)
+      // engage only when this trial's tone could actually leak into a far ear that would hear
+      // it; once engaged in a visit the noise stays steady to the end (flickering it per trial
+      // is the pumping that made it a trial marker)
+      const mplan=agMaskPlan(f, ag.curLevel);
+      if(mplan!=null){ ag.maskIdle=0; agMaskEnsure(f, mplan); }
+      else if(ag.maskN && ++ag.maskIdle>=3) agMaskStop();   // TIME hysteresis, not per-trial gating:
+      // a visit's one loud opener can trip the gate for a listener who never needs masking at all.
+      // Per-trial switching would pump; latching for the whole visit would leave a symmetric ear
+      // sitting under pointless noise. Three consecutive unneeded trials → fade out and stay out.
       // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
       // the listening window is shown by its OWN indicator, not by tinting an answer button —
       // a button that lights up while you decide reads like a hint about which one to press
