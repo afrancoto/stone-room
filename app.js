@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v61";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v62";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1748,7 +1748,7 @@
   function stopCurveAudio(){ agBedStop(); if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
   function agCal(){
     $('cvTitle').textContent='Set your volume';
-    $('cvNote').innerHTML='A <b>1 kHz</b> tone will alternate between your <b>left</b> and <b>right</b> ear. Turn your device volume until it’s clearly but comfortably present <b>on both sides</b> — if one side is fainter, set it by <b>that</b> side. Then leave the knob alone: that’s the reference for the whole test.';
+    $('cvNote').innerHTML='A <b>1 kHz</b> tone will alternate between your <b>left</b> and <b>right</b> ear. Turn your device volume until it’s clearly but comfortably present <b>on both sides</b> — if one side is fainter, set it by <b>that</b> side. A rough setting is fine — it gets <b>verified</b> before the test starts.';
     $('cvprog').textContent='Setup · volume'; $('cvwrap').style.display='none';
     const box=$('cvChoices'); box.innerHTML='';
     const play=document.createElement('button'); play.className='btn half'; play.textContent='▶ Play 1 kHz';
@@ -1915,9 +1915,59 @@
     $('cvTitle').textContent='How to test'; $('cvprog').textContent='Setup done — choose a mode';
     $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. In each-ear mode a <b>faint steady rush</b> sits in the resting ear the whole time, swelling when a tone has to get loud — deliberate, so that ear can’t secretly help. Both-ears is quicker.';
     const box=$('cvChoices'); box.innerHTML='';
-    const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
-    const both=document.createElement('button'); both.className='choice alt'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agStartRun('both');
+    const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agVolFit('perear');
+    const both=document.createElement('button'); both.className='choice alt'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agVolFit('both');
     box.appendChild(per); box.appendChild(both);
+  }
+  // MEASURED VOLUME FIT — the knob stops relying on the listener's judgement of "comfortable".
+  // The run's window placement needs each anchor's 1 kHz threshold at or below AG_ANCHOR_HI
+  // (−64); too-LOUD is corrected silently by auto-range, so audibility at the quiet end is the
+  // only thing the knob must guarantee. So: before the run, a near-floor 1 kHz pulse (−70,
+  // 6 dB inside the requirement) must actually be HEARD through each test channel. Heard →
+  // every anchor provably fits, no mid-run interruption possible. Not heard → a measured,
+  // channel-specific "turn up", looped until verified — with the usual honest escape.
+  const AG_FIT_LEVEL=-70;
+  function agVolFit(mode){
+    ag.phase='fit'; ag.fitMode=mode; ag.fitEars = mode==='perear'?['R','L']:['B']; ag.fitI=0;
+    agFitEar();
+  }
+  function agFitEar(){
+    ag.fitMiss=0; stopCurveAudio(); killStim();
+    const ear=ag.fitEars[ag.fitI], pan=EAR_PAN[ear];
+    $('cvprog').textContent='Setup · volume check';
+    $('cvTitle').textContent='Volume check'+(ag.fitMode==='perear'?' · '+EAR_NAME[ear].toLowerCase():'');
+    $('cvNote').innerHTML='Three <b>very faint</b> beeps are repeating '
+      +(pan? 'in your <b>'+(ear==='L'?'left':'right')+'</b> ear':'in <b>both</b> ears')
+      +' — close to the quietest this test needs to play. If you can’t hear them, turn the volume <b>up</b> until you just can, then answer.';
+    const box=$('cvChoices'); box.innerHTML='';
+    const yes=document.createElement('button'); yes.className='choice'; yes.innerHTML='I hear the beeps<small>faint is fine</small>'; yes.onclick=()=>agFitAnswer(true);
+    const no=document.createElement('button'); no.className='choice'; no.innerHTML='I can’t hear them<small>even turned up</small>'; no.onclick=()=>agFitAnswer(false);
+    box.appendChild(yes); box.appendChild(no);
+    const play=()=>{ clearTimers(); anchorMaster(agLevel());
+      const step=()=>{ if(!ag||ag.phase!=='fit')return; const t=ctx.currentTime+.05;
+        for(let k=0;k<3;k++) detTone(1000, t+k*.4, .28, AG_FIT_LEVEL, pan);
+        ag.calTimer=setTimeout(step,1800); };
+      step(); };
+    play();
+  }
+  function agFitAnswer(heard){
+    if(!ag||ag.phase!=='fit')return;
+    if(heard){
+      stopCurveAudio(); killStim();
+      ag.fitI++;
+      if(ag.fitI>=ag.fitEars.length){ agStartRun(ag.fitMode); return; }
+      agFitEar(); return;                                   // next channel, fresh miss count
+    }
+    ag.fitMiss=(ag.fitMiss||0)+1;                           // keep looping the pulses while they adjust
+    $('cvNote').innerHTML='Turn the volume <b>up one step</b> and keep listening — the beeps are still repeating'
+      +(ag.fitMode==='perear'?' in your <b>'+(ag.fitEars[ag.fitI]==='L'?'left':'right')+'</b> ear':'')+'.';
+    if(ag.fitMiss>=2 && !$('cvChoices').querySelector('.fitesc')){
+      const brk=document.createElement('span'); brk.className='brk'; $('cvChoices').appendChild(brk);
+      const esc=document.createElement('button'); esc.className='choice alt fitesc';
+      esc.innerHTML='Continue anyway<small>quietest tones may read beyond reach</small>';
+      esc.onclick=()=>{ stopCurveAudio(); killStim(); agStartRun(ag.fitMode); };
+      $('cvChoices').appendChild(esc);
+    }
   }
   function agStartRun(mode){
     ag.mode=mode; ag.ears = mode==='perear'?['R','L']:['B']; ag.ei=0;
