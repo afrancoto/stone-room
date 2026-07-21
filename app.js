@@ -65,7 +65,12 @@
     // Scaling out by 1/√sec keeps loudness constant so the only cue is reverb time.
     const inG=ctx.createGain(), outG=ctx.createGain(); outG.gain.value=0.9/Math.sqrt(sec);
     inG.connect(cv); cv.connect(outG); outG.connect(master);
-    return {in:inG};
+    return {in:inG, release(after){   // a Halls trial builds TWO of these, each with its own
+      // impulse buffer (~0.9 MB at the long end). Nothing ever detached them, so a sharpened
+      // run left 30-45 live convolvers on the master bus — tens of MB and real audio-thread
+      // load on a phone, where a dropout during a trial is recorded as a miss.
+      setTimeout(()=>{ try{ inG.disconnect(); cv.disconnect(); outG.disconnect(); }catch(e){} }, after*1000);
+    }};
   }
   function noiseBuf(sec){
     if(_noise && _noise.duration>=sec) return _noise;
@@ -117,6 +122,9 @@
       try{ const now=ctx.currentTime;
         [dry,send].forEach(gn=>{ gn.gain.cancelScheduledValues(now); gn.gain.setValueAtTime(gn.gain.value, now); gn.gain.linearRampToValueAtTime(0, now+0.04); });
       }catch(e){}
+      // and detach once silent: Crowd builds up to 7 HRTF panners per trial over up to 10 trials,
+      // and a silenced-but-connected panner still costs the audio thread every render quantum
+      setTimeout(()=>{ try{ panner.disconnect(); dry.disconnect(); send.disconnect(); }catch(e){} }, 120);
     }
     function setAz(az2,ramp){const {x,z}=pos(az2,dist); const t=ctx.currentTime;
       if(ramp){ panner.positionX.linearRampToValueAtTime(x,t+ramp); panner.positionZ.linearRampToValueAtTime(z,t+ramp); }   // smooth step — 40 ms .value writes zippered
@@ -482,6 +490,10 @@
     g.gain.exponentialRampToValueAtTime(.0008,when+.35);
     g.connect(dry); g.connect(send);
     const o=ctx.createOscillator(); o.type='triangle'; o.frequency.value=440*rvF; o.connect(g); o.start(when); o.stop(when+.5);
+    // let the tail ring out, then detach the whole chain (see makeVerbNode.release)
+    const lead=Math.max(0, when-ctx.currentTime);
+    v.release(lead+sec+1);
+    setTimeout(()=>{ try{ g.disconnect(); dry.disconnect(); send.disconnect(); }catch(e){} }, (lead+sec+1.2)*1000);
   }
   // short HRTF-placed ping marking the true position after a spatial guess — a single ~0.4s tone
   // instead of a full 2-3s motif, so the confirmation can't overlap the next round's stimulus.
