@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v60";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v61";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1748,14 +1748,19 @@
   function stopCurveAudio(){ agBedStop(); if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
   function agCal(){
     $('cvTitle').textContent='Set your volume';
-    $('cvNote').innerHTML='A steady <b>1 kHz</b> tone will play. Turn your device volume until it’s clearly but comfortably present — then leave it there. That’s your reference for the whole test.';
+    $('cvNote').innerHTML='A <b>1 kHz</b> tone will alternate between your <b>left</b> and <b>right</b> ear. Turn your device volume until it’s clearly but comfortably present <b>on both sides</b> — if one side is fainter, set it by <b>that</b> side. Then leave the knob alone: that’s the reference for the whole test.';
     $('cvprog').textContent='Setup · volume'; $('cvwrap').style.display='none';
     const box=$('cvChoices'); box.innerHTML='';
     const play=document.createElement('button'); play.className='btn half'; play.textContent='▶ Play 1 kHz';
     const go=document.createElement('button'); go.className='btn half'; go.textContent='Volume set — begin'; go.style.display='none';
     // the SOLID button is always the next action: once the tone has played, "begin" takes the
     // solid style and the replay demotes to ghost — the eye lands on the right thing
-    play.onclick=()=>{ stopCurveAudio(); const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18, 0); ag.calTimer=setTimeout(step,720); }; step();
+    // the volume must be set against the WEAKER ear, so each ear has to be heard alone: a diotic
+    // tone is judged by the better ear (binaural loudness), which for an asymmetric listener
+    // guarantees the second ear's anchor lands out of window mid-run → the "A little louder,
+    // please" interruption between ears. Alternating L/R lets the fainter side be heard AS the
+    // fainter side while the knob is still in hand.
+    play.onclick=()=>{ stopCurveAudio(); let side=-1; const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18, side); side=-side; ag.calTimer=setTimeout(step,720); }; step();
       play.textContent='↺ Again'; play.classList.add('ghost'); go.style.display='inline-block'; };
     go.onclick=()=>{ stopCurveAudio(); killStim(); agPrecheck(); };
     box.appendChild(play); box.appendChild(go);
@@ -2159,6 +2164,18 @@
       $('cvNote').innerHTML='Fitting the test to your volume… <span style="color:var(--muted)">no need to touch anything.</span>';
       choiceTimers.push(setTimeout(agFreq,700)); return true;
     }
+    if(tooQuiet && (ag.calOffset||0)<0){
+      // reclaim headroom we donated earlier (often during the OTHER, better ear's auto-range)
+      // before bothering the knob: raising our own gain back toward 0 is silent, exact, and
+      // bounded by headroom we know we have. Same one-step re-measure contract as the down branch.
+      ag.calOffset=Math.min(0,(ag.calOffset||0)+12); anchorMaster(agLevel());
+      delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
+      if(ag.log&&ag.log[ag.curEar]) delete ag.log[ag.curEar][1000];
+      ag.floorStreak=0; ag.autoRanged=true;
+      $('cvprog').textContent='Fitting to your volume';
+      $('cvNote').innerHTML='Fitting the test to your volume… <span style="color:var(--muted)">no need to touch anything.</span>';
+      choiceTimers.push(setTimeout(agFreq,700)); return true;
+    }
     if(tooQuiet){ agRefRetune('up', Math.round(lvl-AG_ANCHOR_HI)); return true; }   // out of digital headroom → the knob
     ag.headroom=Math.round(pHi-lvl);   // dB available above the anchor for the worse frequencies
     return false;
@@ -2172,7 +2189,8 @@
     $('cvTitle').textContent='A little louder, please';
     $('cvNote').innerHTML='At this volume your 1 kHz reference sits near the top of what the test can play — and every other pitch needs <b>more</b> level than 1 kHz, so the weaker bands would run off the end and read “beyond reach”.'
       +(shortBy>0?' We need roughly <b>'+shortBy+' dB</b> more room.':'')
-      +' Turn the volume <b>up a step or two</b>, then re-measure the reference. After that, leave the knob alone until the end.';
+      +' Turn the volume <b>up a step or two</b>, then re-measure the reference. After that, leave the knob alone until the end.'
+      +(ag.mode==='perear'&&ag.ei>0?' <span style="color:var(--muted)">The ear you already finished is safe — each ear is read relative to its own 1 kHz, so a volume change between ears cancels out.</span>':'');
     const box=$('cvChoices'); box.innerHTML='';
     const redo=document.createElement('button'); redo.className='choice alt'; redo.innerHTML='Volume adjusted<small>re-measure 1 kHz</small>';
     redo.onclick=()=>{ delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
