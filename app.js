@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v68";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v69";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1915,7 +1915,19 @@
       return;
     }
     const amp=Math.pow(10,lvl/20);
-    agMaskStop();
+    if(ag.maskN){
+      // frequency changed but the mask is still needed: GLIDE the band to the new tone instead
+      // of chopping to silence and restarting in a new timbre — the stop/start plus pitch jump
+      // between visits was the most jarring thing in the whole run (Andrea's report)
+      ag.maskN.f=f; ag.maskN.bp.frequency.setTargetAtTime(f, t, 0.2);
+      let target=ag.maskN.lvl;
+      if(lvl>target) target=lvl; else if(lvl<target-12) target=lvl+6;
+      if(Math.abs(target-ag.maskN.lvl)>0.5){
+        const up=target>ag.maskN.lvl; ag.maskN.lvl=target;
+        ag.maskN.g.gain.cancelScheduledValues(t); ag.maskN.g.gain.setValueAtTime(ag.maskN.g.gain.value,t);
+        ag.maskN.g.gain.linearRampToValueAtTime(Math.pow(10,target/20), t+(up?0.3:0.6)); }
+      return;
+    }
     const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(3); nb.loop=true;
     const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=1;
     const g=ctx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(amp,t+.3);
@@ -1923,7 +1935,7 @@
     nb.connect(bp); bp.connect(g); g.connect(sp); sp.connect(master);
     nb.start();
     liveStim.delete(nb);               // exempt from killStim — the mask must outlive every answer
-    ag.maskN={nb,g,f,lvl};
+    ag.maskN={nb,bp,g,f,lvl};
   }
   function agMaskStop(){ if(ag&&ag.maskN){ try{ const t=ctx.currentTime;
     ag.maskN.g.gain.cancelScheduledValues(t); ag.maskN.g.gain.setValueAtTime(ag.maskN.g.gain.value,t);
@@ -2063,9 +2075,8 @@
   }
   // ask the search for the next frequency visit (or the end of the ear) and set the stage for it
   function agFreqNext(){
-    agMaskStop();                     // the visit mask ends with its visit; the bed carries the ear
-    const r=ag.search.nextFreq();
-    if(r.done){
+    const r=ag.search.nextFreq();     // the mask is NOT stopped here — across visits it glides
+    if(r.done){ agMaskStop();         // (band + level) rather than chopping; it ends with the ear
       ag.ei++;
       if(ag.ei>=ag.ears.length){ finishCurve(); return; }
       choiceTimers.push(setTimeout(agEar,650)); return;
@@ -2142,6 +2153,11 @@
                                            // re-armed a disabled button after a late 'I hear it' tap and
                                            // invited a contradictory second record into the wrong slot
     killStim();                            // stop the tone the instant you answer
+    // …but bring the BUS back right away: killStim's mute guarded the answered tone's tail, and
+    // the master only re-anchored when the next trial played ~400 ms later — inaudible when the
+    // mask was per-trial bursts, an audible chop at every tap now that it is continuous. The
+    // tone's own sources are already disconnected; 70 ms is enough for the tail.
+    choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run') anchorMaster(agLevel()); },70));
     // disable EVERY control including Replay: a Replay tapped in the post-lock gap re-fired the
     // finished trial while the search had already advanced, writing the old frequency's threshold
     // into the NEXT frequency's slot (tens of dB wrong) and skipping a point — silently
