@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v63";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v64";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1748,6 +1748,9 @@
   const AG_SLOPE_TRIG=8;                         // dB/octave bracket slope that triggers an adaptive insert
   const AG_INFILL_CAP={both:5, perear:3};        // per-ear cap (per-ear path is 2× the work → tighter)
   const AG_TRIAL_BUDGET={both:95, perear:70};    // skip further ADAPTIVE inserts once this ear's real trials pass this
+  // smart-order sets (ag-search.js): six mandatory octaves always measured; candidates visited
+  // only where the whole-curve GP is still uncertain. Budget bounds the EXTRAS, never a mandatory.
+  const AG_SEARCH_BUDGET={both:75, perear:55};
   const EAR_PAN={R:1, L:-1, B:0}, EAR_NAME={R:'Right ear', L:'Left ear', B:'Both ears'};
   // tone level above which cross-hearing becomes plausible and contralateral masking is worth its
   // distraction. Below it the resting ear stays silent — which is most trials for a normal ear.
@@ -1790,7 +1793,8 @@
     if(chainStale()){ confirmChain(()=>startCurve()); return; }
     initAudio(); ctx.resume(); stopVoices(); rvF=1; anchorMaster(0.85);   // base level; ag.calOffset applies once the run starts
     if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
-    ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}, caTot:{R:0,L:0,B:0}, calOffset:0};
+    ag={phase:'pre', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}, caTot:{R:0,L:0,B:0}, calOffset:0,
+      order: /agorder=fixed/.test(location.search)?'fixed':'smart'};   // live A/B escape for the GP-coupled search
     // mid-run there is NO Continue/Done/Redo: a visible "Continue →" during the measurement read
     // as a normal next-step and silently ABORTED the room, marking it complete. The only mid-run
     // exit is ⌂ Home (progress-safe). The exit row returns when the curve actually finishes.
@@ -1911,8 +1915,8 @@
     $('cvTitle').textContent='How to test'; $('cvprog').textContent='Setup done — choose a mode';
     $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. In each-ear mode a <b>faint steady rush</b> sits in the resting ear the whole time, swelling when a tone has to get loud — deliberate, so that ear can’t secretly help. Both-ears is quicker.';
     const box=$('cvChoices'); box.innerHTML='';
-    const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
-    const both=document.createElement('button'); both.className='choice alt'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agStartRun('both');
+    const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~2–4 min</small>'; per.onclick=()=>agStartRun('perear');
+    const both=document.createElement('button'); both.className='choice alt'; both.innerHTML='Both ears<small>quicker · one curve · ~1–2 min</small>'; both.onclick=()=>agStartRun('both');
     box.appendChild(per); box.appendChild(both);
   }
   function agStartRun(mode){
@@ -1924,8 +1928,8 @@
     agEar();
   }
   function agEar(){
-    ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.fi=0; ag.prevThr=null;
-    ag.earTrials=0; ag.phaseB=false; ag.phaseC=false; ag.phaseD=false; ag.refFirst=null; ag.floorStreak=0;
+    ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.prevThr=null;
+    ag.floorStreak=0; ag.noneMax=0; ag.anchorPlaced=false;
     ag.rushShown=0;                                        // re-explain the masking rush per ear — it changes sides
     ag.warm = ag.ei===0;                                   // one obvious practice tone before the first ear
     // CONSTANT resting-ear bed (per-ear mode): a faint fixed noise floor (~−58 dBFS) for the whole
@@ -1933,87 +1937,51 @@
     // in and out trial by trial ("sometimes white noise, sometimes not — weird"). At −58 its skull
     // crossover (~−103) cannot touch the test ear.
     if(ag.pan) agBedStart(-ag.pan); else agBedStop();
-    ag.plan = AG_BASE_PLAN.slice();                         // base octaves; Phase-B appends inter-octaves
-    agFreq();
+    // WHAT to measure next and WHEN a reading locks is SR_AGSEARCH (ag-search.js) — DOM-free and
+    // harness-validated (scratchpad ag_harness.js: ~44% fewer presentations than the fixed plan
+    // at equal accuracy; 25 dB/1-oct notch recovered 1.0; censoring precision/recall 1.0; robust
+    // to 15% false-alarm and 10% lapse listeners). ?agorder=fixed keeps the pre-v64 flow for a
+    // live A/B on the same ears.
+    const key=ag.mode==='perear'?'perear':'both';
+    ag.search=window.SR_AGSEARCH.newEar({
+      psi:window.SR_PSI, room:AG_ROOM, order:ag.order,
+      baseplan:AG_BASE_PLAN, infill:AG_INFILL, slopeTrig:AG_SLOPE_TRIG,
+      infillCap:AG_INFILL_CAP[key], trialBudget:AG_TRIAL_BUDGET[key],
+      budget:AG_SEARCH_BUDGET[key]
+    });
+    agFreqNext();
   }
-  // Phase-B: after the base octaves lock, pick inter-octave infill points for this ear — always the
-  // half-octaves (3k/6k), plus adaptive knees (1.5k/750/10k) where the bracket slope is steep. Each
-  // infill point sits between two LOCKED neighbours, so agFreq interpolation-seeds it → ~3–4 trials.
-  function agPlanInfill(ear){
-    const pts=ag.pts[ear], key=ag.mode==='perear'?'perear':'both';
-    const cap=AG_INFILL_CAP[key], budget=AG_TRIAL_BUDGET[key], out=[];
-    for(const c of AG_INFILL){
-      if(pts[c.lo]==null||pts[c.hi]==null) continue;
-      const slope=Math.abs(pts[c.hi]-pts[c.lo])/Math.log2(c.hi/c.lo);   // level units are dB here
-      if(c.always||slope>=AG_SLOPE_TRIG) out.push({f:c.f,slope,always:c.always});
+  // ask the search for the next frequency visit (or the end of the ear) and set the stage for it
+  function agFreqNext(){
+    const r=ag.search.nextFreq();
+    if(r.done){
+      ag.ei++;
+      if(ag.ei>=ag.ears.length){ finishCurve(); return; }
+      choiceTimers.push(setTimeout(agEar,650)); return;
     }
-    out.sort((a,b)=>(b.always-a.always)||(b.slope-a.slope));            // always-adds first, then steepest
-    const chosen=[];
-    for(const c of out){ if(chosen.length>=cap) break;
-      if(!c.always && (ag.earTrials||0)>=budget) continue; chosen.push(c.f); }
-    return chosen.sort((a,b)=>a-b);
-  }
-  // verify pass: the 1-2 measured points with the widest Ψ CI (≥5 dB, not ceiling-pinned) get a
-  // short anchored re-test — a few extra trials that either confirm the reading or pull it true
-  function agPlanVerify(ear){
-    const meta=ag.ptsMeta[ear]||{};
-    return Object.keys(meta).map(Number)
-      .filter(f=>meta[f] && !meta[f].cens && meta[f].ci!=null && meta[f].ci>=5)
-      .sort((a,b)=>meta[b].ci-meta[a].ci).slice(0,2).sort((a,b)=>a-b);
-  }
-  function agFreq(){
-    const f=ag.plan[ag.fi];
-    // seed the prior: an infill point interpolates BOTH its locked brackets; a base point uses the
-    // previous locked threshold of THIS ear. Either way → a tight informed prior → fewer trials.
-    const pts=ag.pts[ag.curEar], spec=AG_INFILL.find(c=>c.f===f);
-    let seed={};
-    if(pts[f]!=null){
-      // verify re-test: anchor on the existing reading and confirm/refine it in a few trials
-      seed={priorSeed:pts[f], priorSDscale:0.5, nMin:3};
-    } else if(spec && pts[spec.lo]!=null && pts[spec.hi]!=null){
-      const w=Math.log2(f/spec.lo)/Math.log2(spec.hi/spec.lo);
-      seed={priorSeed: pts[spec.lo]+w*(pts[spec.hi]-pts[spec.lo]), priorSDscale:0.4, nMin:3};
-    } else {
-      // slope-aware seed from the two nearest locked points (in log-f): flat-carrying the previous
-      // threshold made every new frequency on a steep loss start far too quiet and burn trials
-      // chasing the dive; continuing the local trend starts it where the ear actually is. Also fixes
-      // the plan's 16k→500 jump, which used to seed the lows from the treble.
-      const done=Object.keys(pts).map(Number).filter(x=>pts[x]!=null)
-        .sort((a,b)=>Math.abs(Math.log2(a/f))-Math.abs(Math.log2(b/f)));
-      if(done.length){
-        let sd=pts[done[0]];
-        if(done.length>=2){
-          const n1=done[0], n2=done[1];
-          const ext=pts[n1]+(pts[n1]-pts[n2])/Math.log2(n1/n2)*Math.log2(f/n1);
-          sd=clamp(ext, pts[n1]-15, pts[n1]+15);          // cap the extrapolation — trends bend
-        }
-        seed={priorSeed:sd, priorSDscale: Math.abs(Math.log2(done[0]/f))<=1?0.45:0.55, nMin:4};
-      }
-    }
-    ag.eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, seed)); ag.trial=0;
-    ag.catchCount=0; ag.fa=0; ag.faShown=0; ag.noneMax=0;
-    ag.catchCap=Math.max(2, Math.round((ag.eng.nMax||12)*0.35));   // ≤ ~4 silent trials per frequency
-    const fLbl = f>=1000?(f/1000)+' kHz':f+' Hz';
+    ag.curF=r.f; ag.fa=0; ag.faShown=0; ag.noneMax=0; ag.floorStreak=0;
+    const fLbl = r.f>=1000?(r.f/1000)+' kHz':r.f+' Hz';
     const earLbl = ag.mode==='perear' ? EAR_NAME[ag.curEar]+' · ' : '';
     $('cvTitle').textContent = earLbl + fLbl;
-    // honest progress: the plan GROWS (gap-filling, double-checks, the reference re-test), so a
-    // fixed "of 9" was a promise the run then broke. Name the phase — and the exact tone being
-    // refined, which the chart mirrors with the dashed ring.
-    const base=AG_BASE_PLAN.length;
-    $('cvprog').textContent = ag.phaseD ? `${EAR_NAME[ag.curEar]} · re-checking the ${fLbl} reference`
-      : ag.phaseC ? `${EAR_NAME[ag.curEar]} · double-checking ${fLbl}`
-      : ag.phaseB ? `${EAR_NAME[ag.curEar]} · filling a gap at ${fLbl}`
-      : `${EAR_NAME[ag.curEar]} · tone ${Math.min(ag.fi+1,base)} of ${base}`;
+    // honest progress: name the INTENT the order rule picked this tone for — the chart mirrors
+    // it with the dashed ring. No fake totals; the plan is adaptive by design.
+    $('cvprog').textContent = EAR_NAME[ag.curEar]+' · '+(
+        r.phase==='sentinel' ? `re-checking the ${fLbl} reference`
+      : r.phase==='surprise' ? `double-checking a surprise at ${fLbl}`
+      : r.phase==='gap'      ? `filling a gap at ${fLbl}`
+      : `tone ${Math.min(r.idx||1,r.of||9)} of ${r.of||9}`);
     agTrial();
   }
   function agTrial(){
-    ag.curX=ag.eng.z.next(); ag.curLevel=ag.eng.levelOf(ag.curX);
-    if(ag.warm) ag.curLevel=-30;              // practice: unmistakably audible, never recorded
-    // ~20% SILENT catch trials — never the first of a frequency (need one real reference), capped —
-    // so "I heard nothing" is a normal, expected answer and false alarms can be measured.
-    ag.catch = !ag.warm && ag.trial>0 && (ag.catchCount||0)<ag.catchCap && Math.random()<0.2;
-    if(ag.catch){ ag.catchCount=(ag.catchCount||0)+1; if(ag.caTot) ag.caTot[ag.curEar]=(ag.caTot[ag.curEar]||0)+1; }   // presented-catch tally → FA is judged as a RATE
-    const f=ag.plan[ag.fi];
+    if(ag.warm){ ag.curLevel=-30; ag.catch=false; }   // practice: unmistakably audible, never recorded
+    else {
+      // level via Ψ entropy-min placement; silent catch trials via the search's schedule
+      // (ear-scoped and decaying in smart order, per-frequency capped in fixed)
+      const tr=ag.search.nextTrial();
+      ag.curLevel=tr.level; ag.catch=tr.isCatch;
+      if(ag.catch && ag.caTot) ag.caTot[ag.curEar]=(ag.caTot[ag.curEar]||0)+1;   // presented-catch tally → FA is judged as a RATE
+    }
+    const f=ag.curF;
     const box=$('cvChoices'); box.innerHTML='';
     const hear=document.createElement('button'); hear.className='choice'; hear.innerHTML='I hear it<small>tap the moment you do</small>'; hear.onclick=()=>agAnswer('hear');
     const none=document.createElement('button'); none.className='choice'; none.innerHTML='Nothing<small>silence this time</small>'; none.onclick=()=>agAnswer('none');
@@ -2068,7 +2036,7 @@
                                            // invited a contradictory second record into the wrong slot
     killStim();                            // stop the tone the instant you answer
     // disable EVERY control including Replay: a Replay tapped in the post-lock gap re-fired the
-    // finished trial while ag.fi had already advanced, writing the old frequency's threshold
+    // finished trial while the search had already advanced, writing the old frequency's threshold
     // into the NEXT frequency's slot (tens of dB wrong) and skipping a point — silently
     ag.replay=null;
     [...$('cvChoices').querySelectorAll('button')].forEach(b=>b.disabled=true);
@@ -2092,55 +2060,49 @@
     }
     if(!heard && ag.curLevel>=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10)-2) ag.noneMax=(ag.noneMax||0)+1;   // "Nothing" at max level
     else if(heard) ag.noneMax=0;
-    ag.eng.z.record(ag.curX, heard); ag.trial++; ag.earTrials=(ag.earTrials||0)+1;
-    if(ag.log){ const f=ag.plan[ag.fi]; (ag.log[ag.curEar][f]=ag.log[ag.curEar][f]||[]).push([Math.round(ag.curLevel*10)/10, heard?1:0]); }
-    {                                        // live feedback: move the graph on EVERY answer
-      const s0=ag.eng.z.stats();
-      const lo0=ag.eng.levelOfRaw(s0.ci[0]), hi0=ag.eng.levelOfRaw(s0.ci[1]);
-      ag.live={ear:ag.curEar, f:ag.plan[ag.fi], lvl:ag.eng.levelOf(s0.mean), ci:Math.abs(hi0-lo0)/2};
+    if(ag.log){ (ag.log[ag.curEar][ag.curF]=ag.log[ag.curEar][ag.curF]||[]).push([Math.round(ag.curLevel*10)/10, heard?1:0]); }
+    const res=ag.search.record(heard);
+    if(!res.locked){
+      ag.live={ear:ag.curEar, f:ag.curF, lvl:res.live.lvl, ci:res.live.ci};   // the graph moves on EVERY answer
       agLiveDraw();
+      // FAST FLOOR EXIT: hearing our quietest playable level over and over means the true
+      // threshold is beyond the rail — lock it censored after a few confirmations instead of
+      // grinding the cap in guaranteed "I hear it"s (the high-volume thrash).
+      if(heard && ag.curLevel<=((AG_ROOM.physLo!=null?AG_ROOM.physLo:-94)+4)){
+        ag.floorStreak=(ag.floorStreak||0)+1;
+        if(ag.floorStreak>=4){ agLockCensored('lo'); return; }
+      } else ag.floorStreak=0;
+      choiceTimers.push(setTimeout(agTrial,340)); return;
     }
-    const st=ag.eng.z.stats();
-    if(st.usable||st.forceStop){
-      const f=ag.plan[ag.fi];
-      const lvl=ag.eng.levelOf(st.mean);
-      ag.pts[ag.curEar][f]=lvl; ag.prevThr=lvl; ag.live=null;   // locked — no longer provisional
-      // CI half-width from the UNCLAMPED posterior: when a CI straddles a rail, clamping both
-      // endpoints to the rail collapsed the width to ~0 — the least-certain points entered the
-      // GP as the most trusted and the band drew tightest exactly where the data ran out.
-      const loL=ag.eng.levelOfRaw(st.ci[0]), hiL=ag.eng.levelOfRaw(st.ci[1]);
-      // cens is SYMMETRIC: pinned at the loud rail (can't play louder) OR the quiet rail (can't
-      // play quieter) — both mean "the true threshold lies beyond what this chain can measure"
-      const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
-      ag.ptsMeta[ag.curEar][f]={ ci: Math.abs(hiL-loL)/2, cens: lvl>=pHi-3 || lvl<=pLo+3 };
-      agLiveDraw();                                        // redraw the curve as each point locks
-      // volume-sentinel comparison: keep the ORIGINAL anchor (the one the run was measured
-      // against) and record the drift for the honesty note
-      if(f===1000 && ag.phaseD && ag.refFirst!=null){
-        const drift=Math.abs(lvl-ag.refFirst);
-        if(drift>6){ ag.volDrift=ag.volDrift||{}; ag.volDrift[ag.curEar]=Math.round(drift); }
-        ag.pts[ag.curEar][1000]=ag.refFirst;
-      }
-      // WINDOW PLACEMENT on the anchor (1 kHz, measured first). Not "is it censored" but "does it
-      // leave enough room ABOVE for the frequencies that will need more level".
-      if(f===1000 && ag.fi===0 && !ag.phaseB && !ag.phaseC && !ag.phaseD && agPlaceWindow(lvl, ag.ptsMeta[ag.curEar][1000].cens)) return;
-      agNextPoint(); return;
+    agLocked(res);
+  }
+  // a reading locked (or, for the sentinel, was compared and restored): mirror it into the
+  // render/save state, run window placement if it was this ear's first 1 kHz, then move on
+  function agLocked(res){
+    ag.live=null; ag.floorStreak=0;
+    if(res.sentinel && res.drift>6){ ag.volDrift=ag.volDrift||{}; ag.volDrift[ag.curEar]=Math.round(res.drift); }
+    ag.pts[ag.curEar][res.f]=res.lvl; ag.prevThr=res.lvl;
+    ag.ptsMeta[ag.curEar][res.f]={ci:res.ci, cens:res.cens};
+    agLiveDraw();                                          // redraw the curve as each point locks
+    if(res.f===1000 && !ag.anchorPlaced && !res.sentinel){
+      // WINDOW PLACEMENT on the anchor (1 kHz, measured first). Not "is it censored" but "does
+      // it leave enough room ABOVE for the frequencies that will need more level".
+      if(agPlaceWindow(res.lvl, res.cens)) return;
+      ag.anchorPlaced=true;
     }
-    // FAST FLOOR EXIT: hearing our quietest playable level over and over means the true threshold
-    // is beyond the rail — lock it censored after a few confirmations instead of grinding nMax
-    // trials of guaranteed "I hear it" at every frequency (the high-volume thrash).
-    if(heard && ag.curLevel<=((AG_ROOM.physLo!=null?AG_ROOM.physLo:-94)+4)){
-      ag.floorStreak=(ag.floorStreak||0)+1;
-      if(ag.floorStreak>=4){
-        const f2=ag.plan[ag.fi], pLo2=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
-        ag.pts[ag.curEar][f2]=pLo2; ag.prevThr=pLo2;
-        ag.ptsMeta[ag.curEar][f2]={ci:null, cens:true};
-        ag.floorStreak=0; agLiveDraw();
-        if(f2===1000 && ag.fi===0 && !ag.phaseB && !ag.phaseC && !ag.phaseD && agPlaceWindow(pLo2, true)) return;
-        agNextPoint(); return;
-      }
-    } else ag.floorStreak=0;
-    choiceTimers.push(setTimeout(agTrial,340));
+    agFreqNext();
+  }
+  function agLockCensored(rail){
+    const res=ag.search.censorAt(rail);
+    ag.live=null; ag.floorStreak=0; ag.noneMax=0;
+    ag.pts[ag.curEar][res.f]=res.lvl; ag.prevThr=res.lvl;
+    ag.ptsMeta[ag.curEar][res.f]={ci:null, cens:true};
+    agLiveDraw();
+    if(res.f===1000 && !ag.anchorPlaced && rail==='lo'){   // pinned at the quiet rail = the "too loud" window case
+      if(agPlaceWindow(res.lvl, true)) return;
+      ag.anchorPlaced=true;
+    }
+    agFreqNext();
   }
   // Window placement, applied to the 1 kHz anchor. Returns true if it took over the flow.
   // Rule: the anchor must sit near the QUIET end, because every other frequency needs MORE level.
@@ -2153,24 +2115,26 @@
       // Always-safe direction, and the anchor is re-measured at the new offset — so the entire
       // run shares ONE offset and every later point stays comparable to the anchor.
       ag.calOffset=(ag.calOffset||0)-12; anchorMaster(agLevel());
+      ag.search.requeueAnchor();
       delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
       if(ag.log&&ag.log[ag.curEar]) delete ag.log[ag.curEar][1000];
       ag.floorStreak=0; ag.autoRanged=true;
       $('cvprog').textContent='Fitting to your volume';
       $('cvNote').innerHTML='Fitting the test to your volume… <span style="color:var(--muted)">no need to touch anything.</span>';
-      choiceTimers.push(setTimeout(agFreq,700)); return true;
+      choiceTimers.push(setTimeout(agFreqNext,700)); return true;
     }
     if(tooQuiet && (ag.calOffset||0)<0){
       // reclaim headroom we donated earlier (often during the OTHER, better ear's auto-range)
       // before bothering the knob: raising our own gain back toward 0 is silent, exact, and
       // bounded by headroom we know we have. Same one-step re-measure contract as the down branch.
       ag.calOffset=Math.min(0,(ag.calOffset||0)+12); anchorMaster(agLevel());
+      ag.search.requeueAnchor();
       delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
       if(ag.log&&ag.log[ag.curEar]) delete ag.log[ag.curEar][1000];
       ag.floorStreak=0; ag.autoRanged=true;
       $('cvprog').textContent='Fitting to your volume';
       $('cvNote').innerHTML='Fitting the test to your volume… <span style="color:var(--muted)">no need to touch anything.</span>';
-      choiceTimers.push(setTimeout(agFreq,700)); return true;
+      choiceTimers.push(setTimeout(agFreqNext,700)); return true;
     }
     if(tooQuiet){ agRefRetune('up', Math.round(lvl-AG_ANCHOR_HI)); return true; }   // out of digital headroom → the knob
     ag.headroom=Math.round(pHi-lvl);   // dB available above the anchor for the worse frequencies
@@ -2189,50 +2153,20 @@
       +(ag.mode==='perear'&&ag.ei>0?' <span style="color:var(--muted)">The ear you already finished is safe — each ear is read relative to its own 1 kHz, so a volume change between ears cancels out.</span>':'');
     const box=$('cvChoices'); box.innerHTML='';
     const redo=document.createElement('button'); redo.className='choice alt'; redo.innerHTML='Volume adjusted<small>re-measure 1 kHz</small>';
-    redo.onclick=()=>{ delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
+    redo.onclick=()=>{ ag.search.requeueAnchor();
+      delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
       if(ag.log&&ag.log[ag.curEar]) delete ag.log[ag.curEar][1000];
-      ag.floorStreak=0; agFreq(); };
+      ag.floorStreak=0; agFreqNext(); };
     const anyway=document.createElement('button'); anyway.className='choice alt'; anyway.innerHTML='Continue anyway<small>curve will be rough</small>';
-    anyway.onclick=()=>{ agNextPoint(); };
+    anyway.onclick=()=>{ ag.anchorPlaced=true; agFreqNext(); };
     box.appendChild(redo); box.appendChild(anyway);
-  }
-  // advance past the current frequency: base plan → Phase-B infill → verify pass → next ear/finish
-  function agNextPoint(){
-    ag.fi++;
-    if(ag.fi>=ag.plan.length){
-      if(!ag.phaseB){
-        ag.phaseB=true; const add=agPlanInfill(ag.curEar);
-        if(add.length){ ag.plan=ag.plan.concat(add); choiceTimers.push(setTimeout(agFreq,320)); return; }
-      }
-      if(!ag.phaseC){
-        ag.phaseC=true; const vf=agPlanVerify(ag.curEar);
-        if(vf.length){ ag.plan=ag.plan.concat(vf); choiceTimers.push(setTimeout(agFreq,320)); return; }
-      }
-      if(!ag.phaseD){
-        ag.phaseD=true;
-        // VOLUME SENTINEL: re-test the 1 kHz anchor at the end of the ear. If it moved, the knob
-        // (or the fit) moved mid-run — and every relative point silently moved with it.
-        if(ag.pts[ag.curEar][1000]!=null && !(ag.ptsMeta[ag.curEar][1000]||{}).cens){
-          ag.refFirst=ag.pts[ag.curEar][1000];
-          ag.plan=ag.plan.concat([1000]); choiceTimers.push(setTimeout(agFreq,320)); return;
-        }
-      }
-      ag.ei++;
-      if(ag.ei>=ag.ears.length){ finishCurve(); return; }
-      choiceTimers.push(setTimeout(agEar,650)); return;
-    }
-    choiceTimers.push(setTimeout(agFreq,320)); return;
   }
   // mercy-skip: a frequency this ear genuinely can't reach shouldn't be a grind of tapping
   // "Nothing" into a void — mark it beyond reach (censored, honest) and move on
   function agGiveUp(){
     if(!ag||ag.phase!=='run')return; killStim(); clearTimers();
-    const f=ag.plan[ag.fi], hi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
-    ag.pts[ag.curEar][f]=hi; ag.prevThr=hi;
-    ag.ptsMeta[ag.curEar][f]={ci:null, cens:true};
-    ag.noneMax=0; agLiveDraw();
     $('cvNote').textContent='Marked beyond reach — moving on.';
-    agNextPoint();
+    agLockCensored('hi');
   }
   // build one ear's curve, dB re that ear's OWN 1 kHz (so the equal-power pan offset cancels).
   // each point carries its Ψ CI half-width so the render GP can weight it and draw an honest band.
