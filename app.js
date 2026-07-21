@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v71";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v72";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1354,21 +1354,35 @@
   // often hears 500 Hz at the floor while 1 kHz stays silent — two seconds that separate "a
   // pitch-shaped difference the curve will map" from "one side needs more level everywhere",
   // and that answer the listener's fair suspicion that the check itself is broken.
+  // Andrea: "when I can't hear the fallback either, why doesn't it go around ALL the frequencies
+  // until I find one I do hear?" — right. A high-frequency-weighted loss often hears LOW tones
+  // fine, so the quiet ear is walked down (and up) a ladder rather than tried once at 500 Hz.
+  // WHICH frequencies survive is itself the finding.
+  const CAL_LADDER=[500,250,1000,2000,4000,125];
   function calVolLow(which){
+    cal.li=0; cal.lowMiss=0; cal.heardFs=[];
+    calVolRung(which);
+  }
+  function calVolRung(which){
+    const quiet = which==='L'?'R':'L', pan = quiet==='L'?-1:1, f=CAL_LADDER[cal.li];
+    const fLbl = f>=1000?(f/1000)+' kHz':f+' Hz';
     cal.lowMiss=0;
-    const quiet = which==='L'?'R':'L', pan = quiet==='L'?-1:1;
-    $('calTitle').textContent='Volume check · deeper beeps';
-    $('calNote').innerHTML='One more listen: the same <b>very faint</b> beeps, but <b>deeper</b> — only in your <b>'+(quiet==='L'?'left':'right')+'</b> ear.';
+    $('calTitle').textContent='Volume check · trying '+fLbl;
+    $('calNote').innerHTML='Now a <b>'+fLbl+'</b> tone, very faint, only in your <b>'+(quiet==='L'?'left':'right')+'</b> ear. Hear it?';
     $('caldot').style.left = quiet==='L' ? '4%' : '96%';
     const box=$('calChoices'); box.innerHTML='';
-    const yes=document.createElement('button'); yes.className='choice'; yes.innerHTML='Now I hear them<small>faint is fine</small>'; yes.onclick=()=>calVolFinding(which,true);
-    const no=document.createElement('button'); no.className='choice'; no.innerHTML='Still nothing<small>on that side</small>';
-    no.onclick=()=>{ if((cal.lowMiss=(cal.lowMiss||0)+1)>=2){ calVolFinding(which,false); return; }
-      $('calNote').innerHTML='Nudge the volume <b>up one step</b> and keep listening — the deep beeps are still playing on that side.'; };
+    const yes=document.createElement('button'); yes.className='choice'; yes.innerHTML='Yes, I hear it<small>faint is fine</small>'; yes.onclick=()=>{ cal.heardFs.push(f); calVolFinding(which,true); };
+    const no=document.createElement('button'); no.className='choice'; no.innerHTML='No<small>try another pitch</small>';
+    no.onclick=()=>{
+      if((cal.lowMiss=(cal.lowMiss||0)+1)<2){ $('calNote').innerHTML='Nudge the volume <b>up one step</b> and keep listening — still '+fLbl+' on that side.'; return; }
+      cal.li++;
+      if(cal.li>=CAL_LADDER.length){ calVolFinding(which,false); return; }   // whole ladder failed → honest finding
+      calVolRung(which);
+    };
     box.appendChild(yes); box.appendChild(no);
     const play=()=>{ calStop(); anchorMaster(0.85);
       const step=()=>{ if(!cal)return; const t=ctx.currentTime+.05;
-        for(let k=0;k<3;k++) detTone(500, t+k*.4, .28, AG_FIT_LEVEL, pan);
+        for(let k=0;k<3;k++) detTone(f, t+k*.4, .28, AG_FIT_LEVEL, pan);
         cal.timer=setTimeout(step,1800); };
       step(); };
     cal.play=play; play();
@@ -1377,10 +1391,11 @@
     calStop(); killStim(); $('calbar').classList.remove('play');
     chainOKFor=device; chainOKAt=Date.now(); chainAway=false;    // proven for the ear that can prove it
     const heardSide = which==='L'?'left':'right', weak = which==='L'?'right':'left';
+    const gotF = cal.heardFs&&cal.heardFs.length ? (cal.heardFs[0]>=1000?(cal.heardFs[0]/1000)+' kHz':cal.heardFs[0]+' Hz') : null;
     $('calTitle').textContent = lowHeard ? 'A pitch-shaped difference — the curve maps it' : 'One quiet side — a finding, not a fault';
     $('calNote').innerHTML = lowHeard
-      ? 'Your <b>'+weak+'</b> ear hears the <b>deep</b> beeps at this faint level but not the higher ones — a pitch-dependent difference, which is exactly what the per-ear curve measures. Don’t chase it with the volume knob: <b>set it back to comfortable</b> and leave it there.'
-      : 'At this faint level only your <b>'+heardSide+'</b> ear hears the beeps. Don’t chase the '+weak+' side with the volume knob — <b>set it back to comfortable</b> and leave it there. The tests play each ear as loud as it needs (up to 60 dB louder than these beeps), and the per-ear curve will measure your <b>'+weak+'</b> ear honestly, marking anything truly beyond reach.';
+      ? 'Your <b>'+weak+'</b> ear hears the faint tone at <b>'+gotF+'</b> but not the higher pitches — a pitch-dependent difference, which is exactly what the per-ear curve measures. Don’t chase it with the volume knob: <b>set it back to comfortable</b> and leave it there.'
+      : 'Across every pitch we tried, only your <b>'+heardSide+'</b> ear heard these faint tones. Don’t chase the '+weak+' side with the volume knob — <b>set it back to comfortable</b> and leave it there. The tests play each ear as loud as it needs (up to 60 dB louder than these beeps), and the per-ear curve will measure your <b>'+weak+'</b> ear honestly, marking anything truly beyond reach.';
     const box=$('calChoices'); box.innerHTML='';
     const go=document.createElement('button'); go.className='choice'; go.innerHTML='Volume back to comfortable<small>continue</small>';
     go.onclick=()=>{ const done=cal&&cal.onPass; cal=null; if(done) done(); };
@@ -1961,6 +1976,12 @@
   // identical across real and silent catch trials.
   function agMaskEnsure(f, lvl){
     const t=ctx.currentTime;
+    // the mask persists across visits, but the resting ear is whichever ear is NOT under test —
+    // and that flips between ears. If a reach pass left a mask running into the next ear (it is
+    // exempt from killStim and not stopped on the ear boundary in every path), gliding it would
+    // keep it panned into the ear now being tested — leaving the true resting ear unmasked and
+    // capping the measurable asymmetry (audio audit F1). Rebuild whenever the pan is stale.
+    if(ag.maskN && ag.maskN.sp && ag.maskN.sp.pan.value !== -ag.pan){ agMaskStop(); }
     if(ag.maskN && ag.maskN.f===f){
       // steady but TRACKING: up immediately when a trial needs more, down GENTLY once the
       // staircase has clearly left that level behind. The first build ratcheted up only, so a
@@ -1998,12 +2019,19 @@
     nb.connect(bp); bp.connect(g); g.connect(sp); sp.connect(master);
     nb.start();
     liveStim.delete(nb);               // exempt from killStim — the mask must outlive every answer
-    ag.maskN={nb,bp,g,f,lvl};
+    ag.maskN={nb,bp,g,sp,f,lvl};       // sp stored so a stale pan can be detected across ears
   }
   function agMaskStop(){ if(ag&&ag.maskN){ try{ const t=ctx.currentTime;
     ag.maskN.g.gain.cancelScheduledValues(t); ag.maskN.g.gain.setValueAtTime(ag.maskN.g.gain.value,t);
     ag.maskN.g.gain.linearRampToValueAtTime(0,t+.15); ag.maskN.nb.stop(t+.3); }catch(e){} ag.maskN=null; } }
-  function stopCurveAudio(){ agBedStop(); agMaskStop(); if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
+  // release the room-noise mic from ANY exit. The measurement loop resolves its promise only
+  // when its self-scheduled timer fires; ⌂ Home clears that timer (via stopCurveAudio) so the
+  // finally never runs and the stream stayed open (recording light on) for the page's life.
+  function releaseMic(){
+    if(ag&&ag.micStream){ try{ ag.micStream.getTracks().forEach(t=>t.stop()); }catch(e){} ag.micStream=null; }
+    if(ag&&ag.micNodes){ ag.micNodes.forEach(n=>{ try{n.disconnect();}catch(e){} }); ag.micNodes=null; }
+  }
+  function stopCurveAudio(){ agBedStop(); agMaskStop(); releaseMic(); if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
   // PRE-CHECK — the audiogram-specific part of setup. The chain proof (sides at −14, volume via
   // the near-floor per-ear pulses) lives in the shared gate that fronts EVERY room, so the only
   // thing left to verify here is the ROOM: a quiet-environment listen — a fan, traffic or a hum
@@ -2026,12 +2054,25 @@
     const canMic = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
     if(canMic){
       const mic=document.createElement('button'); mic.className='btn ghost half'; mic.textContent='🎙 Measure the room';
+      // BLUETOOTH TRAP (clinical review + audio audit): opening the mic can flip a wireless
+      // headset from stereo music (A2DP) into mono call mode (HFP) — narrow-band, and it often
+      // STAYS there after. That is the most likely cause of "only white noise, no beeps" that no
+      // wired test could reproduce. So the mic is now a two-tap confirm with the warning stated,
+      // and the stream is force-released on every exit (below), not only in a finally that a
+      // mid-check ⌂ Home would skip.
+      let micArmed=false;
       mic.onclick=async()=>{
+        if(!micArmed){
+          micArmed=true; mic.textContent='🎙 Measure anyway';
+          $('cvNote').innerHTML='<b>On wireless headphones, skip this.</b> Opening the microphone can switch Bluetooth headphones into mono “call mode” and ruin the test — sometimes until you reconnect them. On <b>wired</b> headphones it’s safe. If you measure and the sound then seems mono or muffled, reconnect the headphones and re-run <b>Sound check</b> on the home screen.';
+          return;
+        }
         mic.disabled=true; stopCurveAudio(); clearTimers();
         anchorMaster(0.0001);
         let stream=null;
         try{
           stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, autoGainControl:false, noiseSuppression:false}});
+          ag.micStream=stream;                                    // held so any exit path can release it
           const src=ctx.createMediaStreamSource(stream);
           const an=ctx.createAnalyser(); an.fftSize=2048; src.connect(an);
           const sink=ctx.createGain(); sink.gain.value=0; an.connect(sink); sink.connect(ctx.destination);   // silent sink keeps the graph pulled; nothing is audible
@@ -2067,10 +2108,9 @@
           $('cvNote').innerHTML='No microphone reading (permission declined or unavailable) — no problem, just listen for yourself instead.';
           silent.style.display=''; noisy.style.display='';
         }finally{
-          if(stream) stream.getTracks().forEach(t=>t.stop());     // release the mic immediately
-          if(ag&&ag.micNodes){ ag.micNodes.forEach(n=>{ try{n.disconnect();}catch(e){} }); ag.micNodes=null; }
-          anchorMaster(0.85);
-          mic.disabled=false;
+          releaseMic();                                          // stop tracks + disconnect nodes (also called from stopCurveAudio)
+          if(ag){ anchorMaster(0.85); }
+          mic.disabled=false; micArmed=false; mic.textContent='🎙 Measure the room';
         }
       };
       micBtn=mic;
@@ -2114,7 +2154,7 @@
   }
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.prevThr=null;
-    ag.floorStreak=0; ag.noneMax=0; ag.anchorPlaced=false;
+    ag.floorStreak=0; ag.noneMax=0; ag.anchorPlaced=false; ag.earAdvancing=false;
     ag.reachAsked=false; ag.reach=null;                    // each ear gets its own (single) reach offer
     ag.rushShown=0;                                        // re-explain the masking rush per ear — it changes sides
     ag.warm = ag.ei===0;                                   // one obvious practice tone before the first ear
@@ -2173,7 +2213,13 @@
     agTrial();
   }
   function agEarDone(){
+    // re-entrancy guard: every path here schedules the next ear 650 ms out, so any second call in
+    // that window (double tap, a stray timer) would advance TWO ears and silently skip one
+    if(ag.earAdvancing) return;
+    ag.earAdvancing=true;
     ag.reach=null;
+    agMaskStop();                                  // the mask ends WITH the ear — never bleeds into the next one
+    ag.earOffset=ag.earOffset||{}; ag.earOffset[ag.curEar]=ag.calOffset||0;   // for agAsym's same-scale test
     ag.ei++;
     if(ag.ei>=ag.ears.length){ finishCurve(); return; }
     choiceTimers.push(setTimeout(agEar,650));
@@ -2194,9 +2240,17 @@
   function agReachNext(){
     const R=ag.reach;
     if(R.stage==='pts' && R.idx>=R.fs.length){
-      ag.reach=null;
-      $('cvNote').innerHTML='Done — set the volume back to <b>comfortable</b> now.';
-      choiceTimers.push(setTimeout(agEarDone,1200)); return;
+      ag.reach=null; agMaskStop(); killStim(); clearTimers();
+      // the next ear must start at COMFORTABLE volume — a 1.2 s auto-advance had the listener
+      // still turning the knob down during ear 2's early trials, skewing its whole curve (audit
+      // F4). Gate on an explicit tap, the same contract as agRefRetune.
+      $('cvTitle').textContent='Turn the volume back down';
+      $('cvprog').textContent=EAR_NAME[ag.curEar]+' · done';
+      $('cvNote').innerHTML='That ear is done. <b>Set the volume back to a comfortable level</b> before the next ear — it starts quiet again.';
+      const box=$('cvChoices'); box.innerHTML='';
+      const done=document.createElement('button'); done.className='choice'; done.innerHTML='Volume is back to comfortable<small>continue</small>';
+      done.onclick=()=>{ done.disabled=true; agEarDone(); };   // agEarDone rebuilds the UI 650 ms later — a second tap in that window used to advance TWO ears
+      box.appendChild(done); return;
     }
     const f = R.stage==='anchor' ? 1000 : R.fs[R.idx];
     // the anchor re-take bridges the knob change: delta = old anchor − new anchor is PURE knob
@@ -2320,9 +2374,16 @@
         choiceTimers.push(setTimeout(agTrial,340)); return;
       }
       const lvl=R.eng.levelOf(st.mean), pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
-      if(R.stage==='anchor'){ R.delta=R.old1k-lvl; R.stage='pts'; R.idx=0; agReachNext(); return; }
+      if(R.stage==='anchor'){
+        // the delta bridge is applied to EVERY recovered point, so a weak bridge poisons them
+        // all — hold the anchor to the same tight rule the main search uses, never the dryRuns
+        // escape (audio audit F3). forceStop still ends a genuinely stuck anchor.
+        if(!(st.forceStop || ciR<=6)){ choiceTimers.push(setTimeout(agTrial,340)); return; }
+        R.delta=R.old1k-lvl; R.stage='pts'; R.idx=0; agReachNext(); return;
+      }
       ag.pts[ag.curEar][ag.curF]=lvl+R.delta;           // mapped back into the ear's original scale
-      ag.ptsMeta[ag.curEar][ag.curF]={ci:ciR, cens: lvl>=pHi-3};   // cens now judged vs the RAISED rail
+      // reach:true — a refit must NOT revert this to the base pass's rail-pinned log (audit F2)
+      ag.ptsMeta[ag.curEar][ag.curF]={ci:ciR, cens: lvl>=pHi-3, censDir:(lvl>=pHi-3?'hi':null), reach:true};
       ag.live=null; agLiveDraw();
       R.idx++; agReachNext(); return;
     }
@@ -2436,7 +2497,7 @@
       const R=ag.reach, pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
       if(R.stage==='anchor'){ ag.reach=null; agEarDone(); return; }   // can't even re-anchor → abandon the pass
       ag.pts[ag.curEar][ag.curF]=pHi+R.delta;                          // beyond even the raised rail — honest, but higher-information
-      ag.ptsMeta[ag.curEar][ag.curF]={ci:null, cens:true};
+      ag.ptsMeta[ag.curEar][ag.curF]={ci:null, cens:true, censDir:'hi', reach:true};
       ag.live=null; agLiveDraw(); R.idx++; agReachNext(); return;
     }
     agLockCensored('hi');
@@ -2445,10 +2506,20 @@
   // each point carries its Ψ CI half-width so the render GP can weight it and draw an honest band.
   function agBuildCurve(ear){
     const pts=ag.pts[ear]; const fs=Object.keys(pts).map(Number).sort((a,b)=>a-b);
-    if(!fs.length) return [];
-    const ref = pts[1000]!=null ? pts[1000] : pts[fs[0]];
     const meta=(ag.ptsMeta&&ag.ptsMeta[ear])||{};
-    const out=fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci)||null, cens: !!(meta[f]&&meta[f].cens) }));
+    // NO locked points yet — this is the first frequency of the ear (always 1 kHz). Return the
+    // live provisional dot at rel 0 so the chart isn't a promised-but-empty grid for 4-16 trials
+    // (Andrea: "the tested frequency doesn't show live … maybe the first one"). rel is 0 by
+    // construction (it IS the reference), so we plot a ring at 0 with its live CI, labelled below.
+    if(!fs.length){
+      if(ag.live && ag.live.ear===ear) return [{ f:ag.live.f, rel:0, ci:ag.live.ci, live:true, anchor:true }];
+      return [];
+    }
+    // if 1 kHz isn't measured yet, DON'T silently re-reference to the lowest frequency — that
+    // would shift the whole ear's curve relative to the other ear. Wait for the anchor.
+    if(pts[1000]==null) return (ag.live && ag.live.ear===ear) ? [{ f:ag.live.f, rel:0, ci:ag.live.ci, live:true, anchor:true }] : [];
+    const ref = pts[1000];
+    const out=fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci!=null?meta[f].ci:null), cens: !!(meta[f]&&meta[f].cens), censDir:(meta[f]&&meta[f].censDir)||null }));
     // the frequency being measured RIGHT NOW, drawn provisionally so the graph moves with every
     // answer: its position is the running estimate and its band is the live confidence interval,
     // which visibly tightens as the trials close in. A verify/reference re-test refines a point
@@ -2461,12 +2532,35 @@
     }
     return out;
   }
-  // L−R asymmetry in the high band (≥2 kHz, where a sensorineural loss shows). +ve = left worse.
+  // L−R asymmetry. +ve = left worse. THE FIX (audit): each ear's `rel` is dB re its OWN 1 kHz, so
+  // comparing rel_R−rel_L algebraically SUBTRACTS the 1 kHz asymmetry from every frequency — a flat
+  // unilateral loss then reads as ZERO ("ears track closely"), and a 1 kHz-only difference invents
+  // a loss in the opposite ear. Both are wired to a referral. When the two ears were measured at the
+  // same output gain (same calOffset, no mid-run knob retune), their ABSOLUTE dBFS thresholds are
+  // directly comparable, so compare those — recovering flat and low-frequency asymmetry, 1 kHz
+  // included. Only fall back to the (flawed) rel comparison when the offsets differ, and even then
+  // never compare a censored point (a bound, not a measurement) or across a censored reference.
   function agAsym(R,L){
-    const rmap={}; R.forEach(p=>{ rmap[p.f]=p.rel; });
+    const sameScale = ag && ag.earOffset && ag.earOffset.R!=null && ag.earOffset.L!=null
+                      && ag.earOffset.R===ag.earOffset.L && !(ag.retunes>0);
     let max=0, atF=0;
-    L.forEach(p=>{ if(p.f>=2000 && rmap[p.f]!=null){ const d=rmap[p.f]-p.rel; if(Math.abs(d)>Math.abs(max)){ max=d; atF=p.f; } } });
-    return {max, atF};
+    if(sameScale){
+      const rt=ag.pts.R||{}, lt=ag.pts.L||{}, mR=ag.ptsMeta.R||{}, mL=ag.ptsMeta.L||{};
+      Object.keys(lt).map(Number).forEach(f=>{
+        if(lt[f]==null||rt[f]==null) return;
+        if((mR[f]&&mR[f].cens)||(mL[f]&&mL[f].cens)) return;   // a rail bound isn't a measurement
+        const d=lt[f]-rt[f];                                   // +ve = left needs more level = left worse
+        if(Math.abs(d)>Math.abs(max)){ max=d; atF=f; }
+      });
+      return {max, atF, basis:'abs'};
+    }
+    // fallback: relative, but guarded — skip any pair touching a censored point or a censored ref
+    const refCensR=(ag.ptsMeta&&ag.ptsMeta.R&&ag.ptsMeta.R[1000]&&ag.ptsMeta.R[1000].cens);
+    const refCensL=(ag.ptsMeta&&ag.ptsMeta.L&&ag.ptsMeta.L[1000]&&ag.ptsMeta.L[1000].cens);
+    if(refCensR||refCensL) return {max:0, atF:0, basis:'rel', unreliable:true};
+    const rmap={}; R.forEach(p=>{ if(!p.cens&&!p.live) rmap[p.f]=p.rel; });
+    L.forEach(p=>{ if(p.f>=2000 && !p.cens && !p.live && rmap[p.f]!=null){ const d=rmap[p.f]-p.rel; if(Math.abs(d)>Math.abs(max)){ max=d; atF=p.f; } } });
+    return {max, atF, basis:'rel'};
   }
   function agLiveDraw(){
     if(!ag) return;
@@ -2484,18 +2578,26 @@
     const g=clamp(emp,0.03,0.30);
     const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
     Object.keys(ag.log[ear]).forEach(f=>{
+      f=+f;
+      // NEVER refit 1 kHz: it is the reference, and its log also holds the sentinel re-test, so a
+      // refit would blend two knob scales and translate the whole curve. And NEVER refit a
+      // reach-recovered point: its log is the base pass's rail-pinned "Nothing" trials, so a refit
+      // reverts the value the loud pass just earned back to censored. (audit F2)
+      if(f===1000) return;
+      const m=ag.ptsMeta[ear][f]; if(m && m.reach) return;
       const trials=ag.log[ear][f]; if(!trials||trials.length<3) return;
       const eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, {gamma:g}));
       trials.forEach(t=>eng.z.record(t[0], !!t[1]));
       const st=eng.z.stats(), lvl=eng.levelOf(st.mean);
       const loL=eng.levelOfRaw(st.ci[0]), hiL=eng.levelOfRaw(st.ci[1]);
+      const cd = lvl>=pHi-3?'hi':(lvl<=pLo+3?'lo':null);
       ag.pts[ear][f]=lvl;
-      ag.ptsMeta[ear][f]={ci:Math.abs(hiL-loL)/2, cens: lvl>=pHi-3||lvl<=pLo+3, refit:Math.round(g*100)/100};
+      ag.ptsMeta[ear][f]={ci:Math.abs(hiL-loL)/2, cens: !!cd, censDir:cd, refit:Math.round(g*100)/100};
     });
     return true;
   }
   async function finishCurve(){
-    ag.phase='done'; clearTimers(); agBedStop();
+    ag.phase='done'; clearTimers(); agBedStop(); agMaskStop();   // a reach pass on the LAST ear left the mask playing through the results
     $('cvTitle').textContent='Your curve'; $('cvprog').textContent=''; $('cvChoices').innerHTML='';
     $('cvwrap').style.display='block'; $('cvsave').style.display='inline-block';
     $('cvexit').style.display=''; $('cvredo').style.display='';   // the run is over — Continue/Done/Redo return
@@ -2511,9 +2613,11 @@
       let note;
       if(faHi){
         note='A few silent rounds got tapped as “heard”, so the left/right read isn’t reliable this time — worth a calm retry in a quiet room. Shape is relative; the absolute level isn’t calibrated.';
+      } else if(asym.unreliable){
+        note='Your 1 kHz reference ran past what this volume could measure in one ear, so a trustworthy left/right comparison isn’t possible this time — turn the volume up a little and retry. Shape is relative; the absolute level isn’t calibrated.';
       } else if(Math.abs(asym.max)>=15){
         const worse=asym.max>0?'left':'right', kHz=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
-        note=`Your <b>${worse} ear</b> needed noticeably more level than the other above ~${kHz}. A left–right difference is the one thing a home test can legitimately flag — it’s worth showing to an audiologist. This isn’t a diagnosis, just a listening pattern on these headphones.`;
+        note=`Your <b>${worse} ear</b> needed noticeably more level than the other${asym.atF>=2000?' from about '+kHz+' up':' at '+kHz}. A left–right difference is the one thing a home test can legitimately flag — it’s worth showing to an audiologist. This isn’t a diagnosis, just a listening pattern on these headphones.`;
       } else {
         note='Your two ears track closely. A shared roll-off up top can be these headphones or the connection — but if conversation has also been getting harder lately, a matching dip in <b>both</b> ears deserves a proper hearing check too. Shape is relative; the absolute level isn’t calibrated.';
       }
@@ -2532,7 +2636,12 @@
       $('cvNote').innerHTML=note;
       // persist the false-alarm verdict WITH the curve (gates every later surface), plus the raw
       // [level, heard] trial log and the measured FA rates — the export carries the actual data
+      // persist the CAVEATS alongside the claim, not just the claim: a profile reopened later was
+      // re-serving the asymmetry referral with the volume-drift / beyond-reach warnings stripped
+      // off — the reading the app itself called untrustworthy, shown as trustworthy (render §6).
       await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym, faHi,
+        volDrift: ag.volDrift||null, headroom: (anyCens?ag.headroom:null), hiCens: !!hiCens,
+        refit: (refitR||refitL)?{R:refitR,L:refitL}:null,
         log:{R:ag.log&&ag.log.R, L:ag.log&&ag.log.L},
         faRate:{R:(ag.caTot.R?Math.round(100*ag.faTot.R/ag.caTot.R)/100:null), L:(ag.caTot.L?Math.round(100*ag.faTot.L/ag.caTot.L)/100:null)}}, 'yesno-perear'); await saveDB();
     } else {
@@ -2540,7 +2649,7 @@
       const curve=agBuildCurve('B');
       window.SR_FP.renderCurve($('cvcard'), { device, curve });
       const faHiB=(ag.caTot&&ag.caTot.B>0) ? (ag.faTot.B||0)/ag.caTot.B>=0.25 : false;   // same RATE gate as per-ear
-      $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. Shape is relative; the absolute level isn’t calibrated.'+(refitB?' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.':'')+(ag.volDrift?' <b>Volume check:</b> the 1 kHz reference moved '+Math.max(...Object.values(ag.volDrift))+' dB between start and end — redo with the knob untouched for a trustworthy curve.':'');
+      $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. <b>This curve is your ears <i>and</i> these headphones together</b> — a headphone’s own bass/treble voicing draws part of the shape, so the reliable read is a <b>left/right difference</b> (same headphones both ears), not the overall slope. Shape is relative; the absolute level isn’t calibrated.'+(refitB?' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.':'')+(ag.volDrift?' <b>Volume check:</b> the 1 kHz reference moved '+Math.max(...Object.values(ag.volDrift))+' dB between start and end — redo with the knob untouched for a trustworthy curve.':'');
       await loadDB(); upsertCurve(device, curve, 'yesno'); await saveDB();
     }
   }
@@ -3133,10 +3242,20 @@
     $('pvsavecurve').style.display=hasCurve?'':'none';
     // the audiologist guidance persists with the saved curve — the one actionable output
     // shouldn't evaporate after the results screen
-    const asym=dev.curve&&dev.curve.asym;
-    if(hasCurve && asym && !(dev.curve&&dev.curve.faHi) && Math.abs(asym.max)>=15){   // same false-alarm gate as the results screen
+    const asym=dev.curve&&dev.curve.asym, cv=dev.curve||{};
+    // re-serve the audiologist guidance ONLY when the run that produced it was trustworthy —
+    // the same gates the results screen applied. A run flagged for volume drift, an unreliable
+    // (censored-reference) asymmetry, or a stale rel-basis reading must not resurface as advice
+    // with its caveats stripped (render §6).
+    const asymTrustworthy = asym && !cv.faHi && !asym.unreliable && !cv.volDrift && Math.abs(asym.max)>=15;
+    if(hasCurve && asymTrustworthy){
       const worse=asym.max>0?'left':'right', atF=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
-      $('pvcurvenote').textContent='On this run your '+worse+' ear needed noticeably more level above ~'+atF+'. A left–right difference is worth showing to an audiologist — screening, not a diagnosis.';
+      const span = (asym.basis==='abs' && asym.atF<2000) ? 'at ~'+atF : 'above ~'+atF;
+      $('pvcurvenote').textContent='On this run your '+worse+' ear needed noticeably more level '+span+'. A left–right difference is worth showing to an audiologist — screening, not a diagnosis.'
+        +(cv.hiCens?' The real difference may be larger than drawn.':'');
+      $('pvcurvenote').style.display='block';
+    } else if(hasCurve && cv.volDrift){
+      $('pvcurvenote').textContent='This run was flagged for a volume change mid-test, so its left/right reading isn’t reliable — worth re-running with the knob untouched.';
       $('pvcurvenote').style.display='block';
     } else $('pvcurvenote').style.display='none';
     $('pvempty').style.display=(data||hasCurve)?'none':'block';

@@ -74,8 +74,11 @@
     const minOwn=o.minOwn!=null?o.minOwn:3;         // never lock on fewer own trials — how notches vanish
     const physLo=room.physLo!=null?room.physLo:-94, physHi=room.physHi!=null?room.physHi:-10;
     const spanRef=Math.abs(room.ceil-room.floor);
-    const mandatory=(o.mandatory||[1000,500,2000,4000,8000,16000]).slice();
-    const candidates=(o.candidates||[125,250,750,1500,3000,6000,10000,12000]).slice();
+    // 250 Hz is a core clinical audiometric frequency and low-frequency loss is a distinct
+    // pattern the optional-only placement could skip entirely (it did, on Andrea's run — the
+    // curve started at 500). 125 stays optional; even clinics rarely test it.
+    const mandatory=(o.mandatory||[1000,500,2000,4000,8000,250,16000]).slice();
+    const candidates=(o.candidates||[125,750,1500,3000,6000,10000,12000]).slice();
     const budget=o.budget!=null?o.budget:55;        // real-trial outer bound per ear (smart)
 
     const S={ pts:{}, meta:{}, notched:{}, engines:{}, tCount:{}, resumeAt:{},
@@ -284,22 +287,30 @@
       const loL=eng.levelOfRaw(st.ci[0]), hiL=eng.levelOfRaw(st.ci[1]);
       const own=Math.abs(hiL-loL)/2, lvl=eng.levelOf(st.mean);
       if(!shouldLock(f,eng,st,own)) return {locked:false, live:{lvl, ci:own}};
-      const cens = lvl>=physHi-3 || lvl<=physLo+3;
+      const censDir = lvl>=physHi-3 ? 'hi' : (lvl<=physLo+3 ? 'lo' : null), cens=!!censDir;
       if(S.curPhase==='sentinel'){
         const drift=Math.abs(lvl-S.refFirst);
         S.pts[1000]=S.refFirst; S.meta[1000]={ci:own, cens};     // the ORIGINAL anchor stays the reading
         S.curF=null; if(order==='fixed') S.fix.i++;
         return {locked:true, sentinel:true, drift, f:1000, lvl:S.refFirst, ci:own, cens};
       }
-      S.pts[f]=lvl; S.meta[f]={ci:own, cens};
+      S.pts[f]=lvl; S.meta[f]={ci:own, cens, censDir};
       S.curF=null; if(order==='fixed') S.fix.i++;
-      return {locked:true, f, lvl, ci:own, cens};
+      return {locked:true, f, lvl, ci:own, cens, censDir};
     }
     function censorAt(rail){                                     // mercy-skip / fast floor exit
       const f=S.curF, v=rail==='hi'?physHi:physLo;
-      S.pts[f]=v; S.meta[f]={ci:null, cens:true};
+      // the sentinel re-visits 1 kHz; a floor-exit or give-up here must NOT overwrite the
+      // reference the whole curve is drawn against — that silently translated the entire curve
+      // 15-24 dB, precisely in the volume-drift case the sentinel exists to flag (est. audit F1).
+      if(S.curPhase==='sentinel'){
+        S.pts[1000]=S.refFirst; S.meta[1000]={ci:null, cens:(S.meta[1000]&&S.meta[1000].cens)||false};
+        S.curF=null; if(order==='fixed') S.fix.i++;
+        return {locked:true, sentinel:true, drift:Math.abs(v-S.refFirst), f:1000, lvl:S.refFirst, ci:null, cens:false};
+      }
+      S.pts[f]=v; S.meta[f]={ci:null, cens:true, censDir:rail};
       S.curF=null; if(order==='fixed') S.fix.i++;
-      return {locked:true, f, lvl:v, ci:null, cens:true};
+      return {locked:true, f, lvl:v, ci:null, cens:true, censDir:rail};
     }
     function requeueAnchor(){                                    // window placement re-measure
       delete S.pts[1000]; delete S.meta[1000]; delete S.engines[1000];

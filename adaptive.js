@@ -100,7 +100,10 @@
           // frequency's first beep must be COMFORTABLY supra-threshold (~20-25 dB SL): it is the
           // listener's only proof per visit that the test is alive, and the trust it buys costs
           // at most a few dB of placement efficiency on one trial.
-          const target=cfg.priorMean + 2.2/bMid + Math.max(2*priorSDabs, 20);
+          // ~20-25 dB SL: comfortably supra-threshold (its job is to prove the test is alive and
+          // orient the ear) without the 40-60 dB blast the old 2·priorSD term produced, which
+          // tripped the contralateral mask on essentially every seeded visit and cost resolution.
+          const target=cfg.priorMean + 2.2/bMid + Math.min(Math.max(2*priorSDabs, 20), 25);
           let xi=nA-2; for(let i=0;i<nA;i++){ if(ALPHA[i]>=target){ xi=i; break; } }
           lastXi=Math.min(Math.max(xi,2), nA-2); return ALPHA[lastXi];
         }
