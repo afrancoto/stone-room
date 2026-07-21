@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v66";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v67";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1869,13 +1869,24 @@
   // (up only, never down) until the frequency is done: steady, information-free, and trivially
   // identical across real and silent catch trials.
   function agMaskEnsure(f, lvl){
-    const amp=Math.pow(10,lvl/20), t=ctx.currentTime;
+    const t=ctx.currentTime;
     if(ag.maskN && ag.maskN.f===f){
-      if(lvl>ag.maskN.lvl+0.5){ ag.maskN.lvl=lvl;
+      // steady but TRACKING: up immediately when a trial needs more, down GENTLY once the
+      // staircase has clearly left that level behind. The first build ratcheted up only, so a
+      // cold visit's −13 opener pinned the mask 25-40 dB above the near-threshold beeps it was
+      // guarding for the rest of the visit — measured on the channel tap, and exactly the
+      // "only noise, no beeps" experience under any downstream mono fold.
+      let target=ag.maskN.lvl;
+      if(lvl>target) target=lvl;
+      else if(lvl<target-12) target=lvl+6;
+      if(Math.abs(target-ag.maskN.lvl)>0.5){
+        const up=target>ag.maskN.lvl; ag.maskN.lvl=target;
+        const amp2=Math.pow(10,target/20);
         ag.maskN.g.gain.cancelScheduledValues(t); ag.maskN.g.gain.setValueAtTime(ag.maskN.g.gain.value,t);
-        ag.maskN.g.gain.linearRampToValueAtTime(amp,t+.3); }
+        ag.maskN.g.gain.linearRampToValueAtTime(amp2, t+(up?0.3:0.6)); }
       return;
     }
+    const amp=Math.pow(10,lvl/20);
     agMaskStop();
     const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(3); nb.loop=true;
     const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=1;
@@ -2087,7 +2098,7 @@
       // must be loud before it crosses the skull, ~45 dB of interaural attenuation). Above the
       // gate the CONTINUOUS visit mask engages 18 dB under the tone and stays steady (see
       // agMaskEnsure) — with openAtP seeding, ordinary visits never trip it at all.
-      if(ag.pan && ag.curLevel>MASK_FROM) agMaskEnsure(f, ag.curLevel-18);
+      if(ag.pan && (ag.curLevel>MASK_FROM || ag.maskN)) agMaskEnsure(f, ag.curLevel-18);   // engage above the gate; once engaged, TRACK (never flicker off mid-visit)
       // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
       // the listening window is shown by its OWN indicator, not by tinting an answer button —
       // a button that lights up while you decide reads like a hint about which one to press
