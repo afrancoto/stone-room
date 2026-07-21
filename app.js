@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v69";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v70";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2052,6 +2052,7 @@
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.prevThr=null;
     ag.floorStreak=0; ag.noneMax=0; ag.anchorPlaced=false;
+    ag.reachAsked=false; ag.reach=null;                    // each ear gets its own (single) reach offer
     ag.rushShown=0;                                        // re-explain the masking rush per ear — it changes sides
     ag.warm = ag.ei===0;                                   // one obvious practice tone before the first ear
     // CONSTANT resting-ear bed (per-ear mode): a faint fixed noise floor (~−58 dBFS) for the whole
@@ -2077,11 +2078,25 @@
   function agFreqNext(){
     const r=ag.search.nextFreq();     // the mask is NOT stopped here — across visits it glides
     if(r.done){ agMaskStop();         // (band + level) rather than chopping; it ends with the ear
-      ag.ei++;
-      if(ag.ei>=ag.ears.length){ finishCurve(); return; }
-      choiceTimers.push(setTimeout(agEar,650)); return;
+      // REACH OFFER (per-ear): points pinned at the loud rail are limited by the KNOB, not the
+      // ear — the old flow recovered them by demanding volume mid-run; the comfortable-knob flow
+      // (v65) trades that reach away. Offer it back HERE, once, with consent: a loud pass that
+      // re-takes the 1 kHz reference (measuring the knob change exactly) then re-measures only
+      // the beyond-reach tones, all mapped back into this ear's original scale.
+      if(ag.mode==='perear' && !ag.reachAsked){
+        ag.reachAsked=true;
+        const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
+        const meta=ag.ptsMeta[ag.curEar]||{};
+        const fs=Object.keys(meta).map(Number)
+          .filter(f=>f!==1000 && meta[f] && meta[f].cens && ag.pts[ag.curEar][f]>=pHi-3)
+          .sort((a,b)=>a-b).slice(0,4);
+        const a1=ag.pts[ag.curEar][1000], m1=meta[1000]||{};
+        if(fs.length && a1!=null && !m1.cens){ agReachOffer(fs); return; }
+      }
+      agEarDone(); return;
     }
     ag.curF=r.f; ag.fa=0; ag.faShown=0; ag.noneMax=0; ag.floorStreak=0;
+    ag.reach=null;
     const fLbl = r.f>=1000?(r.f/1000)+' kHz':r.f+' Hz';
     const earLbl = ag.mode==='perear' ? EAR_NAME[ag.curEar]+' · ' : '';
     $('cvTitle').textContent = earLbl + fLbl;
@@ -2094,8 +2109,50 @@
       : `tone ${Math.min(r.idx||1,r.of||9)} of ${r.of||9}`);
     agTrial();
   }
+  function agEarDone(){
+    ag.reach=null;
+    ag.ei++;
+    if(ag.ei>=ag.ears.length){ finishCurve(); return; }
+    choiceTimers.push(setTimeout(agEar,650));
+  }
+  function agReachOffer(fs){
+    clearTimers(); killStim();
+    const earN=EAR_NAME[ag.curEar].toLowerCase();
+    $('cvTitle').textContent='Push past the ceiling?';
+    $('cvprog').textContent=EAR_NAME[ag.curEar]+' · optional loud pass';
+    $('cvNote').innerHTML=fs.length+' tone'+(fs.length>1?'s':'')+' sat beyond what this volume can play in your '+earN+' — the limit was the <b>knob</b>, not necessarily the ear. Turn the volume <b>up a step or two</b> and they get re-measured: the 1 kHz reference is re-taken first, so everything stays on one comparable scale. <b>This pass is loud</b> (the rush in the other ear grows with it) — turn back down as soon as the ear finishes.';
+    const box=$('cvChoices'); box.innerHTML='';
+    const go=document.createElement('button'); go.className='choice'; go.innerHTML='Push further<small>volume up · re-measure '+fs.length+'</small>';
+    go.onclick=()=>{ ag.reach={fs, idx:0, stage:'anchor', old1k:ag.pts[ag.curEar][1000], delta:0, eng:null}; agReachNext(); };
+    const keep=document.createElement('button'); keep.className='choice alt'; keep.innerHTML='Keep as is<small>leave them beyond reach</small>';
+    keep.onclick=()=>agEarDone();
+    box.appendChild(go); box.appendChild(keep);
+  }
+  function agReachNext(){
+    const R=ag.reach;
+    if(R.stage==='pts' && R.idx>=R.fs.length){
+      ag.reach=null;
+      $('cvNote').innerHTML='Done — set the volume back to <b>comfortable</b> now.';
+      choiceTimers.push(setTimeout(agEarDone,1200)); return;
+    }
+    const f = R.stage==='anchor' ? 1000 : R.fs[R.idx];
+    // the anchor re-take bridges the knob change: delta = old anchor − new anchor is PURE knob
+    // (same ear minutes apart), so every loud-pass reading maps back with +delta into the ear's
+    // original dBFS scale — one reference, one comparable curve, values allowed past the old rail
+    const seed = R.stage==='anchor' ? {priorSeed:R.old1k, priorSDscale:0.6, nMin:3}
+                                    : {priorSeed:-22, priorSDscale:0.6, nMin:4};
+    R.eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, seed));
+    ag.curF=f; ag.noneMax=0; ag.floorStreak=0; ag.catch=false;
+    const fLbl=f>=1000?(f/1000)+' kHz':f+' Hz';
+    $('cvTitle').textContent=EAR_NAME[ag.curEar]+' · '+fLbl;
+    $('cvprog').textContent=EAR_NAME[ag.curEar]+' · '+(R.stage==='anchor'?'re-taking the reference, louder':'pushing past the ceiling at '+fLbl);
+    agTrial();
+  }
   function agTrial(){
     if(ag.warm){ ag.curLevel=-30; ag.catch=false; }   // practice: unmistakably audible, never recorded
+    else if(ag.reach && ag.reach.eng){                 // loud pass: its own engine, no catch trials
+      ag.reachX=ag.reach.eng.z.next(); ag.curLevel=ag.reach.eng.levelOf(ag.reachX); ag.catch=false;
+    }
     else {
       // level via Ψ entropy-min placement; silent catch trials via the search's schedule
       // (ear-scoped and decaying in smart order, per-frequency capped in fixed)
@@ -2183,6 +2240,21 @@
     }
     if(!heard && ag.curLevel>=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10)-2) ag.noneMax=(ag.noneMax||0)+1;   // "Nothing" at max level
     else if(heard) ag.noneMax=0;
+    if(ag.reach && ag.reach.eng){                       // loud pass: own engine, own bookkeeping
+      const R=ag.reach; R.eng.z.record(ag.reachX, heard);   // (unlogged — its levels live on the loud knob's scale)
+      const st=R.eng.z.stats();
+      const loR=R.eng.levelOfRaw(st.ci[0]), hiR=R.eng.levelOfRaw(st.ci[1]), ciR=Math.abs(hiR-loR)/2;
+      if(!(st.usable||st.forceStop)){
+        if(R.stage!=='anchor'){ ag.live={ear:ag.curEar, f:ag.curF, lvl:R.eng.levelOf(st.mean)+R.delta, ci:ciR}; agLiveDraw(); }
+        choiceTimers.push(setTimeout(agTrial,340)); return;
+      }
+      const lvl=R.eng.levelOf(st.mean), pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
+      if(R.stage==='anchor'){ R.delta=R.old1k-lvl; R.stage='pts'; R.idx=0; agReachNext(); return; }
+      ag.pts[ag.curEar][ag.curF]=lvl+R.delta;           // mapped back into the ear's original scale
+      ag.ptsMeta[ag.curEar][ag.curF]={ci:ciR, cens: lvl>=pHi-3};   // cens now judged vs the RAISED rail
+      ag.live=null; agLiveDraw();
+      R.idx++; agReachNext(); return;
+    }
     if(ag.log){ (ag.log[ag.curEar][ag.curF]=ag.log[ag.curEar][ag.curF]||[]).push([Math.round(ag.curLevel*10)/10, heard?1:0]); }
     const res=ag.search.record(heard);
     if(!res.locked){
@@ -2289,6 +2361,13 @@
   function agGiveUp(){
     if(!ag||ag.phase!=='run')return; killStim(); clearTimers();
     $('cvNote').textContent='Marked beyond reach — moving on.';
+    if(ag.reach){
+      const R=ag.reach, pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
+      if(R.stage==='anchor'){ ag.reach=null; agEarDone(); return; }   // can't even re-anchor → abandon the pass
+      ag.pts[ag.curEar][ag.curF]=pHi+R.delta;                          // beyond even the raised rail — honest, but higher-information
+      ag.ptsMeta[ag.curEar][ag.curF]={ci:null, cens:true};
+      ag.live=null; agLiveDraw(); R.idx++; agReachNext(); return;
+    }
     agLockCensored('hi');
   }
   // build one ear's curve, dB re that ear's OWN 1 kHz (so the equal-power pan offset cancels).
