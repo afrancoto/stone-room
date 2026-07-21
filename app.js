@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v64";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v65";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1264,43 +1264,97 @@
     if(val==='B') return calFail('mono');
     if(val!==cal.side) return calFail('swapped');
     if(cal.side==='L'){ calChannel('R'); return; }      // left proven → prove right
-    calVol('L');                                         // both sides proven → prove the volume
+    calVol();                                            // both sides proven → prove the volume
   }
-  function calVol(side){
-    cal.side=side; cal.miss=0;
-    $('calTitle').textContent='Volume check · '+(side==='L'?'left':'right');
-    $('calNote').innerHTML='Now the volume. Three <b>very faint</b> beeps are repeating in your <b>'+(side==='L'?'left':'right')+'</b> ear — near the quietest the tests need to play. If you can’t hear them, turn the volume <b>up</b> until you just can, then answer. After this, leave the knob alone.';
-    $('caldot').style.left = side==='L' ? '4%' : '96%';
+  // The pass bar is "audible in AT LEAST ONE ear", not each ear. Demanding the faint pulse
+  // per-ear failed exactly the listeners the per-ear curve exists for: with an asymmetric loss,
+  // no knob position makes a −70 dBFS beep audible in the weaker ear — max output minus 70 dB
+  // can sit below that ear's threshold — and the "turn up" loop just marched the knob toward
+  // max, priming the GOOD ear to be blasted by the next screen. (Same failure class as the v30
+  // channel check.) One quiet side is a FINDING, reported honestly; the run itself plays each
+  // ear up to 60 dB louder than this beep and censors what stays beyond reach.
+  function calVol(){
+    cal.side=null; cal.miss=0;
+    $('calTitle').textContent='Volume check';
+    $('calNote').innerHTML='Now the volume. Three <b>very faint</b> beeps repeat, alternating <b>left</b> and <b>right</b> — near the quietest the tests need to play. If you can’t hear them at all, turn the volume <b>up</b> until you just can.';
     $('calbar').classList.add('play');
     const box=$('calChoices'); box.innerHTML='';
-    const yes=document.createElement('button'); yes.className='choice'; yes.innerHTML='I hear the beeps<small>faint is fine</small>'; yes.onclick=()=>calVolAnswer(true);
-    const no=document.createElement('button'); no.className='choice'; no.innerHTML='I can’t hear them<small>even turned up</small>'; no.onclick=()=>calVolAnswer(false);
+    const yes=document.createElement('button'); yes.className='choice'; yes.innerHTML='I hear them<small>on one side or both</small>'; yes.onclick=()=>calVolSides();
+    const no=document.createElement('button'); no.className='choice'; no.innerHTML='I can’t hear them<small>on either side, even louder</small>'; no.onclick=()=>calVolMiss();
     box.appendChild(yes); box.appendChild(no);
     const play=()=>{ calStop(); anchorMaster(0.85);
-      const pan = side==='L'?-1:1;
+      let side=-1;
       const step=()=>{ if(!cal)return; const t=ctx.currentTime+.05;
-        for(let k=0;k<3;k++) detTone(1000, t+k*.4, .28, AG_FIT_LEVEL, pan);
-        cal.timer=setTimeout(step,1800); };
+        $('caldot').style.left = side<0 ? '4%' : '96%';    // the dot mirrors which ear is playing
+        for(let k=0;k<3;k++) detTone(1000, t+k*.4, .28, AG_FIT_LEVEL, side);
+        side=-side; cal.timer=setTimeout(step,1800); };
       step(); };
     cal.play=play; play();
   }
-  function calVolAnswer(heard){
+  function calVolMiss(){
     if(!cal) return;
-    if(heard){
-      calStop(); killStim(); $('calbar').classList.remove('play');
-      if(cal.side==='L'){ calVol('R'); return; }
-      chainOKFor=device; chainOKAt=Date.now(); chainAway=false;   // sides + volume proven
-      const done=cal.onPass; cal=null; if(done) done(); return;
-    }
     cal.miss=(cal.miss||0)+1;               // pulses keep looping while they adjust the knob
-    $('calNote').innerHTML='Turn the volume <b>up one step</b> and keep listening — the beeps are still repeating in your <b>'+(cal.side==='L'?'left':'right')+'</b> ear.';
+    $('calNote').innerHTML='Turn the volume <b>up one step</b> and keep listening — the beeps are still alternating between your ears.';
     if(cal.miss>=2 && !$('calChoices').querySelector('.volesc')){
       const brk=document.createElement('span'); brk.className='brk'; $('calChoices').appendChild(brk);
       const esc=document.createElement('button'); esc.className='choice alt volesc';
       esc.innerHTML='Continue anyway<small>quietest sounds may be out of reach</small>';
-      esc.onclick=()=>{ calStop(); killStim(); $('calbar').classList.remove('play'); chainOKFor=device; chainOKAt=Date.now(); chainAway=false; const done=cal&&cal.onPass; cal=null; if(done) done(); };
+      esc.onclick=()=>calVolPass(null);
       $('calChoices').appendChild(esc);
     }
+  }
+  function calVolSides(){
+    if(!cal) return;                         // pulses keep alternating while they compare sides
+    $('calNote').innerHTML='Good. Where do you hear them?';
+    const box=$('calChoices'); box.innerHTML='';
+    const mk=(lbl,val,sub)=>{ const b=document.createElement('button'); b.className='choice'+(val==='both'?'':' alt'); b.innerHTML=lbl+(sub?'<small>'+sub+'</small>':''); b.onclick=()=>calVolPass(val); return b; };
+    box.appendChild(mk('Both sides','both'));
+    const brk=document.createElement('span'); brk.className='brk'; box.appendChild(brk);
+    box.appendChild(mk('Only the left','L','right side silent'));
+    box.appendChild(mk('Only the right','R','left side silent'));
+  }
+  function calVolPass(which){
+    if(which==='L'||which==='R'){ calVolLow(which); return; }
+    calStop(); killStim(); $('calbar').classList.remove('play');
+    chainOKFor=device; chainOKAt=Date.now(); chainAway=false;    // sides + volume proven
+    const done=cal&&cal.onPass; cal=null; if(done) done();
+  }
+  // fallback probe before calling a side quiet: the SAME faint level, one octave DOWN (500 Hz),
+  // only in the quiet ear. The common asymmetric loss is high-frequency-weighted, so that ear
+  // often hears 500 Hz at the floor while 1 kHz stays silent — two seconds that separate "a
+  // pitch-shaped difference the curve will map" from "one side needs more level everywhere",
+  // and that answer the listener's fair suspicion that the check itself is broken.
+  function calVolLow(which){
+    cal.lowMiss=0;
+    const quiet = which==='L'?'R':'L', pan = quiet==='L'?-1:1;
+    $('calTitle').textContent='Volume check · deeper beeps';
+    $('calNote').innerHTML='One more listen: the same <b>very faint</b> beeps, but <b>deeper</b> — only in your <b>'+(quiet==='L'?'left':'right')+'</b> ear.';
+    $('caldot').style.left = quiet==='L' ? '4%' : '96%';
+    const box=$('calChoices'); box.innerHTML='';
+    const yes=document.createElement('button'); yes.className='choice'; yes.innerHTML='Now I hear them<small>faint is fine</small>'; yes.onclick=()=>calVolFinding(which,true);
+    const no=document.createElement('button'); no.className='choice'; no.innerHTML='Still nothing<small>on that side</small>';
+    no.onclick=()=>{ if((cal.lowMiss=(cal.lowMiss||0)+1)>=2){ calVolFinding(which,false); return; }
+      $('calNote').innerHTML='Nudge the volume <b>up one step</b> and keep listening — the deep beeps are still playing on that side.'; };
+    box.appendChild(yes); box.appendChild(no);
+    const play=()=>{ calStop(); anchorMaster(0.85);
+      const step=()=>{ if(!cal)return; const t=ctx.currentTime+.05;
+        for(let k=0;k<3;k++) detTone(500, t+k*.4, .28, AG_FIT_LEVEL, pan);
+        cal.timer=setTimeout(step,1800); };
+      step(); };
+    cal.play=play; play();
+  }
+  function calVolFinding(which, lowHeard){
+    calStop(); killStim(); $('calbar').classList.remove('play');
+    chainOKFor=device; chainOKAt=Date.now(); chainAway=false;    // proven for the ear that can prove it
+    const heardSide = which==='L'?'left':'right', weak = which==='L'?'right':'left';
+    $('calTitle').textContent = lowHeard ? 'A pitch-shaped difference — the curve maps it' : 'One quiet side — a finding, not a fault';
+    $('calNote').innerHTML = lowHeard
+      ? 'Your <b>'+weak+'</b> ear hears the <b>deep</b> beeps at this faint level but not the higher ones — a pitch-dependent difference, which is exactly what the per-ear curve measures. Don’t chase it with the volume knob: <b>set it back to comfortable</b> and leave it there.'
+      : 'At this faint level only your <b>'+heardSide+'</b> ear hears the beeps. Don’t chase the '+weak+' side with the volume knob — <b>set it back to comfortable</b> and leave it there. The tests play each ear as loud as it needs (up to 60 dB louder than these beeps), and the per-ear curve will measure your <b>'+weak+'</b> ear honestly, marking anything truly beyond reach.';
+    const box=$('calChoices'); box.innerHTML='';
+    const go=document.createElement('button'); go.className='choice'; go.innerHTML='Volume back to comfortable<small>continue</small>';
+    go.onclick=()=>{ const done=cal&&cal.onPass; cal=null; if(done) done(); };
+    box.appendChild(go);
   }
   function calFail(kind){
     $('calTitle').textContent = kind==='swapped' ? 'Channels look swapped' : kind==='mono' ? 'That sounds like mono' : 'One side stayed quiet';
