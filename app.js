@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v67";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v68";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1083,6 +1083,34 @@
       if(pfReturn){ pfReturn=false; buildProfiles(); openProfile(device); } else show(order.length?'end':'intro'); } });
     $('cvredo').addEventListener('click',()=>{ stopCurveAudio(); startCurve(); });
     $('cvsave').addEventListener('click',saveCurveCard);
+    // SOUND CHECK — a 10-second self-diagnostic that plays the run's actual building blocks,
+    // loud and labelled, one channel at a time: proves on THIS device whether beeps play,
+    // whether channels stay separate (a mono fold makes every step sound on both sides), and
+    // how the tone path compares to the noise path. Built after a "only noise, no beeps"
+    // report that the desktop channel tap could not reproduce — the verdict has to come from
+    // the listener's own phone.
+    let sndBusy=false;
+    $('sndchk').addEventListener('click', ()=>{
+      if(sndBusy) return; sndBusy=true;
+      initAudio(); ctx.resume(); stopVoices(); anchorMaster(0.85);
+      const btn=$('sndchk');
+      const noiseStep=(pan)=>{ const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(1.2);
+        const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1000; bp.Q.value=1;
+        const g=ctx.createGain(); const t=ctx.currentTime, a=Math.pow(10,-35/20);
+        g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(a,t+.1);
+        g.gain.setValueAtTime(a,t+.9); g.gain.linearRampToValueAtTime(0,t+1.05);
+        const sp=ctx.createStereoPanner(); sp.pan.value=pan;
+        nb.connect(bp); bp.connect(g); g.connect(sp); sp.connect(master); nb.start(); nb.stop(t+1.15); };
+      const steps=[
+        ['① beep — RIGHT only', ()=>{ for(let k=0;k<3;k++) detTone(1000, ctx.currentTime+.05+k*.4, .28, -30, 1); }],
+        ['② beep — LEFT only',  ()=>{ for(let k=0;k<3;k++) detTone(1000, ctx.currentTime+.05+k*.4, .28, -30, -1); }],
+        ['③ noise — RIGHT only',()=>noiseStep(1)],
+        ['④ noise — LEFT only', ()=>noiseStep(-1)],
+      ];
+      let i=0; const step=()=>{ if(i>=steps.length){ btn.textContent='Sound check'; sndBusy=false; return; }
+        btn.textContent=steps[i][0]; steps[i][1](); i++; setTimeout(step,1600); };
+      step();
+    });
     $('again').addEventListener('click',()=>{ buildSelect(); show('select'); });
     $('reselect').addEventListener('click',()=>{ buildSelect(); show('select');});
     $('cmpback').addEventListener('click',()=>{ buildProfiles(); show('profiles'); });   // Back → Profiles (Compare lives under it)

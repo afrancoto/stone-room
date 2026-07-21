@@ -95,7 +95,12 @@
           // grid top: still clearly audible — the opener keeps its orientation job — but no
           // longer 40-60 dB above a seeded threshold, so it stops firing the contralateral
           // mask on every ordinary visit and its answer actually constrains the posterior.
-          const target=cfg.priorMean + 2.2/bMid + priorSDabs;
+          // margin raised after a field report: the p≈0.9+1SD opener was theoretically audible
+          // but perceptually vanished for a real listener — "no beeps at all any more". A
+          // frequency's first beep must be COMFORTABLY supra-threshold (~20-25 dB SL): it is the
+          // listener's only proof per visit that the test is alive, and the trust it buys costs
+          // at most a few dB of placement efficiency on one trial.
+          const target=cfg.priorMean + 2.2/bMid + Math.max(2*priorSDabs, 20);
           let xi=nA-2; for(let i=0;i<nA;i++){ if(ALPHA[i]>=target){ xi=i; break; } }
           lastXi=Math.min(Math.max(xi,2), nA-2); return ALPHA[lastXi];
         }
