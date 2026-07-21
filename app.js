@@ -1925,6 +1925,7 @@
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.fi=0; ag.prevThr=null;
     ag.earTrials=0; ag.phaseB=false; ag.phaseC=false; ag.phaseD=false; ag.refFirst=null; ag.floorStreak=0;
+    ag.rushShown=0;                                        // re-explain the masking rush per ear — it changes sides
     ag.warm = ag.ei===0;                                   // one obvious practice tone before the first ear
     // CONSTANT resting-ear bed (per-ear mode): a faint fixed noise floor (~−58 dBFS) for the whole
     // ear, so the rush is a steady presence that swells on loud tones — not a thing that flickers
@@ -1991,14 +1992,16 @@
     ag.eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, seed)); ag.trial=0;
     ag.catchCount=0; ag.fa=0; ag.faShown=0; ag.noneMax=0;
     ag.catchCap=Math.max(2, Math.round((ag.eng.nMax||12)*0.35));   // ≤ ~4 silent trials per frequency
+    const fLbl = f>=1000?(f/1000)+' kHz':f+' Hz';
     const earLbl = ag.mode==='perear' ? EAR_NAME[ag.curEar]+' · ' : '';
-    $('cvTitle').textContent = earLbl + (f>=1000?(f/1000)+' kHz':f+' Hz');
+    $('cvTitle').textContent = earLbl + fLbl;
     // honest progress: the plan GROWS (gap-filling, double-checks, the reference re-test), so a
-    // fixed "of 9" was a promise the run then broke. Name the phase instead of faking a total.
+    // fixed "of 9" was a promise the run then broke. Name the phase — and the exact tone being
+    // refined, which the chart mirrors with the dashed ring.
     const base=AG_BASE_PLAN.length;
-    $('cvprog').textContent = ag.phaseD ? `${EAR_NAME[ag.curEar]} · re-checking the reference`
-      : ag.phaseC ? `${EAR_NAME[ag.curEar]} · double-checking a reading`
-      : ag.phaseB ? `${EAR_NAME[ag.curEar]} · filling a gap in the curve`
+    $('cvprog').textContent = ag.phaseD ? `${EAR_NAME[ag.curEar]} · re-checking the ${fLbl} reference`
+      : ag.phaseC ? `${EAR_NAME[ag.curEar]} · double-checking ${fLbl}`
+      : ag.phaseB ? `${EAR_NAME[ag.curEar]} · filling a gap at ${fLbl}`
       : `${EAR_NAME[ag.curEar]} · tone ${Math.min(ag.fi+1,base)} of ${base}`;
     agTrial();
   }
@@ -2021,12 +2024,19 @@
       giveup.onclick=()=>agGiveUp(); box.appendChild(giveup);
     }
     const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.replay)ag.replay(); }; box.appendChild(rep);
+    // the masking rush must be explained WHILE it is audible. The old one-time note was replaced
+    // 180 ms later by the "tap now" prompt — unreadable — and fired once per RUN, i.e. during the
+    // FIRST ear, where the rush sits in the ear about to be tested second; a listener with one weak
+    // ear never saw it by the time the rush landed, loud, in their strong ear. Per-EAR, held
+    // through the whole trial, for the first two masked trials.
+    const rushNew = ag.pan && ag.curLevel>MASK_FROM && (ag.rushShown||0)<2;
+    if(rushNew) ag.rushShown=(ag.rushShown||0)+1;
     const play=()=>{
       clearTimers(); hear.disabled=true; none.disabled=true; $('cvbeat').classList.remove('on');
       anchorMaster(agLevel());   // constant reference each trial (includes the auto-range offset)
-      $('cvNote').textContent = (ag.pan && ag.curLevel>MASK_FROM && !ag.rushSaid)
-        ? 'Listen… a soft rush in your other ear keeps it from helping on the louder tones.' : 'Listen…';
-      if(ag.pan && ag.curLevel>MASK_FROM) ag.rushSaid=true;   // explain the rush the first time it appears
+      $('cvNote').innerHTML = rushNew
+        ? 'Listen… a <b>rush of noise</b> sits in your <b>other</b> ear — deliberate, so that ear can’t secretly help. Only the beeps count.'
+        : 'Listen…';
       const lead=.18, win=1.30, t0=ctx.currentTime+lead;
       // clinical-style PULSED tone (3 short bursts): a steady tone is easy to confuse with tinnitus —
       // which tends to live exactly where hearing is weakest; pulses are unmistakably "the test".
@@ -2044,9 +2054,9 @@
       // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
       // the listening window is shown by its OWN indicator, not by tinting an answer button —
       // a button that lights up while you decide reads like a hint about which one to press
-      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ hear.disabled=false; $('cvbeat').classList.add('on'); $('cvNote').innerHTML='Now — tap <b>I hear it</b> the instant you notice it.'; } }, lead*1000));
+      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ hear.disabled=false; $('cvbeat').classList.add('on'); $('cvNote').innerHTML='Now — tap <b>I hear it</b> the instant you notice it.'+(rushNew?' <span style="color:var(--muted)">The rush in the other ear is deliberate — it doesn’t count.</span>':''); } }, lead*1000));
       // "Nothing" answerable only AFTER the window has fully passed
-      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ none.disabled=false; $('cvbeat').classList.remove('on'); $('cvNote').innerHTML='Heard it, or nothing?'; } }, Math.max((lead+win)*1000, 260)));
+      choiceTimers.push(setTimeout(()=>{ if(ag&&ag.phase==='run'){ none.disabled=false; $('cvbeat').classList.remove('on'); $('cvNote').innerHTML='Heard it, or nothing?'+(rushNew?' <span style="color:var(--muted)">(count the beeps, not the rush)</span>':''); } }, Math.max((lead+win)*1000, 260)));
     };
     ag.replay=play; play();
   }
@@ -2220,10 +2230,13 @@
     const out=fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci)||null, cens: !!(meta[f]&&meta[f].cens) }));
     // the frequency being measured RIGHT NOW, drawn provisionally so the graph moves with every
     // answer: its position is the running estimate and its band is the live confidence interval,
-    // which visibly tightens as the trials close in
-    if(ag.live && ag.live.ear===ear && pts[ag.live.f]==null){
-      out.push({ f:ag.live.f, rel: Math.round((ref - ag.live.lvl)*10)/10, ci: ag.live.ci, live:true });
-      out.sort((a,b)=>a.f-b.f);
+    // which visibly tightens as the trials close in. A verify/reference re-test refines a point
+    // that is already locked: swap that dot for the live ring too, so the chart shows WHICH
+    // reading is being double-checked (and the GP band honestly re-opens there while it moves).
+    if(ag.live && ag.live.ear===ear){
+      const li={ f:ag.live.f, rel: Math.round((ref - ag.live.lvl)*10)/10, ci: ag.live.ci, live:true };
+      const i=out.findIndex(p=>p.f===ag.live.f);
+      if(i>=0) out[i]=li; else { out.push(li); out.sort((a,b)=>a.f-b.f); }
     }
     return out;
   }
