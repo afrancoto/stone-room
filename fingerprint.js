@@ -226,7 +226,26 @@ ${g}${mark}
     return xv; }
   function gpSmooth(pts, us){                       // us = query points in u=log10(f)
     const n=pts.length; if(n<3) return null;
-    const u=pts.map(p=>Math.log10(p.f)), yv=pts.map(p=>p.rel);
+    const u=pts.map(p=>Math.log10(p.f));
+    // CENTRED prior. A zero-mean GP in this coordinate reverts toward rel = 0 dB — "as good as
+    // your own 1 kHz", the most flattering value on the chart — so the drawn line rose toward
+    // normal exactly where evidence ran out: ~8 dB optimistic at the top measured frequency
+    // (where a high-frequency loss lives) and ~15 dB across a beyond-reach gap. Centring on the
+    // data's own mean makes the line revert to THIS listener's average, not to "fine".
+    // (ag-search.js's inference GP was fixed for the same reason; the render GP was missed.)
+    // …and the mean is a TREND, not a constant: an audiogram's dominant structure is a slope in
+    // log-frequency, so a flat prior still drags the endpoints toward the average — worst at the
+    // top frequency, which is exactly where a high-frequency loss lives. Fitting the GP to the
+    // residuals around a precision-weighted line lets the curve keep sloping where the evidence
+    // slopes. Queries never leave the measured span, so the line is only ever interpolated.
+    let sw=0,su=0,sy=0,suu=0,suy=0;
+    for(let i=0;i<n;i++){ const c=pts[i].ci, sd=(c!=null&&isFinite(c))?c/1.96:25, w=1/(sd*sd);
+      sw+=w; su+=w*u[i]; sy+=w*pts[i].rel; suu+=w*u[i]*u[i]; suy+=w*u[i]*pts[i].rel; }
+    const det=sw*suu-su*su;
+    let b1=0, b0=sw?sy/sw:0;
+    if(Math.abs(det)>1e-12){ b1=(sw*suy-su*sy)/det; b0=(sy-b1*su)/sw; }
+    const trend=uq=>b0+b1*uq;
+    const yv=pts.map((p,i)=>p.rel-trend(u[i]));
     const ell=Math.log10(2)*0.95, sf2=18*18, kf=(a,b)=>sf2*Math.exp(-((a-b)*(a-b))/(2*ell*ell));
     const K=[]; for(let i=0;i<n;i++){ K[i]=[];
       for(let j=0;j<n;j++){ let v=kf(u[i],u[j]);
@@ -236,7 +255,7 @@ ${g}${mark}
         if(i===j){ const c=pts[i].ci, sdn=(c!=null&&isFinite(c))?c/1.96:25; v+=sdn*sdn+1e-6; } K[i][j]=v; } }
     const Lm=chol(K); if(!Lm) return null; const al=cholSolve(Lm,yv);
     return us.map(uq=>{ const ks=u.map(ui=>kf(uq,ui));
-      let m=0; for(let i=0;i<n;i++) m+=ks[i]*al[i];
+      let m=trend(uq); for(let i=0;i<n;i++) m+=ks[i]*al[i];
       const vv=cholSolve(Lm,ks); let kss=sf2; for(let i=0;i<n;i++) kss-=ks[i]*vv[i];
       return { mean:m, sd:Math.sqrt(Math.max(kss,0)) }; }); }
 
@@ -250,9 +269,13 @@ ${g}${mark}
       .concat(((data.ears&&data.ears.R)||[]).filter(p=>p&&isFinite(p.rel)).map(p=>p.rel))
       .concat(((data.ears&&data.ears.L)||[]).filter(p=>p&&isFinite(p.rel)).map(p=>p.rel));
     const minRel=allRel.length?Math.min.apply(null,allRel):0;
+    const maxRel=allRel.length?Math.max.apply(null,allRel):0;
     // window hugs the data in BOTH directions: shallow data no longer floats in a −54 dB void
-    // (the "not centered" look), deep losses still extend the floor as needed
-    const fmin=125, fmax=16000, yMax=6, yMin=Math.min(-24, Math.floor((minRel-8)/10)*10);
+    // (the "not centered" look), deep losses still extend the floor as needed. yMax follows the
+    // data too: a point pinned at the QUIET rail can sit well above 0 dB re 1 kHz, and a fixed
+    // +6 ceiling clamped it flat against the frame with nothing to say it had been clipped.
+    const fmin=125, fmax=16000, yMin=Math.min(-24, Math.floor((minRel-8)/10)*10),
+          yMax=Math.max(6, Math.ceil((maxRel+4)/10)*10);
     const x=f=>L + (Math.log10(Math.max(fmin,Math.min(fmax,f))/fmin)/Math.log10(fmax/fmin))*(W-L-R);
     const y=v=>T + (yMax-Math.max(yMin,Math.min(yMax,v)))/(yMax-yMin)*(H-T-B);
     const uMin=Math.log10(fmin), uMax=Math.log10(fmax);
@@ -289,23 +312,36 @@ ${g}${mark}
           s+=`<polyline points="${us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(gp[i].mean).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
         }
       }
-      if(!/polyline/.test(s)) s+=`<polyline points="${c.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      // fallback line when the GP can't run: still only MEASURED points. Drawing through `c`
+      // connected rail pins and the live provisional dot as though they were readings.
+      if(!/polyline/.test(s) && fit.length>=2) s+=`<polyline points="${fit.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
       c.forEach(p=>{ const col=byVal?(p.rel>=-6?COL.good:p.rel>=-20?COL.gold:COL.ember):stroke;
         const cx=x(p.f).toFixed(1), cy=y(p.rel);
         if(p.live){   // the point being measured right now: hollow ring, so it reads as "still moving"
           s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="4.6" fill="none" stroke="${col}" stroke-width="1.6" stroke-dasharray="3 2.4" opacity="0.9"/>`;
           s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="1.6" fill="${col}"/>`;
-        } else if(p.cens){   // pinned at the test's loudest — true threshold may sit BELOW this: open dot + down-tick
+        } else if(p.cens){
+          // A censored point is a BOUND, and which way the truth lies depends on WHICH rail it
+          // hit. Loud rail (couldn't play louder): the true threshold is worse → tick DOWN.
+          // Quiet rail (couldn't play quieter — the ear heard our faintest tone): the truth is
+          // BETTER → tick UP. One glyph for both stated the opposite of the measurement for
+          // every unusually sensitive frequency. Missing censDir (curves saved before this)
+          // defaults to the loud rail, preserving how old data already rendered.
+          const up = p.censDir==='lo';
           s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="3.4" fill="${COL.bg}" stroke="${col}" stroke-width="1.4"/>`;
-          s+=`<path d="M ${cx-3} ${(cy+6.5).toFixed(1)} L ${(+cx+3).toFixed(1)} ${(cy+6.5).toFixed(1)} L ${cx} ${(cy+11).toFixed(1)} Z" fill="${col}" opacity="0.85"/>`;
+          s+= up
+            ? `<path d="M ${cx-3} ${(cy-6.5).toFixed(1)} L ${(+cx+3).toFixed(1)} ${(cy-6.5).toFixed(1)} L ${cx} ${(cy-11).toFixed(1)} Z" fill="${col}" opacity="0.85"/>`
+            : `<path d="M ${cx-3} ${(cy+6.5).toFixed(1)} L ${(+cx+3).toFixed(1)} ${(cy+6.5).toFixed(1)} L ${cx} ${(cy+11).toFixed(1)} Z" fill="${col}" opacity="0.85"/>`;
         } else s+=`<circle cx="${cx}" cy="${cy.toFixed(1)}" r="3.4" fill="${col}" stroke="${COL.bg}" stroke-width="1"/>`; });
       return s;
     };
     let series='', banded=false;
     if(data.ears){
       const Rc=(data.ears.R||[]).filter(p=>p&&isFinite(p.rel)), Lc=(data.ears.L||[]).filter(p=>p&&isFinite(p.rel));
-      const rmap={}; Rc.forEach(p=>{ rmap[p.f]=p.rel; });
-      Lc.forEach(p=>{ if(rmap[p.f]!=null && Math.abs(rmap[p.f]-p.rel)>=12){   // shade where the ears diverge
+      // divergence shading marks a MEASURED gap: a rail pin is a bound and a live point is
+      // provisional, and shading against either drew a confident bar across an unknown
+      const rmap={}; Rc.forEach(p=>{ if(!p.cens&&!p.live) rmap[p.f]=p.rel; });
+      Lc.forEach(p=>{ if(!p.cens && !p.live && rmap[p.f]!=null && Math.abs(rmap[p.f]-p.rel)>=12){   // shade where the ears diverge
         series+=`<line x1="${x(p.f).toFixed(1)}" y1="${y(rmap[p.f]).toFixed(1)}" x2="${x(p.f).toFixed(1)}" y2="${y(p.rel).toFixed(1)}" stroke="${COL.ember}" stroke-width="1" opacity="0.35"/>`; } });
       const rs=drawSeries(Rc, COL.sage, false), ls=drawSeries(Lc, COL.gold, false);
       banded=/polygon/.test(rs)||/polygon/.test(ls); series+=rs+ls;
