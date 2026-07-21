@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v65";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v66";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -424,21 +424,11 @@
     else g.connect(master);
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=freq; o.connect(g); o.start(when); o.stop(when+dur+.05);
   }
-  // contralateral masking for per-ear runs: matched-band noise in the NON-test ear. Physics: with
-  // headphones, a loud tone reaches the far cochlea through the skull attenuated ~45+ dB — the good
-  // ear "shadow-hears" and answers for the weak one, capping any measurable left/right gap. A mask
-  // riding 18 dB below the tone sits well ABOVE that crossover (so the far ear can't help) while its
-  // own crossover back into the test ear lands ~63 dB under the tone (so it can never mask the test).
-  function detMask(freq, when, dur, dbfs, pan){
-    const amp=Math.pow(10, dbfs/20);
-    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(dur+.3);
-    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=freq; bp.Q.value=1;
-    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(amp,when+.06);
-    g.gain.setValueAtTime(amp,when+dur-.08); g.gain.linearRampToValueAtTime(0,when+dur);
-    const sp=ctx.createStereoPanner(); sp.pan.value=pan;
-    nb.connect(bp); bp.connect(g); g.connect(sp); sp.connect(master);
-    nb.start(when); nb.stop(when+dur+.05);
-  }
+  // contralateral masking physics (implemented by agMaskEnsure, further down): with headphones a
+  // loud tone reaches the far cochlea through the skull attenuated ~45+ dB — the good ear
+  // "shadow-hears" and answers for the weak one, capping any measurable left/right gap. A
+  // matched-band mask riding 18 dB below the tone sits well ABOVE that crossover (so the far ear
+  // can't help) while its own crossover back into the test ear lands ~63 dB under the tone.
   // ---- calibration-robust masked detection: a tone hidden inside a band of noise centred on it.
   // WHY THIS ROOM IS DIFFERENT: the tone and its masker occupy the same narrow band and pass
   // through the same transducer at the same instant, so what's measured is a RATIO — turn the
@@ -1872,7 +1862,34 @@
     ag.bed={nb,g};
   }
   function agBedStop(){ if(ag&&ag.bed){ try{ ag.bed.g.gain.linearRampToValueAtTime(0,ctx.currentTime+.05); ag.bed.nb.stop(ctx.currentTime+.12); }catch(e){} ag.bed=null; } }
-  function stopCurveAudio(){ agBedStop(); if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
+  // CONTINUOUS per-visit masking (replaces the old per-trial bursts): the burst level tracked
+  // the tone trial-by-trial, so the resting ear heard a noise that pumped with the staircase —
+  // a trial marker and a level cue, and "noise but no beeps" read as a malfunction (Andrea's
+  // catch). Once a visit needs masking, the noise now runs CONTINUOUSLY at a ratcheted level
+  // (up only, never down) until the frequency is done: steady, information-free, and trivially
+  // identical across real and silent catch trials.
+  function agMaskEnsure(f, lvl){
+    const amp=Math.pow(10,lvl/20), t=ctx.currentTime;
+    if(ag.maskN && ag.maskN.f===f){
+      if(lvl>ag.maskN.lvl+0.5){ ag.maskN.lvl=lvl;
+        ag.maskN.g.gain.cancelScheduledValues(t); ag.maskN.g.gain.setValueAtTime(ag.maskN.g.gain.value,t);
+        ag.maskN.g.gain.linearRampToValueAtTime(amp,t+.3); }
+      return;
+    }
+    agMaskStop();
+    const nb=ctx.createBufferSource(); nb.buffer=noiseBuf(3); nb.loop=true;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=1;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(amp,t+.3);
+    const sp=ctx.createStereoPanner(); sp.pan.value=-ag.pan;
+    nb.connect(bp); bp.connect(g); g.connect(sp); sp.connect(master);
+    nb.start();
+    liveStim.delete(nb);               // exempt from killStim — the mask must outlive every answer
+    ag.maskN={nb,g,f,lvl};
+  }
+  function agMaskStop(){ if(ag&&ag.maskN){ try{ const t=ctx.currentTime;
+    ag.maskN.g.gain.cancelScheduledValues(t); ag.maskN.g.gain.setValueAtTime(ag.maskN.g.gain.value,t);
+    ag.maskN.g.gain.linearRampToValueAtTime(0,t+.15); ag.maskN.nb.stop(t+.3); }catch(e){} ag.maskN=null; } }
+  function stopCurveAudio(){ agBedStop(); agMaskStop(); if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
   // PRE-CHECK — the audiogram-specific part of setup. The chain proof (sides at −14, volume via
   // the near-floor per-ear pulses) lives in the shared gate that fronts EVERY room, so the only
   // thing left to verify here is the ROOM: a quiet-environment listen — a fan, traffic or a hum
@@ -2007,6 +2024,7 @@
   }
   // ask the search for the next frequency visit (or the end of the ear) and set the stage for it
   function agFreqNext(){
+    agMaskStop();                     // the visit mask ends with its visit; the bed carries the ear
     const r=ag.search.nextFreq();
     if(r.done){
       ag.ei++;
@@ -2065,15 +2083,11 @@
       // which tends to live exactly where hearing is weakest; pulses are unmistakably "the test".
       if(!ag.catch){ const pd=.28, gap=.12;
         for(let k=0;k<3;k++) detTone(f, t0+k*(pd+gap), pd, ag.curLevel, ag.pan); }
-      // Per-ear runs: mask the resting ear ONLY where cross-hearing is actually possible. A tone
-      // must be loud before it reaches the far cochlea through the skull (~45 dB of interaural
-      // attenuation), so masking a quiet tone protects nothing and just fills that ear with noise.
-      // The old floor — max(−70, tone−18) — stopped the mask descending with the tone, so once the
-      // tone passed −52 dBFS the "mask" was LOUDER than the tone it was meant to sit under: the
-      // resting ear became a wall of noise and the beeps vanished beneath it.
-      // Now: silent for quiet tones; above the gate it rides a true 18 dB under the tone.
-      // Independent of ag.catch, so a silent trial sounds identical — the rush is never a tell.
-      if(ag.pan && ag.curLevel>MASK_FROM) detMask(f, t0-.06, win, ag.curLevel-18, -ag.pan);
+      // Per-ear runs: mask the resting ear ONLY where cross-hearing is actually possible (a tone
+      // must be loud before it crosses the skull, ~45 dB of interaural attenuation). Above the
+      // gate the CONTINUOUS visit mask engages 18 dB under the tone and stays steady (see
+      // agMaskEnsure) — with openAtP seeding, ordinary visits never trip it at all.
+      if(ag.pan && ag.curLevel>MASK_FROM) agMaskEnsure(f, ag.curLevel-18);
       // "I hear it" answerable exactly at window onset (identical timing on catch trials — no tell)
       // the listening window is shown by its OWN indicator, not by tinting an answer button —
       // a button that lights up while you decide reads like a hint about which one to press

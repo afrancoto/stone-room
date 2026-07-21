@@ -93,7 +93,7 @@
 
     // ---- seeding -------------------------------------------------------------------------
     function smartSeed(f, phase){
-      if(phase==='sentinel') return {priorSeed:S.refFirst, priorSDscale:0.5, nMin:minOwn};
+      if(phase==='sentinel') return {priorSeed:S.refFirst, priorSDscale:0.5, nMin:minOwn, openAtP:0.9};
       const g=gp(f,[U(f)]);
       if(!g) return {nMin:4};                                   // no support at all — true cold start
       let s=g[0].mean;
@@ -108,7 +108,7 @@
       // prior and nMin 3; a long jump gets a wide (but CENTRED) prior and a full nMin 4 —
       // the own-CI stopping rule below is what makes a mis-seeded start harmless (it runs
       // longer instead of locking wide)
-      return {priorSeed:clamp(s,physLo,physHi), priorSDscale:clamp(g[0].sd/(spanRef*0.55),0.25,1.0), nMin:g[0].sd<8?minOwn:4};
+      return {priorSeed:clamp(s,physLo,physHi), priorSDscale:clamp(g[0].sd/(spanRef*0.55),0.25,1.0), nMin:g[0].sd<8?minOwn:4, openAtP:0.9};
     }
     function fixedSeed(f, requeue){                              // faithful pre-v64 three-branch heuristic
       const pts=S.pts;
