@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v62";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v63";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1197,6 +1197,35 @@
   // every stereo reading downstream would be quietly wrong. Here you must NAME the side, so a
   // swap, a mono blend and a dead channel are all caught — and the audiogram no longer repeats it.
   let chainOKFor=null;          // the device name this chain was verified for
+  // STALENESS: a proof is only as good as the setup staying put. Closing the app already forces a
+  // re-check (chainOKFor is session state); within a session, a long background episode (phone
+  // locked, another app) or simple elapsed time means the knob or the headphones may have moved.
+  // Then the next room asks ONE question — "still the same?" — with a full re-check one tap away.
+  let chainOKAt=0, chainAway=false, hiddenAt=0;
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden) hiddenAt=Date.now();
+    else if(hiddenAt && Date.now()-hiddenAt>60000) chainAway=true;
+  });
+  const CHAIN_FRESH_MS=8*60*1000;
+  function chainStale(){ return chainAway || (Date.now()-chainOKAt)>CHAIN_FRESH_MS; }
+  function confirmChain(go){
+    initAudio(); ctx.resume();
+    show('cal'); $('calbar').classList.remove('play');
+    $('calTitle').textContent='Still the same setup?';
+    $('calNote').innerHTML='It’s been a while since the chain was checked. Same headphones on the same sides, volume untouched?';
+    const box=$('calChoices'); box.innerHTML='';
+    const same=document.createElement('button'); same.className='choice'; same.innerHTML='All unchanged<small>start</small>';
+    same.onclick=()=>{ chainOKAt=Date.now(); chainAway=false; go(); };
+    const re=document.createElement('button'); re.className='choice alt'; re.innerHTML='Re-check<small>sides + volume · ~15 s</small>';
+    re.onclick=()=>startChannelCheck(go);
+    box.appendChild(same); box.appendChild(re);
+  }
+  // volume proof, folded into the same gate (it affects ALL tests, so it is checked before ANY
+  // room — not once per flow): after the sides are proven, three near-floor 1 kHz pulses
+  // (AG_FIT_LEVEL, 6 dB inside the audiogram anchor window's quiet-end requirement) must be
+  // HEARD in each ear. The per-ear curve is the strictest consumer; a knob that satisfies −70
+  // satisfies every other room. Not heard → a measured "turn up one step", looped until true.
+  const AG_FIT_LEVEL=-70;
   function startChannelCheck(onPass){
     initAudio(); ctx.resume();
     cal={side:'L', level:-14, miss:0, onPass, timer:null};
@@ -1235,8 +1264,43 @@
     if(val==='B') return calFail('mono');
     if(val!==cal.side) return calFail('swapped');
     if(cal.side==='L'){ calChannel('R'); return; }      // left proven → prove right
-    chainOKFor=device;                                   // both sides proven for this pair
-    const done=cal.onPass; cal=null; if(done) done();
+    calVol('L');                                         // both sides proven → prove the volume
+  }
+  function calVol(side){
+    cal.side=side; cal.miss=0;
+    $('calTitle').textContent='Volume check · '+(side==='L'?'left':'right');
+    $('calNote').innerHTML='Now the volume. Three <b>very faint</b> beeps are repeating in your <b>'+(side==='L'?'left':'right')+'</b> ear — near the quietest the tests need to play. If you can’t hear them, turn the volume <b>up</b> until you just can, then answer. After this, leave the knob alone.';
+    $('caldot').style.left = side==='L' ? '4%' : '96%';
+    $('calbar').classList.add('play');
+    const box=$('calChoices'); box.innerHTML='';
+    const yes=document.createElement('button'); yes.className='choice'; yes.innerHTML='I hear the beeps<small>faint is fine</small>'; yes.onclick=()=>calVolAnswer(true);
+    const no=document.createElement('button'); no.className='choice'; no.innerHTML='I can’t hear them<small>even turned up</small>'; no.onclick=()=>calVolAnswer(false);
+    box.appendChild(yes); box.appendChild(no);
+    const play=()=>{ calStop(); anchorMaster(0.85);
+      const pan = side==='L'?-1:1;
+      const step=()=>{ if(!cal)return; const t=ctx.currentTime+.05;
+        for(let k=0;k<3;k++) detTone(1000, t+k*.4, .28, AG_FIT_LEVEL, pan);
+        cal.timer=setTimeout(step,1800); };
+      step(); };
+    cal.play=play; play();
+  }
+  function calVolAnswer(heard){
+    if(!cal) return;
+    if(heard){
+      calStop(); killStim(); $('calbar').classList.remove('play');
+      if(cal.side==='L'){ calVol('R'); return; }
+      chainOKFor=device; chainOKAt=Date.now(); chainAway=false;   // sides + volume proven
+      const done=cal.onPass; cal=null; if(done) done(); return;
+    }
+    cal.miss=(cal.miss||0)+1;               // pulses keep looping while they adjust the knob
+    $('calNote').innerHTML='Turn the volume <b>up one step</b> and keep listening — the beeps are still repeating in your <b>'+(cal.side==='L'?'left':'right')+'</b> ear.';
+    if(cal.miss>=2 && !$('calChoices').querySelector('.volesc')){
+      const brk=document.createElement('span'); brk.className='brk'; $('calChoices').appendChild(brk);
+      const esc=document.createElement('button'); esc.className='choice alt volesc';
+      esc.innerHTML='Continue anyway<small>quietest sounds may be out of reach</small>';
+      esc.onclick=()=>{ calStop(); killStim(); $('calbar').classList.remove('play'); chainOKFor=device; chainOKAt=Date.now(); chainAway=false; const done=cal&&cal.onPass; cal=null; if(done) done(); };
+      $('calChoices').appendChild(esc);
+    }
   }
   function calFail(kind){
     $('calTitle').textContent = kind==='swapped' ? 'Channels look swapped' : kind==='mono' ? 'That sounds like mono' : 'One side stayed quiet';
@@ -1249,7 +1313,7 @@
     const again=document.createElement('button'); again.className='choice alt'; again.innerHTML='Try again<small>re-check both sides</small>';
     again.onclick=()=>calChannel('L');
     const anyway=document.createElement('button'); anyway.className='choice alt'; anyway.innerHTML='Continue anyway<small>readings may be off</small>';
-    anyway.onclick=()=>{ chainOKFor=device; const done=cal&&cal.onPass; cal=null; if(done) done(); };
+    anyway.onclick=()=>{ chainOKFor=device; chainOKAt=Date.now(); chainAway=false; const done=cal&&cal.onPass; cal=null; if(done) done(); };
     box.appendChild(again); box.appendChild(anyway);
   }
   // THE gate lives here, not in the callers: every launch path (picker, device screen, profile
@@ -1257,6 +1321,7 @@
   // before any measurement — and nobody can add a new entry point that skips it.
   function startRoom(i){
     if(chainOKFor!==device){ startChannelCheck(()=>beginRoom(i)); return; }
+    if(chainStale()){ confirmChain(()=>beginRoom(i)); return; }
     beginRoom(i);
   }
   function beginRoom(i){
@@ -1718,15 +1783,19 @@
     nextChapter();
   }
   function startCurve(){
-    initAudio(); ctx.resume(); stopVoices(); rvF=1; anchorMaster(0.85);   // base level; ag.calOffset applies once the run starts
     if(!device) device=suggestName();
+    // the shared chain gate (sides + volume) fronts EVERY entry to the curve too — profile
+    // retakes, Redo and the end-screen shortcut don't pass through startRoom
+    if(chainOKFor!==device){ startChannelCheck(()=>startCurve()); return; }
+    if(chainStale()){ confirmChain(()=>startCurve()); return; }
+    initAudio(); ctx.resume(); stopVoices(); rvF=1; anchorMaster(0.85);   // base level; ag.calOffset applies once the run starts
     if(!curveInTour) currentRunId=uid('r');    // standalone curve = its own occasion; in-tour reuses the tour runId
     ag={fi:0, phase:'cal', calTimer:null, mode:'both', pts:{R:{},L:{},B:{}}, ptsMeta:{R:{},L:{},B:{}}, faTot:{R:0,L:0,B:0}, caTot:{R:0,L:0,B:0}, calOffset:0};
     // mid-run there is NO Continue/Done/Redo: a visible "Continue →" during the measurement read
     // as a normal next-step and silently ABORTED the room, marking it complete. The only mid-run
     // exit is ⌂ Home (progress-safe). The exit row returns when the curve actually finishes.
     $('cvsave').style.display='none'; $('cvexit').style.display='none'; $('cvredo').style.display='none';
-    show('curve'); agCal();
+    show('curve'); agPrecheck();
   }
   async function saveCurveCard(){
     const svg=$('cvcard').querySelector('svg'); if(!svg) return;
@@ -1746,84 +1815,11 @@
   }
   function agBedStop(){ if(ag&&ag.bed){ try{ ag.bed.g.gain.linearRampToValueAtTime(0,ctx.currentTime+.05); ag.bed.nb.stop(ctx.currentTime+.12); }catch(e){} ag.bed=null; } }
   function stopCurveAudio(){ agBedStop(); if(ag&&ag.calTimer){clearTimeout(ag.calTimer); ag.calTimer=null;} clearTimers(); }
-  function agCal(){
-    $('cvTitle').textContent='Set your volume';
-    $('cvNote').innerHTML='A <b>1 kHz</b> tone will alternate between your <b>left</b> and <b>right</b> ear. Turn your device volume until it’s clearly but comfortably present <b>on both sides</b> — if one side is fainter, set it by <b>that</b> side. A rough setting is fine — it gets <b>verified</b> before the test starts.';
-    $('cvprog').textContent='Setup · volume'; $('cvwrap').style.display='none';
-    const box=$('cvChoices'); box.innerHTML='';
-    const play=document.createElement('button'); play.className='btn half'; play.textContent='▶ Play 1 kHz';
-    const go=document.createElement('button'); go.className='btn half'; go.textContent='Volume set — begin'; go.style.display='none';
-    // the SOLID button is always the next action: once the tone has played, "begin" takes the
-    // solid style and the replay demotes to ghost — the eye lands on the right thing
-    // the volume must be set against the WEAKER ear, so each ear has to be heard alone: a diotic
-    // tone is judged by the better ear (binaural loudness), which for an asymmetric listener
-    // guarantees the second ear's anchor lands out of window mid-run → the "A little louder,
-    // please" interruption between ears. Alternating L/R lets the fainter side be heard AS the
-    // fainter side while the knob is still in hand.
-    play.onclick=()=>{ stopCurveAudio(); let side=-1; const step=()=>{ if(!ag||ag.phase!=='cal')return; detTone(1000, ctx.currentTime+.02, .5, -18, side); side=-side; ag.calTimer=setTimeout(step,720); }; step();
-      play.textContent='↺ Again'; play.classList.add('ghost'); go.style.display='inline-block'; };
-    go.onclick=()=>{ stopCurveAudio(); killStim(); agPrecheck(); };
-    box.appendChild(play); box.appendChild(go);
-  }
-  // PRE-CHECK — prove the signal chain before measuring. This is what stops the test from reading a
-  // phone SPEAKER's bass roll-off or a fan's masking instead of the listener's ears: (1) a VERIFIABLE
-  // left/right tone check (headphones on, sides not swapped), then (2) a quiet-room listen.
-  // the channel half of this used to be a second, duplicate L/R test. It now lives once in the
-  // shared check that gates every room, so if the chain is already proven for this pair we go
-  // straight to the quiet check (which is genuinely audiogram-specific).
-  function agPrecheck(){ ag.phase='pre'; ag.pcLevel=-14; $('cvwrap').style.display='none';
-    if(chainOKFor===device){ agPcQuiet(); return; }
-    agPcChannel('L'); }
-  function agPcChannel(side){
-    ag.phase='pre'; ag.pcSide=side; ag.pcMiss=0; $('cvprog').textContent='Setup · headphone check';
-    $('cvTitle').textContent='Headphone check';
-    $('cvNote').innerHTML='Headphones on. A two-note chime is playing in <b>one</b> ear — which side is it on? If it’s faint, nudge your volume up.';
-    const box=$('cvChoices'); box.innerHTML='';
-    const mk=(lbl,val,sub,cls)=>{ const b=document.createElement('button'); b.className='choice'+(cls?' '+cls:''); b.innerHTML=lbl+(sub?`<small>${sub}</small>`:''); b.onclick=()=>agPcAnswer(val); return b; };
-    box.appendChild(mk('Left','L')); box.appendChild(mk('Right','R'));
-    const brk=document.createElement('span'); brk.className='brk'; box.appendChild(brk);   // L/R big on row 1; escapes smaller on row 2
-    box.appendChild(mk('Both sides','B','can’t tell them apart','alt'));
-    box.appendChild(mk('I don’t hear it','N','nothing this time','alt'));
-    const rep=document.createElement('button'); rep.className='replay'; rep.innerHTML='<span>↺</span> Replay'; rep.onclick=()=>{ if(ag&&ag.pcPlay)ag.pcPlay(); }; box.appendChild(rep);
-    const play=()=>{ stopCurveAudio(); clearTimers();
-      anchorMaster(agLevel());   // setup and measurement share one scale
-      const pan = side==='L'?-1:1;
-      // a low-mid two-note chime, not a lone quiet 1 kHz sine: the check must prove the CHANNEL,
-      // not the listener — a notched or high-frequency loss in the tested ear shouldn't fail it.
-      const step=()=>{ if(!ag||ag.phase!=='pre')return; const t=ctx.currentTime+.02;
-        detTone(600, t, .30, ag.pcLevel, pan); detTone(900, t+.36, .30, ag.pcLevel, pan);
-        ag.calTimer=setTimeout(step,1150); };
-      step(); };
-    ag.pcPlay=play; play();
-  }
-  function agPcAnswer(val){
-    if(!ag||ag.phase!=='pre')return;
-    stopCurveAudio(); killStim();
-    if(val==='N'){                                          // didn't hear it → try louder before judging:
-      if(ag.pcMiss<1){ ag.pcMiss++; ag.pcLevel=Math.min(-6, ag.pcLevel+8);   // a faint chime in a weaker
-        $('cvNote').innerHTML='Turning it up — same side. Listen again…';    // ear is normal, and exactly
-        if(ag.pcPlay)ag.pcPlay(); return; }                                  // what this test measures
-      agPcFail('silent'); return;
-    }
-    if(val==='B'){ agPcFail('speaker'); return; }          // both ears at once → speaker or mono blend
-    if(val!==ag.pcSide){ agPcFail('swapped'); return; }     // heard in the other ear → L/R reversed
-    if(ag.pcSide==='L'){ agPcChannel('R'); return; }        // left ok → verify right
-    chainOKFor=device;                                      // proven here too — don't ask again this pair
-    agPcQuiet();                                            // both sides correct → quiet check
-  }
-  function agPcFail(kind){
-    ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Setup · headphone check';
-    $('cvTitle').textContent = kind==='swapped' ? 'Channels look swapped' : kind==='silent' ? 'One side stayed quiet' : 'Sounds like a speaker';
-    $('cvNote').innerHTML = kind==='swapped'
-      ? 'That tone was in your <b>other</b> ear — your left/right channels look reversed, so a per-ear result would be mislabelled. Check the L/R on your headphones, or run the both-ears test instead.'
-      : kind==='silent'
-      ? 'Even louder, nothing came through on the <b>'+(ag.pcSide==='L'?'left':'right')+'</b>. Two honest possibilities: that side of the headphones isn’t playing (connection, cable, a Bluetooth hiccup) — or that ear needs more level than the other, which is exactly what this test measures. Reconnect and try again, or carry on and let the per-ear curve tell the story.'
-      : 'It seemed to come from both sides at once. This test needs <b>headphones</b> — on a speaker it measures the speaker, not your ears, and can’t tell left from right.';
-    const box=$('cvChoices'); box.innerHTML='';
-    const retry=document.createElement('button'); retry.className='choice alt'; retry.innerHTML='Try again<small>re-check headphones</small>'; retry.onclick=()=>agPcChannel('L');
-    const anyway=document.createElement('button'); anyway.className='choice alt'; anyway.innerHTML='Continue anyway<small>results may be off</small>'; anyway.onclick=()=>agPcQuiet();
-    box.appendChild(retry); box.appendChild(anyway);
-  }
+  // PRE-CHECK — the audiogram-specific part of setup. The chain proof (sides at −14, volume via
+  // the near-floor per-ear pulses) lives in the shared gate that fronts EVERY room, so the only
+  // thing left to verify here is the ROOM: a quiet-environment listen — a fan, traffic or a hum
+  // hides the quietest tones and bends the curve.
+  function agPrecheck(){ ag.phase='pre'; $('cvwrap').style.display='none'; agPcQuiet(); }
   function agPcQuiet(){
     ag.phase='pre'; stopCurveAudio(); $('cvprog').textContent='Setup · quiet room';
     $('cvTitle').textContent='Quiet check';
@@ -1915,59 +1911,9 @@
     $('cvTitle').textContent='How to test'; $('cvprog').textContent='Setup done — choose a mode';
     $('cvNote').innerHTML='Testing each ear on its own is the only way to see a <b>left/right difference</b> — a strong ear otherwise hides a weak one. In each-ear mode a <b>faint steady rush</b> sits in the resting ear the whole time, swelling when a tone has to get loud — deliberate, so that ear can’t secretly help. Both-ears is quicker.';
     const box=$('cvChoices'); box.innerHTML='';
-    const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agVolFit('perear');
-    const both=document.createElement('button'); both.className='choice alt'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agVolFit('both');
+    const per=document.createElement('button'); per.className='choice alt'; per.innerHTML='Each ear<small>finds a left/right difference · ~4 min</small>'; per.onclick=()=>agStartRun('perear');
+    const both=document.createElement('button'); both.className='choice alt'; both.innerHTML='Both ears<small>quicker · one curve · ~2 min</small>'; both.onclick=()=>agStartRun('both');
     box.appendChild(per); box.appendChild(both);
-  }
-  // MEASURED VOLUME FIT — the knob stops relying on the listener's judgement of "comfortable".
-  // The run's window placement needs each anchor's 1 kHz threshold at or below AG_ANCHOR_HI
-  // (−64); too-LOUD is corrected silently by auto-range, so audibility at the quiet end is the
-  // only thing the knob must guarantee. So: before the run, a near-floor 1 kHz pulse (−70,
-  // 6 dB inside the requirement) must actually be HEARD through each test channel. Heard →
-  // every anchor provably fits, no mid-run interruption possible. Not heard → a measured,
-  // channel-specific "turn up", looped until verified — with the usual honest escape.
-  const AG_FIT_LEVEL=-70;
-  function agVolFit(mode){
-    ag.phase='fit'; ag.fitMode=mode; ag.fitEars = mode==='perear'?['R','L']:['B']; ag.fitI=0;
-    agFitEar();
-  }
-  function agFitEar(){
-    ag.fitMiss=0; stopCurveAudio(); killStim();
-    const ear=ag.fitEars[ag.fitI], pan=EAR_PAN[ear];
-    $('cvprog').textContent='Setup · volume check';
-    $('cvTitle').textContent='Volume check'+(ag.fitMode==='perear'?' · '+EAR_NAME[ear].toLowerCase():'');
-    $('cvNote').innerHTML='Three <b>very faint</b> beeps are repeating '
-      +(pan? 'in your <b>'+(ear==='L'?'left':'right')+'</b> ear':'in <b>both</b> ears')
-      +' — close to the quietest this test needs to play. If you can’t hear them, turn the volume <b>up</b> until you just can, then answer.';
-    const box=$('cvChoices'); box.innerHTML='';
-    const yes=document.createElement('button'); yes.className='choice'; yes.innerHTML='I hear the beeps<small>faint is fine</small>'; yes.onclick=()=>agFitAnswer(true);
-    const no=document.createElement('button'); no.className='choice'; no.innerHTML='I can’t hear them<small>even turned up</small>'; no.onclick=()=>agFitAnswer(false);
-    box.appendChild(yes); box.appendChild(no);
-    const play=()=>{ clearTimers(); anchorMaster(agLevel());
-      const step=()=>{ if(!ag||ag.phase!=='fit')return; const t=ctx.currentTime+.05;
-        for(let k=0;k<3;k++) detTone(1000, t+k*.4, .28, AG_FIT_LEVEL, pan);
-        ag.calTimer=setTimeout(step,1800); };
-      step(); };
-    play();
-  }
-  function agFitAnswer(heard){
-    if(!ag||ag.phase!=='fit')return;
-    if(heard){
-      stopCurveAudio(); killStim();
-      ag.fitI++;
-      if(ag.fitI>=ag.fitEars.length){ agStartRun(ag.fitMode); return; }
-      agFitEar(); return;                                   // next channel, fresh miss count
-    }
-    ag.fitMiss=(ag.fitMiss||0)+1;                           // keep looping the pulses while they adjust
-    $('cvNote').innerHTML='Turn the volume <b>up one step</b> and keep listening — the beeps are still repeating'
-      +(ag.fitMode==='perear'?' in your <b>'+(ag.fitEars[ag.fitI]==='L'?'left':'right')+'</b> ear':'')+'.';
-    if(ag.fitMiss>=2 && !$('cvChoices').querySelector('.fitesc')){
-      const brk=document.createElement('span'); brk.className='brk'; $('cvChoices').appendChild(brk);
-      const esc=document.createElement('button'); esc.className='choice alt fitesc';
-      esc.innerHTML='Continue anyway<small>quietest tones may read beyond reach</small>';
-      esc.onclick=()=>{ stopCurveAudio(); killStim(); agStartRun(ag.fitMode); };
-      $('cvChoices').appendChild(esc);
-    }
   }
   function agStartRun(mode){
     ag.mode=mode; ag.ears = mode==='perear'?['R','L']:['B']; ag.ei=0;
