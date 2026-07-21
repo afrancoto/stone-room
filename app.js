@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v72";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v73";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2148,16 +2148,85 @@
     ag.mode=mode; ag.ears = mode==='perear'?['R','L']:['B']; ag.ei=0;
     ag.pts={R:{},L:{},B:{}}; ag.ptsMeta={R:{},L:{},B:{}}; ag.faTot={R:0,L:0,B:0}; ag.caTot={R:0,L:0,B:0};
     ag.log={R:{},L:{},B:{}};   // raw [level, heard] per frequency — exported, and reused by the gamma refit
+    ag.maskedF={R:{},L:{},B:{}};   // which readings were taken with the contralateral rush running
     ag.phase='run';
     $('cvwrap').style.display='block'; agLiveDraw();       // reveal the curve canvas; it fills in as we go
+    // PER-EAR: measure 1 kHz on BOTH ears first. The output window used to be fitted to whichever
+    // ear ran first, so for very different ears the second one could start out of range and
+    // interrupt mid-run for the knob (Andrea's report). Measuring both references up front lets
+    // one window be chosen for the weaker ear, surfaces the left/right difference immediately,
+    // and costs nothing: each reading becomes that ear's anchor instead of being re-measured.
+    if(ag.mode==='perear'){ agAnchorPass(); return; }
     agEar();
+  }
+  function agAnchorPass(){
+    ag.apI=0; ag.apPts={}; ag.apCi={}; ag.apRedo=ag.apRedo||0;
+    agAnchorEar();
+  }
+  function agAnchorEar(){
+    ag.curEar=ag.ears[ag.apI]; ag.pan=EAR_PAN[ag.curEar];
+    agBedStop(); agMaskStop();
+    if(ag.pan) agBedStart(-ag.pan);
+    ag.warm = !ag.warmDone;
+    ag.anchor={eng: window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, {nMin:4, gamma:agGammaFor(ag.curEar)}))};
+    ag.curF=1000; ag.noneMax=0; ag.floorStreak=0; ag.maskIdle=0; ag.reach=null;
+    $('cvTitle').textContent=EAR_NAME[ag.curEar]+' · 1 kHz';
+    $('cvprog').textContent='Finding your reference · ear '+(ag.apI+1)+' of '+ag.ears.length;
+    agTrial();
+  }
+  function agAnchorDone(){
+    const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
+    const vals=ag.ears.map(e=>ag.apPts[e]).filter(v=>v!=null);
+    if(!vals.length){ agEar(); return; }
+    const worse=Math.max.apply(null, vals);        // higher dBFS = needs more level = the binding ear
+    const retry=()=>{ if(++ag.apRedo>4){ agAnchorApply(); return; }
+      $('cvprog').textContent='Fitting to your volume';
+      $('cvNote').innerHTML='Fitting the test to your volume… <span style="color:var(--muted)">no need to touch anything.</span>';
+      choiceTimers.push(setTimeout(agAnchorPass,700)); };
+    if(worse<AG_ANCHOR_LO && (ag.calOffset||0)>-36){          // both ears sit too low in the window
+      ag.calOffset=(ag.calOffset||0)-12; anchorMaster(agLevel()); ag.autoRanged=true; retry(); return;
+    }
+    if(worse>AG_ANCHOR_HI && (ag.calOffset||0)<0){            // reclaim headroom we donated earlier
+      ag.calOffset=Math.min(0,(ag.calOffset||0)+12); anchorMaster(agLevel()); ag.autoRanged=true; retry(); return;
+    }
+    if(worse>AG_ANCHOR_HI){                                   // out of digital headroom → the knob
+      agAnchorRetune(Math.round(worse-AG_ANCHOR_HI)); return;
+    }
+    ag.headroom=Math.round(pHi-worse);
+    agAnchorApply();
+  }
+  function agAnchorRetune(shortBy){
+    clearTimers(); killStim(); agMaskStop();
+    ag.retunes=(ag.retunes||0)+1;
+    $('cvTitle').textContent='A little louder, please';
+    $('cvprog').textContent='Setup · volume';
+    $('cvNote').innerHTML='At this volume even your 1 kHz reference sits near the top of what the test can play — and every other pitch needs <b>more</b> level than 1 kHz, so the weaker bands would run off the end and read “beyond reach”.'
+      +(shortBy>0?' We need roughly <b>'+shortBy+' dB</b> more room.':'')
+      +' Turn the volume <b>up a step or two</b>, then both references are re-taken. After that, leave the knob alone until the end.';
+    const box=$('cvChoices'); box.innerHTML='';
+    const redo=document.createElement('button'); redo.className='choice'; redo.innerHTML='Volume adjusted<small>re-take both references</small>';
+    redo.onclick=()=>{ redo.disabled=true; agAnchorPass(); };
+    const anyway=document.createElement('button'); anyway.className='choice alt'; anyway.innerHTML='Continue anyway<small>curve will be rough</small>';
+    anyway.onclick=()=>{ anyway.disabled=true; agAnchorApply(); };
+    box.appendChild(redo); box.appendChild(anyway);
+  }
+  function agAnchorApply(){
+    // both references measured on one scale: report the 1 kHz difference itself — the one
+    // frequency the old relative-only comparison structurally could never report on
+    const a=ag.apPts, d=(a.R!=null&&a.L!=null)?Math.round(a.L-a.R):null;
+    ag.anchorGap=d;
+    ag.ei=0; agEar();
+    if(d!=null && Math.abs(d)>=15){
+      const worseEar=d>0?'left':'right';
+      $('cvNote').innerHTML='Your <b>'+worseEar+'</b> ear already needs about <b>'+Math.abs(d)+' dB</b> more level at 1 kHz. Keep going — the full curve will show where that difference sits.';
+    }
   }
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.prevThr=null;
     ag.floorStreak=0; ag.noneMax=0; ag.anchorPlaced=false; ag.earAdvancing=false;
     ag.reachAsked=false; ag.reach=null;                    // each ear gets its own (single) reach offer
     ag.rushShown=0;                                        // re-explain the masking rush per ear — it changes sides
-    ag.warm = ag.ei===0;                                   // one obvious practice tone before the first ear
+    ag.warm = ag.ei===0 && !ag.warmDone;                   // one obvious practice tone, once per run
     // CONSTANT resting-ear bed (per-ear mode): a faint fixed noise floor (~−58 dBFS) for the whole
     // ear, so the rush is a steady presence that swells on loud tones — not a thing that flickers
     // in and out trial by trial ("sometimes white noise, sometimes not — weird"). At −58 its skull
@@ -2173,8 +2242,18 @@
       psi:window.SR_PSI, room:AG_ROOM, order:ag.order,
       baseplan:AG_BASE_PLAN, infill:AG_INFILL, slopeTrig:AG_SLOPE_TRIG,
       infillCap:AG_INFILL_CAP[key], trialBudget:AG_TRIAL_BUDGET[key],
-      budget:AG_SEARCH_BUDGET[key]
+      budget:AG_SEARCH_BUDGET[key],
+      gammaLive:()=>agGammaFor(ag.curEar)
     });
+    // hand this ear the 1 kHz it already gave us in the two-ear anchor pass, so the reference is
+    // the one the window was chosen from and no trials are spent measuring it twice
+    if(ag.apPts && ag.apPts[ag.curEar]!=null){
+      ag.search.seedAnchor(ag.apPts[ag.curEar], ag.apCi[ag.curEar]);
+      ag.pts[ag.curEar][1000]=ag.apPts[ag.curEar];
+      ag.ptsMeta[ag.curEar][1000]={ci:ag.apCi[ag.curEar], cens:false};
+      ag.anchorPlaced=true;                         // window already placed from BOTH ears
+      agLiveDraw();
+    }
     agFreqNext();
   }
   // ask the search for the next frequency visit (or the end of the ear) and set the stage for it
@@ -2211,6 +2290,13 @@
       : r.phase==='gap'      ? `filling a gap at ${fLbl}`
       : `tone ${Math.min(r.idx||1,r.of||9)} of ${r.of||9}`);
     agTrial();
+  }
+  // the guess rate this ear has actually demonstrated on silent catch trials, for the LIVE model.
+  // Needs a few catches before it means anything; clamped so one unlucky tap can't swing the run.
+  function agGammaFor(ear){
+    const fa=(ag.faTot&&ag.faTot[ear])||0, ca=(ag.caTot&&ag.caTot[ear])||0;
+    if(ca<4) return AG_ROOM.gamma;
+    return clamp(fa/ca, AG_ROOM.gamma, 0.30);
   }
   function agEarDone(){
     // re-entrancy guard: every path here schedules the next ear 650 ms out, so any second call in
@@ -2267,6 +2353,9 @@
   }
   function agTrial(){
     if(ag.warm){ ag.curLevel=-30; ag.catch=false; }   // practice: unmistakably audible, never recorded
+    else if(ag.anchor && ag.anchor.eng){               // two-ear anchor pass: its own engine, no catch trials
+      ag.anchorX=ag.anchor.eng.z.next(); ag.curLevel=ag.anchor.eng.levelOf(ag.anchorX); ag.catch=false;
+    }
     else if(ag.reach && ag.reach.eng){                 // loud pass: its own engine, no catch trials
       ag.reachX=ag.reach.eng.z.next(); ag.curLevel=ag.reach.eng.levelOf(ag.reachX); ag.catch=false;
     }
@@ -2315,7 +2404,8 @@
       // it; once engaged in a visit the noise stays steady to the end (flickering it per trial
       // is the pumping that made it a trial marker)
       const mplan=agMaskPlan(f, ag.curLevel);
-      if(mplan!=null){ ag.maskIdle=0; agMaskEnsure(f, mplan); }
+      if(mplan!=null){ ag.maskIdle=0; agMaskEnsure(f, mplan);
+        (ag.maskedF[ag.curEar]=ag.maskedF[ag.curEar]||{})[f]=true; }   // remember: this reading carries central masking
       else if(ag.maskN && ++ag.maskIdle>=3) agMaskStop();   // TIME hysteresis, not per-trial gating:
       // a visit's one loud opener can trip the gate for a listener who never needs masking at all.
       // Per-trial switching would pump; latching for the whole visit would leave a symmetric ear
@@ -2347,7 +2437,7 @@
     [...$('cvChoices').querySelectorAll('button')].forEach(b=>b.disabled=true);
     const heard = ans==='hear';
     if(ag.warm){                             // practice tone: teaches the window, never recorded
-      ag.warm=false;
+      ag.warm=false; ag.warmDone=true;
       $('cvNote').innerHTML = heard
         ? 'That’s it — from here they get quieter, and some rounds are <b>silent</b> on purpose.'
         : 'That one was clearly there. Turn the volume up a little, then carry on — and remember some rounds are <b>silent</b> on purpose.';
@@ -2365,6 +2455,19 @@
     }
     if(!heard && ag.curLevel>=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10)-2) ag.noneMax=(ag.noneMax||0)+1;   // "Nothing" at max level
     else if(heard) ag.noneMax=0;
+    if(ag.anchor && ag.anchor.eng){                     // two-ear anchor pass: lock 1 kHz per ear
+      const A=ag.anchor; A.eng.z.record(ag.anchorX, heard);
+      if(ag.log){ (ag.log[ag.curEar][1000]=ag.log[ag.curEar][1000]||[]).push([Math.round(ag.curLevel*10)/10, heard?1:0]); }
+      const st=A.eng.z.stats();
+      const lo=A.eng.levelOfRaw(st.ci[0]), hi=A.eng.levelOfRaw(st.ci[1]), ci=Math.abs(hi-lo)/2;
+      // the reference every other point is measured against — hold it to the tight rule, never
+      // the dry-runs escape, exactly as the main search and the reach bridge do
+      if(!(st.forceStop || (st.trial>=4 && ci<=6))){ choiceTimers.push(setTimeout(agTrial,340)); return; }
+      ag.apPts[ag.curEar]=A.eng.levelOf(st.mean); ag.apCi[ag.curEar]=ci;
+      ag.anchor=null; ag.apI++;
+      if(ag.apI<ag.ears.length){ choiceTimers.push(setTimeout(agAnchorEar,550)); return; }
+      choiceTimers.push(setTimeout(agAnchorDone,350)); return;
+    }
     if(ag.reach && ag.reach.eng){                       // loud pass: own engine, own bookkeeping
       const R=ag.reach; R.eng.z.record(ag.reachX, heard);   // (unlogged — its levels live on the loud knob's scale)
       const st=R.eng.z.stats();
@@ -2586,7 +2689,10 @@
       if(f===1000) return;
       const m=ag.ptsMeta[ear][f]; if(m && m.reach) return;
       const trials=ag.log[ear][f]; if(!trials||trials.length<3) return;
-      const eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, {gamma:g}));
+      // keep the informative prior: refitting from a cold start threw away everything the run
+      // had learned about this frequency and re-derived it from the raw taps alone
+      const prior = ag.pts[ear][f]!=null ? {priorSeed:ag.pts[ear][f], priorSDscale:0.6} : {};
+      const eng=window.SR_PSI.forRoom(Object.assign({}, AG_ROOM, prior, {gamma:g}));
       trials.forEach(t=>eng.z.record(t[0], !!t[1]));
       const st=eng.z.stats(), lvl=eng.levelOf(st.mean);
       const loL=eng.levelOfRaw(st.ci[0]), hiL=eng.levelOfRaw(st.ci[1]);
@@ -2596,6 +2702,26 @@
     });
     return true;
   }
+  // CENTRAL MASKING: noise in the opposite ear raises the TEST ear's threshold centrally — the
+  // ear reads worse than it is, but only at the frequencies where the rush was running, so it
+  // warps the curve's shape and the left/right gap rather than shifting everything. Reported
+  // magnitudes span ~5 dB (conservative clinical allowance) to 15 dB at high masker levels, and
+  // one study finds no reliable shift at low levels at all. Given that conflict we correct
+  // DELIBERATELY SMALL and only where the rush actually played: under-correcting leaves a little
+  // inflation, which is the safe direction for asymmetry detection; over-correcting would erase
+  // a real gap. Scaled mildly with frequency, where the effect is reported to grow.
+  const CM_CORR = f => f<=1000 ? 2 : (f<=2000 ? 3 : 4);
+  function agCentralMaskFix(ear){
+    const meta=ag.ptsMeta[ear]||{}, masked=(ag.maskedF&&ag.maskedF[ear])||{};
+    let n=0, worst=0;
+    Object.keys(meta).map(Number).forEach(f=>{
+      if(!masked[f] || !meta[f] || meta[f].cens || ag.pts[ear][f]==null) return;
+      const c=CM_CORR(f);
+      ag.pts[ear][f]-=c;                       // dBFS: more negative = quieter = the truer threshold
+      meta[f].cmCorr=c; n++; worst=Math.max(worst,c);
+    });
+    return n?{n,worst}:null;
+  }
   async function finishCurve(){
     ag.phase='done'; clearTimers(); agBedStop(); agMaskStop();   // a reach pass on the LAST ear left the mask playing through the results
     $('cvTitle').textContent='Your curve'; $('cvprog').textContent=''; $('cvChoices').innerHTML='';
@@ -2603,6 +2729,7 @@
     $('cvexit').style.display=''; $('cvredo').style.display='';   // the run is over — Continue/Done/Redo return
     if(ag.mode==='perear'){
       const refitR=agRefitEar('R'), refitL=agRefitEar('L');   // must run BEFORE the curves are built
+      const cmR=agCentralMaskFix('R'), cmL=agCentralMaskFix('L');   // …and before the asymmetry is read
       const R=agBuildCurve('R'), L=agBuildCurve('L'), asym=agAsym(R,L);
       // gate on the false-alarm RATE, not a count: per-ear mode presents ~2× the silent trials,
       // so a fixed count over-flagged exactly the mode whose job is finding an asymmetry
@@ -2628,6 +2755,7 @@
         note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
       }
       if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
+      if(cmR||cmL) note+=' Where the rush was playing, a small allowance (2–4 dB) was subtracted for the way noise in one ear nudges the other ear’s threshold — standard practice, and deliberately conservative.';
       if(ag.volDrift){ const worst=Math.max(...Object.values(ag.volDrift));
         note+=' <b>Volume check:</b> the 1 kHz reference read '+worst+' dB different at the end than at the start — the volume or the fit moved mid-test, and every relative point moved with it. Treat this curve as rough and redo with the knob untouched.'; }
       // headroom honesty: say when the window itself, not the ear, set the limit

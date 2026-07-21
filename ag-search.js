@@ -231,7 +231,12 @@
         delete S.pts[f];
       } else {
         const seed = order==='fixed' ? fixedSeed(f, pick.requeue||pick.phase==='sentinel') : smartSeed(f, pick.phase);
-        S.engines[f]=psi.forRoom(Object.assign({}, room, seed));
+        // LIVE guess rate: the model assumed a fixed 3% "yes to silence" for the whole run, so a
+        // liberal responder's thresholds were estimated during the run as if they never guessed —
+        // biasing them LOW (the yes/no literature's central caveat). Each new frequency now starts
+        // with the rate actually measured from this ear's silent catch trials so far.
+        const gam = o.gammaLive ? o.gammaLive() : room.gamma;
+        S.engines[f]=psi.forRoom(Object.assign({}, room, seed, {gamma:gam}));
         S.tCount[f]=0; S.resumeAt[f]=0; S.fix.catchThisFreq=0;
         if(pick.requeue||pick.phase==='sentinel') delete S.pts[f];
       }
@@ -312,12 +317,17 @@
       S.curF=null; if(order==='fixed') S.fix.i++;
       return {locked:true, f, lvl:v, ci:null, cens:true, censDir:rail};
     }
+    // accept a 1 kHz reading measured BEFORE the run (the two-ear anchor pass), so the ear starts
+    // from a reference that was chosen with both ears in view instead of re-measuring it here
+    function seedAnchor(lvl, ci){
+      S.pts[1000]=lvl; S.meta[1000]={ci:(ci!=null?ci:null), cens:false};
+    }
     function requeueAnchor(){                                    // window placement re-measure
       delete S.pts[1000]; delete S.meta[1000]; delete S.engines[1000];
       S.tCount[1000]=0;
       if(order==='fixed') S.fix.i=S.fix.plan.indexOf(1000);
     }
-    return { nextFreq, nextTrial, record, censorAt, requeueAnchor,
+    return { nextFreq, nextTrial, record, censorAt, requeueAnchor, seedAnchor,
       state:()=>S, order, nulls:()=>cholNulls };
   }
 
