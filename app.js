@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v75";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v76";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1106,7 +1106,7 @@
     // how the tone path compares to the noise path. Built after a "only noise, no beeps"
     // report that the desktop channel tap could not reproduce — the verdict has to come from
     // the listener's own phone.
-    let sndBusy=false;
+    let sndBusy=false, sndTimer=null;
     $('sndchk').addEventListener('click', ()=>{
       if(sndBusy) return; sndBusy=true;
       initAudio(); ctx.resume(); stopVoices(); anchorMaster(0.85);
@@ -1124,8 +1124,12 @@
         ['③ noise — RIGHT only',()=>noiseStep(1)],
         ['④ noise — LEFT only', ()=>noiseStep(-1)],
       ];
-      let i=0; const step=()=>{ if(i>=steps.length){ btn.textContent='Sound check'; sndBusy=false; return; }
-        btn.textContent=steps[i][0]; steps[i][1](); i++; setTimeout(step,1600); };
+      // cancellable: without this the 4-step loop kept firing tones and noise into the shared
+      // master bus after the user navigated away — including on top of a real test
+      let i=0; const step=()=>{
+        if(!$('intro').classList.contains('on')){ btn.textContent='Sound check'; sndBusy=false; sndTimer=null; return; }
+        if(i>=steps.length){ btn.textContent='Sound check'; sndBusy=false; sndTimer=null; return; }
+        btn.textContent=steps[i][0]; steps[i][1](); i++; sndTimer=setTimeout(step,1600); };
       step();
     });
     $('again').addEventListener('click',()=>{ buildSelect(); show('select'); });
@@ -2236,6 +2240,13 @@
     box.appendChild(redo); box.appendChild(anyway);
   }
   function agAnchorApply(){
+    // set headroom on EVERY path into the run, including "Continue anyway" from the retune —
+    // that path censors the most and used to suppress its own beyond-reach explanation
+    if(ag.headroom==null){
+      const pH=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
+      const vs=ag.ears.map(e=>ag.apPts[e]).filter(v=>v!=null);
+      if(vs.length) ag.headroom=Math.round(pH-Math.max.apply(null,vs));
+    }
     // both references measured on one scale: report the 1 kHz difference itself — the one
     // frequency the old relative-only comparison structurally could never report on
     const a=ag.apPts, cens=ag.apCens||{};
@@ -2287,7 +2298,11 @@
     });
     // hand this ear the 1 kHz it already gave us in the two-ear anchor pass, so the reference is
     // the one the window was chosen from and no trials are spent measuring it twice
-    if(ag.apPts && ag.apPts[ag.curEar]!=null){
+    // …but NOT if the knob has moved since the anchor pass. A reach pass on the previous ear asks
+    // the listener to turn up and then back down, and "back down" is never exact — seeding this
+    // ear with a reference measured before all that would offset every point in it by the
+    // restore error. Measure 1 kHz fresh instead.
+    if(ag.apPts && ag.apPts[ag.curEar]!=null && !ag.scaleDirty){
       const acens=!!(ag.apCens&&ag.apCens[ag.curEar]), pHiS=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
       const acensDir = acens ? (ag.apPts[ag.curEar]>=pHiS-3?'hi':'lo') : null;
       ag.search.seedAnchor(ag.apPts[ag.curEar], ag.apCi[ag.curEar], acens, acensDir);
@@ -2471,6 +2486,7 @@
   }
   function agAnswer(ans){
     if(!ag||ag.phase!=='run')return;
+    if(ag.apAdvancing) return;   // anchor pass handing off: a Replay-armed tap here stalled it and then threw on ag.search
     clearTimers();                         // kill the pending enable-timers too: a stale 'Nothing'-enable
                                            // re-armed a disabled button after a late 'I hear it' tap and
                                            // invited a contradictory second record into the wrong slot
@@ -2590,7 +2606,11 @@
     // trust the search's verdict rather than assuming a censor: on the sentinel visit it restores
     // the ORIGINAL anchor and reports cens:false, so hardcoding true marked a perfectly good
     // reference as a bound and poisoned every relative point measured against it
-    if(res.sentinel){ const pm=ag.ptsMeta[ag.curEar][res.f]; if(!pm) ag.ptsMeta[ag.curEar][res.f]={ci:null, cens:false, censDir:null}; }
+    // the sentinel's whole job is to notice the volume moving — a give-up or floor-exit there
+    // still measured that drift, and silently discarding it removed the very warning the run
+    // had just earned
+    if(res.sentinel){ if(res.drift>6){ ag.volDrift=ag.volDrift||{}; ag.volDrift[ag.curEar]=Math.round(res.drift); }
+      const pm=ag.ptsMeta[ag.curEar][res.f]; if(!pm) ag.ptsMeta[ag.curEar][res.f]={ci:null, cens:false, censDir:null}; }
     else ag.ptsMeta[ag.curEar][res.f]={ci:null, cens:!!res.cens, censDir:res.censDir||rail};
     agLiveDraw();
     if(res.f===1000 && !ag.anchorPlaced && rail==='lo'){   // pinned at the quiet rail = the "too loud" window case
@@ -2663,6 +2683,8 @@
     if(!ag||ag.phase!=='run')return;
     if(ag.apAdvancing) return;                   // anchor pass already advancing — a second tap must not cancel its continuation
     killStim(); clearTimers();
+    ag.replay=null;                              // Replay stays live otherwise and re-fires a finished trial
+    [...$('cvChoices').querySelectorAll('button')].forEach(b=>b.disabled=true);
     $('cvNote').textContent='Marked beyond reach — moving on.';
     // the two-ear anchor pass runs BEFORE ag.search exists, so the shared censor path would throw
     // and the escape hatch was dead for exactly the listener who needs it (can't hear 1 kHz at
@@ -2746,13 +2768,30 @@
     let max=0, atF=0;
     if(sameScale){
       const rt=ag.pts.R||{}, lt=ag.pts.L||{}, mR=ag.ptsMeta.R||{}, mL=ag.ptsMeta.L||{};
+      const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
+      let n=0, ref1k=false, bMax=0, bAtF=0;
       Object.keys(lt).map(Number).forEach(f=>{
         if(lt[f]==null||rt[f]==null) return;
-        if((mR[f]&&mR[f].cens)||(mL[f]&&mL[f].cens)) return;   // a rail bound isn't a measurement
-        const d=lt[f]-rt[f];                                   // +ve = left needs more level = left worse
-        if(Math.abs(d)>Math.abs(max)){ max=d; atF=f; }
+        const cR=!!(mR[f]&&mR[f].cens), cL=!!(mL[f]&&mL[f].cens);
+        if(cR&&cL) return;                                     // two bounds say nothing about their difference
+        if(!cR&&!cL){
+          n++; if(f===1000) ref1k=true;
+          const d=lt[f]-rt[f];                                 // +ve = left needs more level = left worse
+          if(Math.abs(d)>Math.abs(max)){ max=d; atF=f; }
+          return;
+        }
+        // Exactly ONE side is beyond reach. Discarding it threw away the strongest evidence the
+        // app can hold: a point pinned at the loud rail means that ear needs AT LEAST the rail,
+        // so the gap is at least (rail − the other ear). Dropping these made the very case this
+        // test exists for — an ear too impaired to measure — come out as "ears track closely".
+        const loudPin = cL ? lt[f]>=pHi-3 : rt[f]>=pHi-3;
+        if(!loudPin) return;                                   // a quiet-rail bound constrains the other way
+        const d = cL ? (pHi - rt[f]) : -(pHi - lt[f]);
+        if(Math.abs(d)>Math.abs(bMax)){ bMax=d; bAtF=f; }
       });
-      return {max, atF, basis:'abs'};
+      const useBound = Math.abs(bMax) > Math.abs(max);
+      return { max: useBound?bMax:max, atF: useBound?bAtF:atF, basis:'abs',
+               n, ref1k, bounded: useBound, unreliable: n===0 && !useBound };
     }
     // fallback: relative, but guarded — skip any pair touching a censored point or a censored ref
     const refCensR=(ag.ptsMeta&&ag.ptsMeta.R&&ag.ptsMeta.R[1000]&&ag.ptsMeta.R[1000].cens);
@@ -2852,20 +2891,28 @@
         note='Your 1 kHz reference ran past what this volume could measure in one ear, so a trustworthy left/right comparison isn’t possible this time — turn the volume up a little and retry. Shape is relative; the absolute level isn’t calibrated.';
       } else if(Math.abs(asym.max)>=15){
         const worse=asym.max>0?'left':'right', kHz=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
-        note=`Your <b>${worse} ear</b> needed noticeably more level than the other${asym.atF>=2000?' from about '+kHz+' up':' at '+kHz}. A left–right difference is the one thing a home test can legitimately flag — it’s worth showing to an audiologist. This isn’t a diagnosis, just a listening pattern on these headphones.`;
+        note=`Your <b>${worse} ear</b> needed ${asym.bounded?'<b>at least '+Math.abs(Math.round(asym.max))+' dB</b> more level than the other':'noticeably more level than the other'}${asym.atF>=2000?' from about '+kHz+' up':' at '+kHz}.`
+          +(asym.bounded?' “At least”, because that ear ran past the loudest this test can play — the true difference is bigger than the number.':'')
+          +' A left–right difference is the one thing a home test can legitimately flag — it’s worth showing to an audiologist. This isn’t a diagnosis, just a listening pattern on these headphones.';
       } else {
-        // say WHICH comparison was possible: the absolute one can see a flat difference, the
-        // relative fallback structurally cannot, and claiming "track closely" from the latter
-        // would be over-claiming
-        note = (asym.basis==='abs')
+        // say WHICH comparison was possible, and never claim coverage we didn't have: "abs" only
+        // means the two ears shared a scale, not that any pair was actually comparable — an ear
+        // whose readings all ran past the ceiling compares nothing, and used to land here
+        note = (asym.basis!=='abs')
+          ? 'Your two ears track closely <b>in shape</b>. The volume moved during this run, so the two ears couldn’t be put on one scale — a difference that is the same at every pitch would not show up. If you want that checked, redo with the knob untouched. Shape is relative; the absolute level isn’t calibrated.'
+          : asym.ref1k
           ? 'Your two ears track closely — including at 1 kHz, so this run could see a difference at <b>any</b> pitch, not just a difference in shape. A shared roll-off up top can be these headphones or the connection — but if conversation has also been getting harder lately, a matching dip in <b>both</b> ears deserves a proper hearing check too. Shape is relative; the absolute level isn’t calibrated.'
-          : 'Your two ears track closely <b>in shape</b>. The volume moved during this run, so the two ears couldn’t be put on one scale — a difference that is the same at every pitch would not show up. If you want that checked, redo with the knob untouched. Shape is relative; the absolute level isn’t calibrated.';
+          : 'Your two ears track closely <b>at the pitches that could be compared</b> — but the 1 kHz reference itself ran past what this volume could play in one ear, so a difference that is the same at every pitch would not show up here. Turn the volume up a little and retry if you want that checked. Shape is relative; the absolute level isn’t calibrated.';
       }
       // cap honesty: past a point a home test undershoots a large gap (crossover + output ceiling),
       // even with the masking rush — say so rather than let the drawn gap read as the whole story
       const hiCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>+f>=2000 && ag.ptsMeta[e][f].cens));
       if(!faHi && Math.abs(asym.max)>=15 && (hiCens || Math.abs(asym.max)>=30)){
         note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
+      } else if(!faHi && hiCens && Math.abs(asym.max)<15){
+        // a censored high band must ALWAYS be caveated, not only when a referral is printed —
+        // otherwise "ears track closely" stands unqualified over pitches nobody could measure
+        note+=' Note: some pitches above 2 kHz ran past what this volume could play in one ear (the open dots), so a difference up there could not be seen. A louder retry may bring them inside.';
       }
       if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
       if(cmR||cmL) note+=' Where the rush was playing, a small allowance (2–4 dB) was subtracted for the way noise in one ear nudges the other ear’s threshold — standard practice, and deliberately conservative.';
