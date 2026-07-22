@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v78";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v79";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1912,10 +1912,18 @@
       ks.sort((a,b)=>Math.abs(Math.log2(a/f))-Math.abs(Math.log2(b/f)));
       return P[ks[0]];
     }
-    // the two-ear anchor pass already measured the OTHER ear's 1 kHz — use it. Without this the
-    // first ear (always the right) ran its whole curve with the masking gate blind, which leaves
-    // the resting ear unprotected exactly when the FIRST ear is the worse one.
-    if(ag.apPts && ag.apPts[o]!=null) return ag.apPts[o];
+    // The anchor pass measured the OTHER ear's 1 kHz — but that is a threshold at 1 kHz, not at
+    // every pitch. Using it flat treated the far ear as 40-50 dB more sensitive than it is up
+    // high, so the first ear got masked almost everywhere and the second ear (which has real
+    // per-frequency data) did not — and since only masked points receive the central-mask
+    // subtraction, the two ears were then corrected differently, biasing the very gap we report.
+    // Shift it by THIS ear's own shape instead: the best available prior for how a far ear's
+    // sensitivity varies with pitch is how this listener's other ear varies.
+    if(ag.apPts && ag.apPts[o]!=null){
+      const own=ag.pts[ag.curEar]||{}, a=ag.apPts[ag.curEar];
+      if(a!=null && own[f]!=null) return ag.apPts[o] + (own[f]-a);
+      return ag.apPts[o];
+    }
     const M=ag.pts[ag.curEar]||{}, mk=Object.keys(M).map(Number).filter(x=>M[x]!=null);
     return mk.length ? Math.min.apply(null, mk.map(x=>M[x])) : null;
   }
@@ -2352,7 +2360,7 @@
       }
       agEarDone(); return;
     }
-    ag.curF=r.f; ag.fa=0; ag.faShown=0; ag.noneMax=0; ag.floorStreak=0;
+    ag.curF=r.f; ag.curPhase=r.phase; ag.fa=0; ag.faShown=0; ag.noneMax=0; ag.floorStreak=0;
     ag.reach=null; ag.maskIdle=0;
     const fLbl = r.f>=1000?(r.f/1000)+' kHz':r.f+' Hz';
     const earLbl = ag.mode==='perear' ? EAR_NAME[ag.curEar]+' · ' : '';
@@ -2582,7 +2590,10 @@
       ag.live=null; agLiveDraw();
       R.idx++; agReachNext(); return;
     }
-    if(ag.log){ (ag.log[ag.curEar][ag.curF]=ag.log[ag.curEar][ag.curF]||[]).push([Math.round(ag.curLevel*10)/10, heard?1:0]); }
+    // sentinel trials go to their OWN key: mixed into ag.log[1000] they blend two knob scales,
+    // and keeping them separate is what lets the reference be refitted honestly (both-ears mode)
+    if(ag.log){ const lk = ag.curPhase==='sentinel' ? 's1000' : ag.curF;
+      (ag.log[ag.curEar][lk]=ag.log[ag.curEar][lk]||[]).push([Math.round(ag.curLevel*10)/10, heard?1:0]); }
     const res=ag.search.record(heard);
     if(!res.locked){
       ag.live={ear:ag.curEar, f:ag.curF, lvl:res.live.lvl, ci:res.live.ci};   // the graph moves on EVERY answer
@@ -2806,8 +2817,11 @@
           // two pins at the SAME rail really do say nothing — but one ear on the floor and the
           // other on the ceiling bounds the gap at the entire playable window
           if(dirR&&dirL&&dirR!==dirL){
-            const dd = dirL==='hi' ? (pHi-pLo) : (pLo-pHi);
-            if(Math.abs(dd)>Math.abs(bMax)){ bMax=dd; bAtF=f; bDir=dirL==='hi'?'hi':'lo'; }
+            // use the STORED values, not the nominal rails: a reach-recovered point is stored
+            // past the rail by the knob delta, so the constants understate the gap by that much
+            const dd = lt[f]-rt[f];
+            const lower = dirL==='hi';                 // L≥lt and R≤rt ⇒ (L−R) ≥ dd
+            if(lower ? dd>0 : dd<0){ if(Math.abs(dd)>Math.abs(bMax)){ bMax=dd; bAtF=f; bDir=dirL; } }
           }
           return;
         }
@@ -2825,8 +2839,16 @@
         // false-reassurance hole this fix was written to close, pointing the other way.
         const pin = cL ? dirL : dirR;
         if(!pin) return;
-        const rail = pin==='hi' ? pHi : pLo;
-        const d = cL ? (rail - rt[f]) : -(rail - lt[f]);
+        // The censored point's OWN stored level is its bound — the nominal rail is only equal to
+        // it when nothing shifted the scale, and a reach-recovered point sits past the rail by
+        // the knob delta. Which way the inequality runs depends on which ear is pinned at which
+        // rail, and a bound only establishes a MINIMUM gap when its sign agrees with its
+        // direction; otherwise it caps the gap rather than flooring it and must not be claimed.
+        //   L pinned hi (L≥lt) or R pinned lo (R≤rt)  ⇒ (L−R) ≥ d   — floors "left worse"
+        //   R pinned hi (R≥rt) or L pinned lo (L≤lt)  ⇒ (L−R) ≤ d   — floors "right worse"
+        const d = lt[f]-rt[f];
+        const floorsLeft = (cL && pin==='hi') || (cR && pin==='lo');
+        if(floorsLeft ? d<=0 : d>=0) return;
         if(Math.abs(d)>Math.abs(bMax)){ bMax=d; bAtF=f; bDir=pin; }
       });
       const useBound = Math.abs(bMax) > Math.abs(max);
@@ -2840,12 +2862,16 @@
     if(refCensR||refCensL) return {max:0, atF:0, basis:'rel', unreliable:true};
     const rmap={}; R.forEach(p=>{ if(!p.cens&&!p.live) rmap[p.f]=p.rel; });
     L.forEach(p=>{ if(p.f>=2000 && !p.cens && !p.live && rmap[p.f]!=null){ const d=rmap[p.f]-p.rel; if(Math.abs(d)>Math.abs(max)){ max=d; atF=p.f; } } });
-    // This branch measures gap(f) MINUS gap(1 kHz) — a difference of differences, because each
-    // ear is referenced to its own 1 kHz. Its SIGN therefore does not identify which ear is
-    // worse: if the asymmetry is largest at 1 kHz, the sign flips and naming an ear would name
-    // the wrong one. Flag it so the copy describes a shape difference and never issues an
-    // ear-specific referral from it.
-    return {max, atF, basis:'rel', shapeOnly:true};
+    // Normally this branch measures gap(f) MINUS gap(1 kHz) — a difference of differences,
+    // because each ear is referenced to its own 1 kHz — so its SIGN does not identify which ear
+    // is worse and no ear may be named. BUT when agBuildCurve used a COMMON reference (both ears
+    // against one value), the shared term cancels and rel_R − rel_L is the true gap after all.
+    // Since v78 the two conditions differ (commonRef ignores volDrift), so check rather than
+    // assume: calling a real unilateral loss "can't say which ear" is its own kind of wrong.
+    const usedCommon = (ag.mode==='perear' && ag.earOffset && ag.earOffset.R!=null && ag.earOffset.L!=null
+                        && ag.earOffset.R===ag.earOffset.L && !ag.scaleDirty
+                        && ag.pts.R && ag.pts.R[1000]!=null);
+    return {max, atF, basis:'rel', shapeOnly:!usedCommon};
   }
   function agLiveDraw(){
     if(!ag) return;
@@ -2878,7 +2904,13 @@
       // refit would blend two knob scales and translate the whole curve. And NEVER refit a
       // reach-recovered point: its log is the base pass's rail-pinned "Nothing" trials, so a refit
       // reverts the value the loud pass just earned back to censored. (audit F2)
-      if(f===1000) return;
+      if(!isFinite(f)) return;                        // 's1000' — the sentinel's own log, never a point
+      // 1 kHz is the CROSS-EAR reference in per-ear mode, so moving it would shift one ear
+      // relative to the other. In both-ears mode there is no such constraint, and exempting it
+      // there was worse: every OTHER point moved to the refitted model while the reference did
+      // not, translating the whole "dB re 1 kHz" curve. Its log is now sentinel-free, so it can
+      // be refitted honestly.
+      if(f===1000 && ag.mode!=='both') return;
       const m=ag.ptsMeta[ear][f]; if(m && m.reach) return;
       const trials=ag.log[ear][f]; if(!trials||trials.length<3) return;
       // keep the informative prior: refitting from a cold start threw away everything the run
@@ -2934,10 +2966,11 @@
       // gate on the false-alarm RATE, not a count: per-ear mode presents ~2× the silent trials,
       // so a fixed count over-flagged exactly the mode whose job is finding an asymmetry
       const caShown=(ag.caTot?ag.caTot.R+ag.caTot.L:0);
-      const faHi=caShown>0 && (ag.faTot.R+ag.faTot.L)/caShown>=0.25;
+      const faHi=caShown>0 && (ag.faTot.R+ag.faTot.L)/caShown>=0.15;   // 0.25 sat at the TOP of the guess-rate range the model itself allows (clamp 0.03-0.30), so a listener guessing a quarter of the time still got an unqualified ear-specific referral
       window.SR_FP.renderCurve($('cvcard'), { device, ears:{R,L} });
       // REVIEW: medical framing — screening only, never a diagnosis, never names a condition.
       let note;
+      const refPinLo=['R','L'].some(e=>{ const m=ag.ptsMeta[e]&&ag.ptsMeta[e][1000]; return m&&m.cens&&m.censDir==='lo'; });
       // a chain fault the listener chose to override makes the per-ear reading meaningless in a
       // specific, nameable way — it must outrank every other verdict, including the referral
       if(chainFault==='mono'){
@@ -2949,7 +2982,9 @@
       } else if(faHi){
         note='A few silent rounds got tapped as “heard”, so the left/right read isn’t reliable this time — worth a calm retry in a quiet room. Shape is relative; the absolute level isn’t calibrated.';
       } else if(asym.unreliable){
-        note='Your 1 kHz reference ran past what this volume could measure in one ear, so a trustworthy left/right comparison isn’t possible this time — turn the volume up a little and retry. Shape is relative; the absolute level isn’t calibrated.';
+        // which way to turn the knob depends on WHICH rail the reference hit — telling a listener
+        // whose reference sat below the floor to turn UP pushes it further out of reach
+        note='Your 1 kHz reference ran past what this volume could measure in one ear, so a trustworthy left/right comparison isn’t possible this time — turn the volume '+(refPinLo?'<b>down</b>':'<b>up</b>')+' a little and retry. Shape is relative; the absolute level isn’t calibrated.';
       } else if(Math.abs(asym.max)>=15 && asym.shapeOnly){
         // the relative fallback can't say WHICH ear — only that their shapes diverge
         const kHz=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
@@ -2969,7 +3004,7 @@
           ? 'Your two ears track closely <b>in shape</b>. The volume moved during this run, so the two ears couldn’t be put on one scale — a difference that is the same at every pitch would not show up. If you want that checked, redo with the knob untouched. Shape is relative; the absolute level isn’t calibrated.'
           : asym.ref1k
           ? 'Your two ears track closely — including at 1 kHz, so this run could see a difference at <b>any</b> pitch, not just a difference in shape. A shared roll-off up top can be these headphones or the connection — but if conversation has also been getting harder lately, a matching dip in <b>both</b> ears deserves a proper hearing check too. Shape is relative; the absolute level isn’t calibrated.'
-          : 'Your two ears track closely <b>at the pitches that could be compared</b> — but the 1 kHz reference itself ran past what this volume could play in one ear, so a difference that is the same at every pitch would not show up here. Turn the volume up a little and retry if you want that checked. Shape is relative; the absolute level isn’t calibrated.';
+          : 'Your two ears track closely <b>at the pitches that could be compared</b> — but the 1 kHz reference itself ran past what this volume could play in one ear, so a difference that is the same at every pitch would not show up here. Turn the volume '+(refPinLo?'<b>down</b>':'<b>up</b>')+' a little and retry if you want that checked. Shape is relative; the absolute level isn’t calibrated.';
       }
       // cap honesty: past a point a home test undershoots a large gap (crossover + output ceiling),
       // even with the masking rush — say so rather than let the drawn gap read as the whole story
@@ -3016,7 +3051,7 @@
       const refitB=agRefitEar('B');
       const curve=agBuildCurve('B');
       window.SR_FP.renderCurve($('cvcard'), { device, curve });
-      const faHiB=(ag.caTot&&ag.caTot.B>0) ? (ag.faTot.B||0)/ag.caTot.B>=0.25 : false;   // same RATE gate as per-ear
+      const faHiB=(ag.caTot&&ag.caTot.B>0) ? (ag.faTot.B||0)/ag.caTot.B>=0.15 : false;   // same RATE gate as per-ear
       $('cvNote').innerHTML=(faHiB?'A few silent rounds got tapped as “heard”, so treat the quietest points as rough — a calm retry in a quiet room reads truer. ':'')+'How loud a tone had to be for you to hear it, at each pitch — <b>relative to 1 kHz</b>. A dip means that band is quieter on this pair (rolled off by the headphone, or your own hearing). This tests both ears at once, so a strong ear can hide a weaker one — use “Each ear” to reveal a left/right difference. <b>This curve is your ears <i>and</i> these headphones together</b> — a headphone’s own bass/treble voicing draws part of the shape, so the reliable read is a <b>left/right difference</b> (same headphones both ears), not the overall slope. Shape is relative; the absolute level isn’t calibrated.'+(refitB?' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.':'')+(ag.volDrift?' <b>Volume check:</b> the 1 kHz reference moved '+Math.max(...Object.values(ag.volDrift))+' dB between start and end — redo with the knob untouched for a trustworthy curve.':'');
       // save the caveats with the curve here too: the both-ears path stored a bare array, so a
       // run the app had just flagged as unreliable redisplayed later as clean
