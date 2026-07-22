@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v81";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v82";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2258,6 +2258,7 @@
     box.appendChild(redo); box.appendChild(anyway);
   }
   function agAnchorApply(){
+    ag.apOffset=ag.calOffset||0;      // the gain both anchors were measured at, so a per-ear window shift can be reckoned from it
     // set headroom on EVERY path into the run, including "Continue anyway" from the retune —
     // that path censors the most and used to suppress its own beyond-reach explanation
     if(ag.headroom==null){
@@ -2300,6 +2301,20 @@
   }
   function agEar(){
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.prevThr=null;
+    // GIVE THIS EAR ITS OWN WINDOW if the shared one doesn't suit it. The anchor pass fits the
+    // window to the WORSE ear, which pushes the better ear's quietest frequencies below the floor
+    // — three "beyond reach" dots on an ear that hears perfectly well. Because calOffset is our
+    // own gain we know it exactly, so per-ear windows stay fully comparable (see agAbs).
+    if(ag.apPts && ag.apPts[ag.curEar]!=null && !ag.scaleDirty){
+      const a=ag.apPts[ag.curEar] + (ag.calOffset||0) - ((ag.apOffset!=null)?ag.apOffset:(ag.calOffset||0));
+      let want=ag.calOffset||0;
+      if(a<AG_ANCHOR_LO && want>-36) want=Math.max(-36, want-12);        // ear hears too well here → play quieter
+      else if(a>AG_ANCHOR_HI && want<0) want=Math.min(0, want+12);        // needs more room above
+      if(want!==(ag.calOffset||0)){
+        ag.calOffset=want; anchorMaster(agLevel()); ag.autoRanged=true;
+        ag.apPts[ag.curEar]=null;                                         // its seeded anchor was measured at the old gain
+      }
+    }
     ag.floorStreak=0; ag.noneMax=0; ag.anchorPlaced=false; ag.earAdvancing=false;
     ag.reachAsked=false; ag.reach=null;                    // each ear gets its own (single) reach offer
     // record this ear's output scale AS IT STARTS, not only when it finishes: the chart's common
@@ -2752,9 +2767,20 @@
   // divergence produced a real defect: a chart that hid the gap, a fallback that named an ear
   // the absolute branch had just refused to name. One predicate, three consumers, no seams.
   function agEarsComparable(){
+    // The two offsets no longer have to MATCH — they only have to be KNOWN. calOffset is our own
+    // output gain, so a threshold measured under it converts to a common physical scale exactly
+    // (agAbs below). Requiring equality forced one window onto both ears, and since the window is
+    // fitted to the worse ear, the better ear then ran out of room at the QUIET end and floored
+    // out — which is what turned a good right ear into three "beyond reach" dots.
     return !!(ag && ag.mode==='perear' && ag.earOffset
-      && ag.earOffset.R!=null && ag.earOffset.L!=null && ag.earOffset.R===ag.earOffset.L
+      && ag.earOffset.R!=null && ag.earOffset.L!=null
       && !ag.scaleDirty && !ag.volDrift);
+  }
+  // a threshold on the common physical scale: parameter dBFS plus the output gain it was played
+  // through (more negative calOffset = quieter output = the same parameter is physically quieter)
+  function agAbs(ear, f){
+    const v=ag.pts[ear] && ag.pts[ear][f];
+    return v==null ? null : v + ((ag.earOffset&&ag.earOffset[ear])||0);
   }
   // build one ear's curve, dB re that ear's OWN 1 kHz (so the equal-power pan offset cancels).
   // each point carries its Ψ CI half-width so the render GP can weight it and draw an honest band.
@@ -2779,9 +2805,13 @@
     // reference, so the vertical separation on screen IS the real gap. (Without it — different
     // offsets, a knob change, a loud pass — fall back to per-ear referencing, which is honest
     // about shape but not about the gap.)
-    const commonRef = (agEarsComparable() && ag.pts.R && ag.pts.R[1000]!=null) ? ag.pts.R[1000] : null;
-    const ref = commonRef!=null ? commonRef : pts[1000];
-    const out=fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci!=null?meta[f].ci:null), cens: !!(meta[f]&&meta[f].cens), censDir:(meta[f]&&meta[f].censDir)||null }));
+    // On a shared physical scale both ears are drawn against ONE reference, so the vertical
+    // separation on screen is the real gap. Each ear's own output offset is folded in, which is
+    // what lets the ears use different windows without the picture lying.
+    const shared = agEarsComparable() && ag.pts.R && ag.pts.R[1000]!=null;
+    const off = shared ? ((ag.earOffset&&ag.earOffset[ear])||0) : 0;
+    const ref = shared ? (ag.pts.R[1000] + ((ag.earOffset&&ag.earOffset.R)||0)) : pts[1000];
+    const out=fs.map(f=>({ f, rel: Math.round((ref - (pts[f]+off))*10)/10, ci: (meta[f]&&meta[f].ci!=null?meta[f].ci:null), cens: !!(meta[f]&&meta[f].cens), censDir:(meta[f]&&meta[f].censDir)||null }));
     // the frequency being measured RIGHT NOW, drawn provisionally so the graph moves with every
     // answer: its position is the running estimate and its band is the live confidence interval,
     // which visibly tightens as the trials close in. A verify/reference re-test refines a point
@@ -2811,14 +2841,21 @@
     const sameScale = agEarsComparable();
     let max=0, atF=0;
     if(sameScale){
-      const rt=ag.pts.R||{}, lt=ag.pts.L||{}, mR=ag.ptsMeta.R||{}, mL=ag.ptsMeta.L||{};
+      // compare on the common PHYSICAL scale, so each ear may have had its own output window
+      const rawR=ag.pts.R||{}, rawL=ag.pts.L||{}, mR=ag.ptsMeta.R||{}, mL=ag.ptsMeta.L||{};
+      const oR=(ag.earOffset&&ag.earOffset.R)||0, oL=(ag.earOffset&&ag.earOffset.L)||0;
+      const rt={}, lt={};
+      Object.keys(rawR).forEach(k=>{ if(rawR[k]!=null) rt[k]=rawR[k]+oR; });
+      Object.keys(rawL).forEach(k=>{ if(rawL[k]!=null) lt[k]=rawL[k]+oL; });
       const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
       let n=0, ref1k=false, bMax=0, bAtF=0, bDir=null;
-      const railOf=(v)=> v>=pHi-3 ? 'hi' : (v<=pLo+3 ? 'lo' : null);
       Object.keys(lt).map(Number).forEach(f=>{
         if(lt[f]==null||rt[f]==null) return;
         const cR=!!(mR[f]&&mR[f].cens), cL=!!(mL[f]&&mL[f].cens);
-        const dirR=cR?railOf(rt[f]):null, dirL=cL?railOf(lt[f]):null;
+        // trust the direction RECORDED at measurement time: rt/lt are now on the common physical
+        // scale, so re-deriving the rail from the raw constants here would be wrong per ear
+        const dirR=cR?((mR[f]&&mR[f].censDir)||(rawR[f]>=pHi-3?'hi':'lo')):null;
+        const dirL=cL?((mL[f]&&mL[f].censDir)||(rawL[f]>=pHi-3?'hi':'lo')):null;
         if(cR&&cL){
           // two pins at the SAME rail really do say nothing — but one ear on the floor and the
           // other on the ceiling bounds the gap at the entire playable window

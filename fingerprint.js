@@ -319,11 +319,19 @@ ${g}${mark}
       // frequencies, so a curve whose top (or bottom) end ran out of range simply stopped in
       // mid-air with the open dots stranded off on their own. Dashed says "inferred, not
       // measured" while the open dot and its arrow still say the truth lies further out.
-      const chain=c.filter(p=>!p.live).sort((a,b)=>a.f-b.f);
-      if(chain.length>=2 && chain.some(p=>p.cens)){
-        const segs=[]; let run=[];
-        chain.forEach(p=>{ run.push(p); if(run.length>=2 && (run[run.length-1].cens||run[run.length-2].cens)) { segs.push(run.slice(-2)); } });
-        segs.forEach(seg=>{ s+=`<polyline points="${seg.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="1.6" stroke-dasharray="4 3" opacity="0.75" stroke-linecap="round"/>`; });
+      // ONE line per ear. The dashed part must EXTEND the solid one, never run beside it: a
+      // censored point INSIDE the measured span already has the smoothed line passing over its
+      // frequency, so connecting to it drew a second, divergent curve for the same ear. Only
+      // points beyond the measured span get a connector, anchored to the nearest measured end.
+      if(fit.length>=1){
+        const sorted=fit.slice().sort((a,b)=>a.f-b.f);
+        const lo=sorted[0], hi=sorted[sorted.length-1];
+        const beyondHi=c.filter(p=>p.cens&&!p.live&&p.f>hi.f).sort((a,b)=>a.f-b.f);
+        const beyondLo=c.filter(p=>p.cens&&!p.live&&p.f<lo.f).sort((a,b)=>b.f-a.f);
+        const dash=(pts)=>{ if(pts.length<2) return;   // nothing beyond the measured span → no stub
+          s+=`<polyline points="${pts.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="1.8" stroke-dasharray="4 3" opacity="0.8" stroke-linejoin="round" stroke-linecap="round"/>`; };
+        dash([hi].concat(beyondHi));
+        dash([lo].concat(beyondLo));
       }
       c.forEach(p=>{ const col=byVal?(p.rel>=-6?COL.good:p.rel>=-20?COL.gold:COL.ember):stroke;
         const cx=x(p.f).toFixed(1), cy=y(p.rel);
