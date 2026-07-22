@@ -77,8 +77,11 @@
     // 250 Hz is a core clinical audiometric frequency and low-frequency loss is a distinct
     // pattern the optional-only placement could skip entirely (it did, on Andrea's run — the
     // curve started at 500). 125 stays optional; even clinics rarely test it.
-    const mandatory=(o.mandatory||[1000,500,2000,4000,8000,250,16000]).slice();
-    const candidates=(o.candidates||[125,750,1500,3000,6000,10000,12000]).slice();
+    // 125 joins the required set too: leaving it optional meant the low end simply never got
+    // measured on a listener whose curve looked settled there, and the chart's axis starts at
+    // 125 — so the curve visibly began in mid-air.
+    const mandatory=(o.mandatory||[1000,500,2000,4000,8000,250,125,16000]).slice();
+    const candidates=(o.candidates||[750,1500,3000,6000,10000,12000]).slice();
     const budget=o.budget!=null?o.budget:55;        // real-trial outer bound per ear (smart)
 
     const S={ pts:{}, meta:{}, notched:{}, engines:{}, tCount:{}, resumeAt:{},

@@ -315,6 +315,16 @@ ${g}${mark}
       // fallback line when the GP can't run: still only MEASURED points. Drawing through `c`
       // connected rail pins and the live provisional dot as though they were readings.
       if(!/polyline/.test(s) && fit.length>=2) s+=`<polyline points="${fit.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      // …and carry the line ON to the beyond-reach points, dashed. The GP only spans measured
+      // frequencies, so a curve whose top (or bottom) end ran out of range simply stopped in
+      // mid-air with the open dots stranded off on their own. Dashed says "inferred, not
+      // measured" while the open dot and its arrow still say the truth lies further out.
+      const chain=c.filter(p=>!p.live).sort((a,b)=>a.f-b.f);
+      if(chain.length>=2 && chain.some(p=>p.cens)){
+        const segs=[]; let run=[];
+        chain.forEach(p=>{ run.push(p); if(run.length>=2 && (run[run.length-1].cens||run[run.length-2].cens)) { segs.push(run.slice(-2)); } });
+        segs.forEach(seg=>{ s+=`<polyline points="${seg.map(p=>`${x(p.f).toFixed(1)},${y(p.rel).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="1.6" stroke-dasharray="4 3" opacity="0.75" stroke-linecap="round"/>`; });
+      }
       c.forEach(p=>{ const col=byVal?(p.rel>=-6?COL.good:p.rel>=-20?COL.gold:COL.ember):stroke;
         const cx=x(p.f).toFixed(1), cy=y(p.rel);
         if(p.live){   // the point being measured right now: hollow ring, so it reads as "still moving"

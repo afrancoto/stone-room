@@ -226,6 +226,11 @@ svg.field{width:100%; height:100%; overflow:visible; cursor:crosshair; touch-act
 .cvprog{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); min-height:16px; margin-bottom:6px}
 #curve .notice{margin-bottom:12px}
 #curve .fpwrap{margin-top:8px}
+/* qualifications, below the chart and collapsed: the verdict and the picture come first */
+.cvdetail{margin:10px auto 2px;max-width:520px;text-align:left}
+.cvdetail .linkbtn{font-size:.86rem}
+.cvdetail .cavlist{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:.86rem;line-height:1.5}
+.cvdetail .cavlist li{margin:0 0 7px}
 /* curve answers: the choices share one row (equal width), Replay drops to its own row below */
 /* curve-screen buttons are labelled sentences, not big A/B letters — the game's 22px display
    type plus a subline made them enormous. Compact them and keep paired answers on one row. */

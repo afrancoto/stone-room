@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v80";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v81";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2358,7 +2358,7 @@
         const meta=ag.ptsMeta[ag.curEar]||{};
         const fs=Object.keys(meta).map(Number)
           .filter(f=>f!==1000 && meta[f] && meta[f].cens && ag.pts[ag.curEar][f]>=pHi-3)
-          .sort((a,b)=>a-b).slice(0,4);
+          .sort((a,b)=>a-b).slice(0,6);   // was 4 — leaving pitches out of range is the complaint this pass exists to answer
         const a1=ag.pts[ag.curEar][1000], m1=meta[1000]||{};
         if(fs.length && a1!=null && !m1.cens){ agReachOffer(fs); return; }
       }
@@ -2959,6 +2959,18 @@
     });
     return n?{n,worst}:null;
   }
+  // qualifications live BELOW the chart, collapsed, so the verdict and the picture come first
+  function agShowCaveats(list){
+    const box=$('cvdetail'); if(!box) return;
+    if(!list || !list.length){ box.style.display='none'; box.innerHTML=''; return; }
+    box.style.display='';
+    box.innerHTML='<button class="linkbtn" id="cvcavtog" aria-expanded="false">How to read this ('+list.length+')</button>'
+      +'<ul class="cavlist" id="cvcavlist" hidden>'+list.map(s=>'<li>'+s+'</li>').join('')+'</ul>';
+    const t=$('cvcavtog'), ul=$('cvcavlist');
+    t.onclick=()=>{ const open=ul.hasAttribute('hidden');
+      if(open){ ul.removeAttribute('hidden'); t.setAttribute('aria-expanded','true'); t.textContent='Hide'; }
+      else { ul.setAttribute('hidden',''); t.setAttribute('aria-expanded','false'); t.textContent='How to read this ('+list.length+')'; } };
+  }
   async function finishCurve(){
     ag.phase='done'; clearTimers(); agBedStop(); agMaskStop();   // a reach pass on the LAST ear left the mask playing through the results
     $('cvTitle').textContent='Your curve'; $('cvprog').textContent=''; $('cvChoices').innerHTML='';
@@ -3021,26 +3033,27 @@
         const m=ag.ptsMeta[e][f]; return m&&m.cens&&(lo? m.censDir==='lo' : m.censDir!=='lo'); }));
       const hiCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>+f>=2000 && ag.ptsMeta[e][f].cens && ag.ptsMeta[e][f].censDir!=='lo'));
       const loCensAny=censDirs(true), anyHiCens=censDirs(false);   // declared before every use below
+      // Caveats go in their OWN block below the chart, not appended to the verdict. Seven audit
+      // rounds each added a qualifying sentence to this paragraph until the result you came for
+      // was buried under a screen of text before the chart even appeared.
+      const caveats=[];
       if(!faHi && Math.abs(asym.max)>=15 && (hiCens || Math.abs(asym.max)>=30)){
-        note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
+        caveats.push('A home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.');
       } else if(!faHi && anyHiCens && Math.abs(asym.max)<15){
-        // ANY ceiling-pinned point must be caveated, not only ones above 2 kHz — otherwise a
-        // low-frequency pin sits silently under a note claiming a difference at any pitch could
-        // have been seen. "ears track closely" must never stand unqualified over an unmeasured
-        // pitch, wherever it is.
-        note+=' Note: at some pitches'+(hiCens?' (including above 2 kHz)':'')+' one ear ran past what this volume could play (the open dots), so a difference there could not be seen. A louder retry may bring them inside.';
+        // ANY ceiling-pinned point must be caveated, wherever it sits — "ears track closely" must
+        // never stand unqualified over a pitch nobody could measure
+        caveats.push('At some pitches'+(hiCens?' (including above 2 kHz)':'')+' one ear ran past what this volume could play — the open dots — so a difference there could not be seen. A louder retry may bring them inside.');
       }
-      if(!faHi && loCensAny) note+=' At some pitches you heard the <b>quietest</b> tone this test can play, so your true threshold there is better than the chart can show — those points are marked as beyond reach in the good direction, and only a quieter setting could pin them down.';
-      if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
-      if(cmR||cmL) note+=' Where the rush was playing, a small allowance (2–4 dB) was subtracted for the way noise in one ear nudges the other ear’s threshold — standard practice, and deliberately conservative.';
+      if(!faHi && loCensAny) caveats.push('At some pitches you heard the <b>quietest</b> tone this test can play, so your true threshold there is better than the chart can show. Only a quieter setting could pin those down.');
+      if(refitR||refitL) caveats.push('Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.');
+      if(cmR||cmL) caveats.push('Where the rush was playing, 2–4 dB was subtracted for the way noise in one ear nudges the other ear’s threshold — standard practice, deliberately conservative.');
       if(ag.volDrift){ const worst=Math.max(...Object.values(ag.volDrift));
-        // state the observation, not a cause the app cannot know: a re-measure landing a few dB
-        // apart is also just the estimator resampling a noisy threshold
-        note+=' <b>Volume check:</b> the 1 kHz reference did not repeat within '+worst+' dB between the start and the end of that ear. If the volume moved, every relative point moved with it — treat this curve as rough and redo with the knob untouched.'; }
-      // headroom honesty: say when the window itself, not the ear, set the limit
+        // state the observation, not a cause the app cannot know
+        caveats.push('<b>Volume check:</b> the 1 kHz reference did not repeat within '+worst+' dB between the start and end of that ear. If the volume moved, every relative point moved with it — treat this curve as rough and redo with the knob untouched.'); }
       const anyCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>ag.ptsMeta[e][f].cens));
-      if(anyCens && anyHiCens && ag.headroom!=null) note+=' Some points ran past what this volume could play (about '+ag.headroom+' dB of room above your 1 kHz reference) — those are the open dots, and a louder setting on a calm retry may bring them inside.';
+      if(anyCens && anyHiCens && ag.headroom!=null) caveats.push('Some points ran past what this volume could play (about '+ag.headroom+' dB of room above your 1 kHz reference).');
       $('cvNote').innerHTML=note;
+      agShowCaveats(caveats);
       // persist the false-alarm verdict WITH the curve (gates every later surface), plus the raw
       // [level, heard] trial log and the measured FA rates — the export carries the actual data
       // persist the CAVEATS alongside the claim, not just the claim: a profile reopened later was
