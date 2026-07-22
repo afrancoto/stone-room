@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v77";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v78";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2261,7 +2261,19 @@
     ag.anchorGap=d;
     // announce a notable 1 kHz difference on its OWN screen: written straight into cvNote it was
     // overwritten by the next trial's prompt milliseconds later and nobody ever read it
-    if(d!=null && Math.abs(d)>=15){
+    // never name an ear when the channel check said the sides are unreliable — a swapped chain
+    // would announce the wrong one, and a mono fold makes the comparison meaningless
+    if(d!=null && Math.abs(d)>=15 && chainFault==='swapped'){
+      clearTimers(); killStim();
+      $('cvTitle').textContent='A difference already';
+      $('cvprog').textContent='Reference · both ears measured';
+      $('cvNote').innerHTML='One ear needs about <b>'+Math.abs(d)+' dB</b> more level than the other at 1 kHz. Your channel check said left and right are <b>reversed</b>, so this can’t say which ear — fix the L/R and re-run to find out.';
+      const box=$('cvChoices'); box.innerHTML='';
+      const go=document.createElement('button'); go.className='choice'; go.innerHTML='Start the curve<small>continue</small>';
+      go.onclick=()=>{ go.disabled=true; ag.ei=0; agEar(); };
+      box.appendChild(go); return;
+    }
+    if(d!=null && Math.abs(d)>=15 && chainFault!=='mono' && chainFault!=='silent'){
       const worseEar=d>0?'left':'right';
       clearTimers(); killStim();
       $('cvTitle').textContent='A difference already';
@@ -2383,7 +2395,11 @@
     const go=document.createElement('button'); go.className='choice'; go.innerHTML='Push further<small>volume up · re-measure '+fs.length+'</small>';
     // the loud pass asks for the knob and then asks for it back — after that the two ears are no
     // longer provably on one scale, so the absolute cross-ear comparison must stand down
-    go.onclick=()=>{ ag.scaleDirty=true; ag.reach={fs, idx:0, stage:'anchor', old1k:ag.pts[ag.curEar][1000], delta:0, eng:null}; agReachNext(); };
+    // only dirty the scale if a LATER ear still has to be measured on the restored knob. On the
+    // last ear both ears are already recorded on one scale, so invalidating the absolute
+    // comparison there means gathering more data and reporting a weaker conclusion.
+    go.onclick=()=>{ if(ag.ei < ag.ears.length-1) ag.scaleDirty=true;
+      ag.reach={fs, idx:0, stage:'anchor', old1k:ag.pts[ag.curEar][1000], delta:0, eng:null}; agReachNext(); };
     const keep=document.createElement('button'); keep.className='choice alt'; keep.innerHTML='Keep as is<small>leave them beyond reach</small>';
     keep.onclick=()=>agEarDone();
     box.appendChild(go); box.appendChild(keep);
@@ -2738,8 +2754,13 @@
     // reference, so the vertical separation on screen IS the real gap. (Without it — different
     // offsets, a knob change, a loud pass — fall back to per-ear referencing, which is honest
     // about shape but not about the gap.)
+    // volDrift deliberately does NOT veto this. commonRef applies ONE shared value to both ears,
+    // so any error in it — estimator noise or a real knob move — shifts both drawn curves
+    // identically and leaves their vertical separation exact. Vetoing on drift bought nothing and
+    // collapsed the picture back to two curves meeting at 0 dB, which is the false-reassurance
+    // image commonRef exists to prevent. (The absolute asymmetry keeps its stricter gate.)
     const commonRef = (ag.mode==='perear' && ag.earOffset && ag.earOffset.R!=null && ag.earOffset.L!=null
-                       && ag.earOffset.R===ag.earOffset.L && !ag.scaleDirty && !ag.volDrift
+                       && ag.earOffset.R===ag.earOffset.L && !ag.scaleDirty
                        && ag.pts.R && ag.pts.R[1000]!=null) ? ag.pts.R[1000] : null;
     const ref = commonRef!=null ? commonRef : pts[1000];
     const out=fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci!=null?meta[f].ci:null), cens: !!(meta[f]&&meta[f].cens), censDir:(meta[f]&&meta[f].censDir)||null }));
@@ -2836,11 +2857,18 @@
   // MEASURED catch-trial false-alarm rate runs high is refitted from its raw trial log with the
   // measured rate as the model's guess asymptote. (AG_ROOM is linear with dir=1, so x = level.)
   function agRefitEar(ear){
-    const fa=ag.faTot[ear]||0, ca=ag.caTot[ear]||0;
+    // POOL the guess rate across ears in per-ear mode. A listener's tapping habit is a property of
+    // the listener, not of one ear, but it was estimated per ear from ~8 catch trials each — so
+    // sampling noise could refit ONE ear and leave the other untouched, moving that ear's whole
+    // curve and injecting a one-directional error straight into the left/right gap. Both-or-
+    // neither, on the pooled evidence, which is also the larger and steadier sample.
+    const pooled = ag.mode==='perear';
+    const fa = pooled ? ((ag.faTot.R||0)+(ag.faTot.L||0)) : (ag.faTot[ear]||0);
+    const ca = pooled ? ((ag.caTot.R||0)+(ag.caTot.L||0)) : (ag.caTot[ear]||0);
     // a refit moves this ear's whole curve, so it needs real evidence of guessing, not one tap:
     // at the ~8 catches an ear sees, a single slip reads as 12.5% and used to clear the 8% gate,
     // shifting one ear ~4 dB and inventing a left/right difference out of nothing
-    if(ca<6 || fa<2 || !ag.log || !ag.log[ear]) return false;
+    if(ca<(pooled?10:6) || fa<2 || !ag.log || !ag.log[ear]) return false;   // pooled sample is ~2x, so ask for ~2x evidence
     const emp=fa/ca; if(emp<=0.08) return false;
     const g=clamp(emp,0.03,0.30);
     const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
@@ -2964,7 +2992,9 @@
       if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
       if(cmR||cmL) note+=' Where the rush was playing, a small allowance (2–4 dB) was subtracted for the way noise in one ear nudges the other ear’s threshold — standard practice, and deliberately conservative.';
       if(ag.volDrift){ const worst=Math.max(...Object.values(ag.volDrift));
-        note+=' <b>Volume check:</b> the 1 kHz reference read '+worst+' dB different at the end than at the start — the volume or the fit moved mid-test, and every relative point moved with it. Treat this curve as rough and redo with the knob untouched.'; }
+        // state the observation, not a cause the app cannot know: a re-measure landing a few dB
+        // apart is also just the estimator resampling a noisy threshold
+        note+=' <b>Volume check:</b> the 1 kHz reference did not repeat within '+worst+' dB between the start and the end of that ear. If the volume moved, every relative point moved with it — treat this curve as rough and redo with the knob untouched.'; }
       // headroom honesty: say when the window itself, not the ear, set the limit
       const anyCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>ag.ptsMeta[e][f].cens));
       const anyHiCens=censDirs(false);
@@ -2976,7 +3006,8 @@
       // re-serving the asymmetry referral with the volume-drift / beyond-reach warnings stripped
       // off — the reading the app itself called untrustworthy, shown as trustworthy (render §6).
       await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym, faHi,
-        volDrift: ag.volDrift||null, headroom: (anyCens?ag.headroom:null), hiCens: !!hiCens, chainFault:chainFault||null,
+        volDrift: ag.volDrift||null, headroom: ((anyCens&&anyHiCens)?ag.headroom:null), hiCens: !!hiCens,
+        censDirs:{hi:!!anyHiCens, lo:!!loCensAny}, chainFault:chainFault||null,
         refit: (refitR||refitL)?{R:refitR,L:refitL}:null,
         centralMask: (cmR||cmL)?{R:cmR,L:cmL}:null, asymBasis: asym.basis||null,
         log:{R:ag.log&&ag.log.R, L:ag.log&&ag.log.L},
@@ -3591,14 +3622,22 @@
     // the same gates the results screen applied. A run flagged for volume drift, an unreliable
     // (censored-reference) asymmetry, or a stale rel-basis reading must not resurface as advice
     // with its caveats stripped (render §6).
+    // pre-v77 records have no shapeOnly flag, but every 'rel'-basis record WAS shape-only, and a
+    // record with no basis at all (pre-v72) must fall the same safe way — otherwise an old save
+    // keeps re-serving an ear-specific referral its own numbers cannot support
+    const shapeOnly = !!(asym && (asym.shapeOnly || asym.basis!=='abs'));
     const asymTrustworthy = asym && !cv.faHi && !asym.unreliable && !cv.volDrift && !cv.chainFault
-                            && !asym.shapeOnly && Math.abs(asym.max)>=15;
+                            && !shapeOnly && Math.abs(asym.max)>=15;
     // the other caveats must ride ALONG with the referral, not be replaced by it — an else-if
     // meant a flagged run showed the audiologist line with its qualifications silently dropped
+    // the two rails need opposite wording here too: describing a floor-pinned point as having
+    // "run past what that volume could play" is the wrong direction, and its retry advice inverts
+    const cd=cv.censDirs||{hi:(cv.headroom!=null||cv.hiCens), lo:false};   // pre-v78 records: assume the loud rail, as before
     const extras=[
       cv.hiCens ? 'The real difference may be larger than drawn.' : null,
       cv.refit ? 'The curve was refitted using your measured guess rate.' : null,
-      cv.headroom!=null ? 'Some points ran past what that volume could play — the open dots.' : null,
+      (cd.hi && cv.headroom!=null) ? 'Some points ran past what that volume could play — the open dots.' : null,
+      cd.lo ? 'At some pitches you heard the quietest tone the test can play, so the truth there is better than drawn.' : null,
     ].filter(Boolean).join(' ');
     if(hasCurve && asymTrustworthy){
       const worse=asym.max>0?'left':'right', atF=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
