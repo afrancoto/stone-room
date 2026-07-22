@@ -290,7 +290,10 @@ ${g}${mark}
       g+=`<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="${COL.line}" opacity="${v===0?0.9:0.4}"${v===0?' stroke-dasharray="4 4"':''}/>`;
       g+=`<text x="${L-6}" y="${y(v)+3}" fill="${COL.dim}" font-size="9" text-anchor="end" font-family="${FONT}">${v}</text>`;
     });
-    g+=`<text x="${L}" y="${T-8}" fill="${COL.muted}" font-size="9" font-family="${FONT}">dB vs your 1 kHz</text>`;
+    // say WHICH 1 kHz. Since both ears are plotted against ONE reference when they share a scale,
+    // "vs your 1 kHz" invited reading each curve as normalised to itself — which would make the
+    // vertical distance between them meaningless, when in fact it is the whole point.
+    g+=`<text x="${L}" y="${T-8}" fill="${COL.muted}" font-size="9" font-family="${FONT}">${data.commonRef?'dB vs your right ear at 1 kHz':'dB vs your 1 kHz'}</text>`;
     // freq ticks
     [[125,'125'],[500,'500'],[1000,'1k'],[2000,'2k'],[4000,'4k'],[8000,'8k'],[16000,'16k']].forEach(([f,l],i,arr)=>{
       g+=`<text x="${x(f)}" y="${H-B+18}" fill="${COL.dim}" font-size="8.5" text-anchor="${i===0?'start':i===arr.length-1?'end':'middle'}" font-family="${FONT}">${l}</text>`;

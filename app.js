@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v85";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v86";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2932,7 +2932,7 @@
   }
   function agLiveDraw(){
     if(!ag) return;
-    if(ag.mode==='perear') window.SR_FP.renderCurve($('cvcard'), { device, ears:{R:agBuildCurve('R'), L:agBuildCurve('L')} });
+    if(ag.mode==='perear') window.SR_FP.renderCurve($('cvcard'), { device, ears:{R:agBuildCurve('R'), L:agBuildCurve('L')}, commonRef:agEarsComparable() });
     else window.SR_FP.renderCurve($('cvcard'), { device, curve:agBuildCurve('B') });
   }
   // gamma feedback: the estimator assumes a 3% "yes to silence" rate; a click-happy listener's
@@ -3036,7 +3036,7 @@
       // so a fixed count over-flagged exactly the mode whose job is finding an asymmetry
       const caShown=(ag.caTot?ag.caTot.R+ag.caTot.L:0);
       const faHi=caShown>0 && (ag.faTot.R+ag.faTot.L)/caShown>=0.15;   // 0.25 sat at the TOP of the guess-rate range the model itself allows (clamp 0.03-0.30), so a listener guessing a quarter of the time still got an unqualified ear-specific referral
-      window.SR_FP.renderCurve($('cvcard'), { device, ears:{R,L} });
+      window.SR_FP.renderCurve($('cvcard'), { device, ears:{R,L}, commonRef:asym.basis==='abs' });
       // REVIEW: medical framing — screening only, never a diagnosis, never names a condition.
       let note;
       const refPinLo=['R','L'].some(e=>{ const m=ag.ptsMeta[e]&&ag.ptsMeta[e][1000]; return m&&m.cens&&m.censDir==='lo'; });
@@ -3570,7 +3570,7 @@
   // a saved curve back on screen — handles both shapes ({mode:'perear',ears} and the flat both-ears array)
   function renderSavedCurve(box, name, dev){
     const c=dev.curve;
-    if(c && c.ears) window.SR_FP.renderCurve(box, { device:name, ears:c.ears });
+    if(c && c.ears) window.SR_FP.renderCurve(box, { device:name, ears:c.ears, commonRef:!!(c.asym&&c.asym.basis==='abs') });
     else if(c && Array.isArray(c.curve) && c.curve.length) window.SR_FP.renderCurve(box, { device:name, curve:c.curve });   // both-ears, now wrapped so its caveats travel with it
     else if(Array.isArray(c) && c.length) window.SR_FP.renderCurve(box, { device:name, curve:c });                          // legacy bare array
     else return false;
