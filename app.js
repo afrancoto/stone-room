@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v74";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v75";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2183,6 +2183,7 @@
     agAnchorEar();
   }
   function agAnchorEar(){
+    ag.apAdvancing=false;
     ag.curEar=ag.ears[ag.apI]; ag.pan=EAR_PAN[ag.curEar];
     agBedStop(); agMaskStop();
     if(ag.pan) agBedStart(-ag.pan);
@@ -2194,6 +2195,7 @@
     agTrial();
   }
   function agAnchorDone(){
+    ag.apAdvancing=false;
     const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
     const vals=ag.ears.map(e=>ag.apPts[e]).filter(v=>v!=null);
     if(!vals.length){ agEar(); return; }
@@ -2259,6 +2261,10 @@
     ag.curEar=ag.ears[ag.ei]; ag.pan=EAR_PAN[ag.curEar]; ag.prevThr=null;
     ag.floorStreak=0; ag.noneMax=0; ag.anchorPlaced=false; ag.earAdvancing=false;
     ag.reachAsked=false; ag.reach=null;                    // each ear gets its own (single) reach offer
+    // record this ear's output scale AS IT STARTS, not only when it finishes: the chart's common
+    // reference needs both ears' offsets, so waiting until agEarDone left the live drawing on the
+    // per-ear basis for the whole run and only snapped to the truth on the final frame
+    ag.earOffset=ag.earOffset||{}; ag.earOffset[ag.curEar]=ag.calOffset||0;
     ag.rushShown=0;                                        // re-explain the masking rush per ear — it changes sides
     ag.warm = ag.ei===0 && !ag.warmDone;                   // one obvious practice tone, once per run
     // CONSTANT resting-ear bed (per-ear mode): a faint fixed noise floor (~−58 dBFS) for the whole
@@ -2282,11 +2288,11 @@
     // hand this ear the 1 kHz it already gave us in the two-ear anchor pass, so the reference is
     // the one the window was chosen from and no trials are spent measuring it twice
     if(ag.apPts && ag.apPts[ag.curEar]!=null){
-      ag.search.seedAnchor(ag.apPts[ag.curEar], ag.apCi[ag.curEar]);
-      ag.pts[ag.curEar][1000]=ag.apPts[ag.curEar];
       const acens=!!(ag.apCens&&ag.apCens[ag.curEar]), pHiS=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
-      ag.ptsMeta[ag.curEar][1000]={ci:ag.apCi[ag.curEar], cens:acens,
-        censDir: acens ? (ag.apPts[ag.curEar]>=pHiS-3?'hi':'lo') : null};   // a rail-pinned reference stays marked as a bound
+      const acensDir = acens ? (ag.apPts[ag.curEar]>=pHiS-3?'hi':'lo') : null;
+      ag.search.seedAnchor(ag.apPts[ag.curEar], ag.apCi[ag.curEar], acens, acensDir);
+      ag.pts[ag.curEar][1000]=ag.apPts[ag.curEar];
+      ag.ptsMeta[ag.curEar][1000]={ci:ag.apCi[ag.curEar], cens:acens, censDir:acensDir};   // a rail-pinned reference stays marked as a bound
       ag.anchorPlaced=true;                         // window already placed from BOTH ears
       agLiveDraw();
     }
@@ -2512,7 +2518,7 @@
       // a reference pinned at a rail is a BOUND, not a measurement — every other point in that
       // ear is expressed against it, so committing it silently would tilt the whole curve
       ag.apCens=ag.apCens||{}; ag.apCens[ag.curEar]= alvl>=pHiA-3 || alvl<=pLoA+3;
-      ag.anchor=null; ag.apI++;
+      ag.anchor=null; ag.apI++; ag.apAdvancing=true;
       if(ag.apI<ag.ears.length){ choiceTimers.push(setTimeout(agAnchorEar,550)); return; }
       choiceTimers.push(setTimeout(agAnchorDone,350)); return;
     }
@@ -2560,7 +2566,13 @@
     ag.live=null; ag.floorStreak=0;
     if(res.sentinel && res.drift>6){ ag.volDrift=ag.volDrift||{}; ag.volDrift[ag.curEar]=Math.round(res.drift); }
     ag.pts[ag.curEar][res.f]=res.lvl; ag.prevThr=res.lvl;
-    ag.ptsMeta[ag.curEar][res.f]={ci:res.ci, cens:res.cens, censDir:res.censDir||null};   // censDir drives the chart's rail glyph
+    // The sentinel KEEPS the original anchor as the value, so it must keep the original
+    // censored verdict too: taking cens from the re-measure stamped a rail-pinned reference back
+    // to "measured" (defeating the unreliable-asymmetry guard and drawing a bound as a solid dot)
+    // — or invented a bound on a reference that was fine.
+    const prevM = ag.ptsMeta[ag.curEar][res.f];
+    if(res.sentinel && prevM){ prevM.ci=res.ci!=null?res.ci:prevM.ci; }
+    else ag.ptsMeta[ag.curEar][res.f]={ci:res.ci, cens:res.cens, censDir:res.censDir||null};   // censDir drives the chart's rail glyph
     agLiveDraw();                                          // redraw the curve as each point locks
     if(res.f===1000 && !ag.anchorPlaced && !res.sentinel){
       // WINDOW PLACEMENT on the anchor (1 kHz, measured first). Not "is it censored" but "does
@@ -2575,7 +2587,11 @@
     const res=ag.search.censorAt(rail);
     ag.live=null; ag.floorStreak=0; ag.noneMax=0;
     ag.pts[ag.curEar][res.f]=res.lvl; ag.prevThr=res.lvl;
-    ag.ptsMeta[ag.curEar][res.f]={ci:null, cens:true, censDir:res.censDir||rail};
+    // trust the search's verdict rather than assuming a censor: on the sentinel visit it restores
+    // the ORIGINAL anchor and reports cens:false, so hardcoding true marked a perfectly good
+    // reference as a bound and poisoned every relative point measured against it
+    if(res.sentinel){ const pm=ag.ptsMeta[ag.curEar][res.f]; if(!pm) ag.ptsMeta[ag.curEar][res.f]={ci:null, cens:false, censDir:null}; }
+    else ag.ptsMeta[ag.curEar][res.f]={ci:null, cens:!!res.cens, censDir:res.censDir||rail};
     agLiveDraw();
     if(res.f===1000 && !ag.anchorPlaced && rail==='lo'){   // pinned at the quiet rail = the "too loud" window case
       if(agPlaceWindow(res.lvl, true)) return;
@@ -2644,15 +2660,21 @@
   // mercy-skip: a frequency this ear genuinely can't reach shouldn't be a grind of tapping
   // "Nothing" into a void — mark it beyond reach (censored, honest) and move on
   function agGiveUp(){
-    if(!ag||ag.phase!=='run')return; killStim(); clearTimers();
+    if(!ag||ag.phase!=='run')return;
+    if(ag.apAdvancing) return;                   // anchor pass already advancing — a second tap must not cancel its continuation
+    killStim(); clearTimers();
     $('cvNote').textContent='Marked beyond reach — moving on.';
     // the two-ear anchor pass runs BEFORE ag.search exists, so the shared censor path would throw
     // and the escape hatch was dead for exactly the listener who needs it (can't hear 1 kHz at
     // the ceiling). Mirror the anchor-completion bookkeeping instead, marked as rail-pinned.
     if(ag.anchor && ag.anchor.eng){
+      // re-entrancy: agGiveUp's clearTimers() kills the scheduled continuation, so a second tap
+      // used to cancel the pending agAnchorEar/agAnchorDone and leave the pass stalled with
+      // ag.anchor already null — the next answer then fell through to the ag.search path, which
+      // does not exist yet during the anchor pass
       const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
       ag.apPts[ag.curEar]=pHi; ag.apCi[ag.curEar]=null; ag.apCens=ag.apCens||{}; ag.apCens[ag.curEar]=true;
-      ag.anchor=null; ag.apI++;
+      ag.anchor=null; ag.apI++; ag.apAdvancing=true;
       if(ag.apI<ag.ears.length){ choiceTimers.push(setTimeout(agAnchorEar,550)); return; }
       choiceTimers.push(setTimeout(agAnchorDone,350)); return;
     }
@@ -2794,6 +2816,10 @@
     let n=0, worst=0;
     Object.keys(meta).map(Number).forEach(f=>{
       const rec=masked[f];
+      // NEVER correct the reference. Every other point is expressed against 1 kHz, so shifting it
+      // moves the whole curve — and at 1 kHz the only trials ever tallied are the sentinel's, so
+      // the m/n rate gate is trivially satisfied there even when the anchor itself ran unmasked.
+      if(f===1000) return;
       // correct only where the rush was actually running for MOST of the reading — an opener or
       // two under noise doesn't shift a threshold estimated over a dozen trials
       if(!rec || !rec.n || rec.m/rec.n < 0.5) return;
@@ -2828,7 +2854,12 @@
         const worse=asym.max>0?'left':'right', kHz=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
         note=`Your <b>${worse} ear</b> needed noticeably more level than the other${asym.atF>=2000?' from about '+kHz+' up':' at '+kHz}. A left–right difference is the one thing a home test can legitimately flag — it’s worth showing to an audiologist. This isn’t a diagnosis, just a listening pattern on these headphones.`;
       } else {
-        note='Your two ears track closely. A shared roll-off up top can be these headphones or the connection — but if conversation has also been getting harder lately, a matching dip in <b>both</b> ears deserves a proper hearing check too. Shape is relative; the absolute level isn’t calibrated.';
+        // say WHICH comparison was possible: the absolute one can see a flat difference, the
+        // relative fallback structurally cannot, and claiming "track closely" from the latter
+        // would be over-claiming
+        note = (asym.basis==='abs')
+          ? 'Your two ears track closely — including at 1 kHz, so this run could see a difference at <b>any</b> pitch, not just a difference in shape. A shared roll-off up top can be these headphones or the connection — but if conversation has also been getting harder lately, a matching dip in <b>both</b> ears deserves a proper hearing check too. Shape is relative; the absolute level isn’t calibrated.'
+          : 'Your two ears track closely <b>in shape</b>. The volume moved during this run, so the two ears couldn’t be put on one scale — a difference that is the same at every pitch would not show up. If you want that checked, redo with the knob untouched. Shape is relative; the absolute level isn’t calibrated.';
       }
       // cap honesty: past a point a home test undershoots a large gap (crossover + output ceiling),
       // even with the masking rush — say so rather than let the drawn gap read as the whole story
@@ -3466,11 +3497,18 @@
     // (censored-reference) asymmetry, or a stale rel-basis reading must not resurface as advice
     // with its caveats stripped (render §6).
     const asymTrustworthy = asym && !cv.faHi && !asym.unreliable && !cv.volDrift && Math.abs(asym.max)>=15;
+    // the other caveats must ride ALONG with the referral, not be replaced by it — an else-if
+    // meant a flagged run showed the audiologist line with its qualifications silently dropped
+    const extras=[
+      cv.hiCens ? 'The real difference may be larger than drawn.' : null,
+      cv.refit ? 'The curve was refitted using your measured guess rate.' : null,
+      cv.headroom!=null ? 'Some points ran past what that volume could play — the open dots.' : null,
+    ].filter(Boolean).join(' ');
     if(hasCurve && asymTrustworthy){
       const worse=asym.max>0?'left':'right', atF=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
       const span = (asym.basis==='abs' && asym.atF<2000) ? 'at ~'+atF : 'above ~'+atF;
       $('pvcurvenote').textContent='On this run your '+worse+' ear needed noticeably more level '+span+'. A left–right difference is worth showing to an audiologist — screening, not a diagnosis.'
-        +(cv.hiCens?' The real difference may be larger than drawn.':'');
+        +(extras?' '+extras:'');
       $('pvcurvenote').style.display='block';
     } else if(hasCurve && cv.volDrift){
       $('pvcurvenote').textContent='This run was flagged for a volume change mid-test, so its left/right reading isn’t reliable — worth re-running with the knob untouched.';
@@ -3571,7 +3609,16 @@
     const grab=(arr,ear)=>{ if(!Array.isArray(arr)) return;
       const ref=arr.find(p=>p&&p.f===1000);
       const refCens=!!(ref&&ref.cens);       // a censored 1 kHz reference poisons every rel in this ear-run
-      arr.forEach(p=>{ if(p&&isFinite(p.rel)) out.push({ear,f:p.f,rel:p.rel,cens:!!p.cens||refCens}); });
+      // RE-NORMALISE to this ear's own 1 kHz before ANY cross-run comparison. The chart draws
+      // both ears against a COMMON reference when they share a scale, which is right for showing
+      // the gap — but it means stored `rel` changed basis between app versions and even between
+      // runs (a volume drift, a taken reach offer or a mid-run retune drops a run back to the
+      // per-ear basis). Comparing the two bases made repeatability and the 28-day drift check
+      // report a ~25 dB change — and print "worth a hearing check" — on bit-identical thresholds.
+      // Subtracting the ear's own 1 kHz entry is a no-op on per-ear-basis records and exactly
+      // undoes the common offset on the others, so every consumer here is basis-stable again.
+      const shift=(ref&&isFinite(ref.rel))?ref.rel:0;
+      arr.forEach(p=>{ if(p&&isFinite(p.rel)) out.push({ear,f:p.f,rel:p.rel-shift,cens:!!p.cens||refCens}); });
     };
     if(c&&c.ears){ grab(c.ears.R,'R'); grab(c.ears.L,'L'); }
     else if(c&&Array.isArray(c.curve)) grab(c.curve,'B');

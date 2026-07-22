@@ -319,8 +319,11 @@
     }
     // accept a 1 kHz reading measured BEFORE the run (the two-ear anchor pass), so the ear starts
     // from a reference that was chosen with both ears in view instead of re-measuring it here
-    function seedAnchor(lvl, ci){
-      S.pts[1000]=lvl; S.meta[1000]={ci:(ci!=null?ci:null), cens:false};
+    function seedAnchor(lvl, ci, cens, censDir){
+      // carry the anchor pass's censored verdict in: hardcoding cens:false hid a rail-pinned
+      // reference from sentinelOrDone's guard and from everything downstream that must treat a
+      // bound differently from a measurement
+      S.pts[1000]=lvl; S.meta[1000]={ci:(ci!=null?ci:null), cens:!!cens, censDir:censDir||null};
     }
     function requeueAnchor(){                                    // window placement re-measure
       delete S.pts[1000]; delete S.meta[1000]; delete S.engines[1000];
