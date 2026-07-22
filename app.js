@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v83";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v84";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1953,7 +1953,14 @@
   // and an ambiguous one earns up to ~15, instead of every tone ending at a fixed cap.
   // phys clamps: auto-widen can never wander past what we can actually play.
   const AG_ROOM={log:false, hard:.9, floor:-90, ceil:-12, anchors:[-26,-74], betterHigh:false, gamma:0.03,
-    slopeW:9, ciTarget:12, ciSolidTarget:8, nMin:4, nMax:16, physLo:-94, physHi:-10, fmt:v=>Math.round(v)+' dBFS'};
+    // physHi was a conservative guess, not a measured limit. Offline render of the REAL chain
+    // (tone → master 0.85 → limiter thr −6 / knee 4 / ratio 12) shows output tracking the
+    // parameter exactly 1:1 up to −4 dBFS; from −3 the limiter compresses (at −1 the ear gets
+    // 2 dB less than the app believes — a silently wrong threshold, which is worse than an
+    // honest "beyond reach"). −5 keeps 1 dB of margin for the contralateral masker riding
+    // alongside. That is 5 dB of extra reach for a severe loss, for free.
+    // pw/ceiling_measure.js re-runs this measurement.
+    slopeW:9, ciTarget:12, ciSolidTarget:8, nMin:4, nMax:16, physLo:-94, physHi:-5, fmt:v=>Math.round(v)+' dBFS'};
   // ---- WINDOW PLACEMENT ----------------------------------------------------------------------
   // We can only play an ~84 dB window (physLo…physHi). WHERE that window sits against a listener's
   // ears is set by their volume knob, which we can neither read nor set. Their thresholds SPAN a
