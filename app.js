@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v79";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v80";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1919,11 +1919,15 @@
     // subtraction, the two ears were then corrected differently, biasing the very gap we report.
     // Shift it by THIS ear's own shape instead: the best available prior for how a far ear's
     // sensitivity varies with pitch is how this listener's other ear varies.
-    if(ag.apPts && ag.apPts[o]!=null){
-      const own=ag.pts[ag.curEar]||{}, a=ag.apPts[ag.curEar];
-      if(a!=null && own[f]!=null) return ag.apPts[o] + (own[f]-a);
-      return ag.apPts[o];
-    }
+    // Use the anchor for BOTH ears, deliberately — not the far ear's measured curve even when we
+    // have one. The shape-shift attempted here previously could never engage on the FIRST ear
+    // (that ear's own threshold at f is exactly what the trial is measuring), so ear 1 was gated
+    // on a flat 1 kHz value while ear 2 used real per-frequency data. Ear 1 was therefore masked
+    // far more often, and since only masked points get the central-mask subtraction, the two ears
+    // were corrected differently — a bias landing straight in the left/right gap we report.
+    // SYMMETRY beats precision here: an identical rule for both ears cancels in the difference,
+    // and erring toward more masking is the safe direction anyway.
+    if(ag.apPts && ag.apPts[o]!=null) return ag.apPts[o];
     const M=ag.pts[ag.curEar]||{}, mk=Object.keys(M).map(Number).filter(x=>M[x]!=null);
     return mk.length ? Math.min.apply(null, mk.map(x=>M[x])) : null;
   }
@@ -2742,6 +2746,16 @@
     }
     agLockCensored('hi');
   }
+  // ONE definition of "were these two ears measured on a single output scale?", used by the
+  // chart's common reference, by agAsym's absolute branch, and by the relative fallback's
+  // ear-naming. Three near-identical copies of this rule drifted apart across v74-v79 and each
+  // divergence produced a real defect: a chart that hid the gap, a fallback that named an ear
+  // the absolute branch had just refused to name. One predicate, three consumers, no seams.
+  function agEarsComparable(){
+    return !!(ag && ag.mode==='perear' && ag.earOffset
+      && ag.earOffset.R!=null && ag.earOffset.L!=null && ag.earOffset.R===ag.earOffset.L
+      && !ag.scaleDirty && !ag.volDrift);
+  }
   // build one ear's curve, dB re that ear's OWN 1 kHz (so the equal-power pan offset cancels).
   // each point carries its Ψ CI half-width so the render GP can weight it and draw an honest band.
   function agBuildCurve(ear){
@@ -2765,14 +2779,7 @@
     // reference, so the vertical separation on screen IS the real gap. (Without it — different
     // offsets, a knob change, a loud pass — fall back to per-ear referencing, which is honest
     // about shape but not about the gap.)
-    // volDrift deliberately does NOT veto this. commonRef applies ONE shared value to both ears,
-    // so any error in it — estimator noise or a real knob move — shifts both drawn curves
-    // identically and leaves their vertical separation exact. Vetoing on drift bought nothing and
-    // collapsed the picture back to two curves meeting at 0 dB, which is the false-reassurance
-    // image commonRef exists to prevent. (The absolute asymmetry keeps its stricter gate.)
-    const commonRef = (ag.mode==='perear' && ag.earOffset && ag.earOffset.R!=null && ag.earOffset.L!=null
-                       && ag.earOffset.R===ag.earOffset.L && !ag.scaleDirty
-                       && ag.pts.R && ag.pts.R[1000]!=null) ? ag.pts.R[1000] : null;
+    const commonRef = (agEarsComparable() && ag.pts.R && ag.pts.R[1000]!=null) ? ag.pts.R[1000] : null;
     const ref = commonRef!=null ? commonRef : pts[1000];
     const out=fs.map(f=>({ f, rel: Math.round((ref - pts[f])*10)/10, ci: (meta[f]&&meta[f].ci!=null?meta[f].ci:null), cens: !!(meta[f]&&meta[f].cens), censDir:(meta[f]&&meta[f].censDir)||null }));
     // the frequency being measured RIGHT NOW, drawn provisionally so the graph moves with every
@@ -2801,8 +2808,7 @@
     // pass) changes nothing about the ears' comparability yet permanently disabled it, while the
     // reach pass genuinely does move the knob mid-run and never set it at all. ag.scaleDirty is
     // set only by the things that actually break comparability after measuring starts.
-    const sameScale = ag && ag.earOffset && ag.earOffset.R!=null && ag.earOffset.L!=null
-                      && ag.earOffset.R===ag.earOffset.L && !ag.scaleDirty && !ag.volDrift;
+    const sameScale = agEarsComparable();
     let max=0, atF=0;
     if(sameScale){
       const rt=ag.pts.R||{}, lt=ag.pts.L||{}, mR=ag.ptsMeta.R||{}, mL=ag.ptsMeta.L||{};
@@ -2868,10 +2874,9 @@
     // against one value), the shared term cancels and rel_R − rel_L is the true gap after all.
     // Since v78 the two conditions differ (commonRef ignores volDrift), so check rather than
     // assume: calling a real unilateral loss "can't say which ear" is its own kind of wrong.
-    const usedCommon = (ag.mode==='perear' && ag.earOffset && ag.earOffset.R!=null && ag.earOffset.L!=null
-                        && ag.earOffset.R===ag.earOffset.L && !ag.scaleDirty
-                        && ag.pts.R && ag.pts.R[1000]!=null);
-    return {max, atF, basis:'rel', shapeOnly:!usedCommon};
+    // with ONE predicate this can no longer disagree with the absolute branch: if the ears were
+    // comparable we would not be in the fallback at all, so the fallback is always shape-only
+    return {max, atF, basis:'rel', shapeOnly:true};
   }
   function agLiveDraw(){
     if(!ag) return;
@@ -3015,13 +3020,15 @@
       const censDirs=(lo)=>['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>{
         const m=ag.ptsMeta[e][f]; return m&&m.cens&&(lo? m.censDir==='lo' : m.censDir!=='lo'); }));
       const hiCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>+f>=2000 && ag.ptsMeta[e][f].cens && ag.ptsMeta[e][f].censDir!=='lo'));
-      const loCensAny=censDirs(true);
+      const loCensAny=censDirs(true), anyHiCens=censDirs(false);   // declared before every use below
       if(!faHi && Math.abs(asym.max)>=15 && (hiCens || Math.abs(asym.max)>=30)){
         note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
-      } else if(!faHi && hiCens && Math.abs(asym.max)<15){
-        // a censored high band must ALWAYS be caveated, not only when a referral is printed —
-        // otherwise "ears track closely" stands unqualified over pitches nobody could measure
-        note+=' Note: some pitches above 2 kHz ran past what this volume could play in one ear (the open dots), so a difference up there could not be seen. A louder retry may bring them inside.';
+      } else if(!faHi && anyHiCens && Math.abs(asym.max)<15){
+        // ANY ceiling-pinned point must be caveated, not only ones above 2 kHz — otherwise a
+        // low-frequency pin sits silently under a note claiming a difference at any pitch could
+        // have been seen. "ears track closely" must never stand unqualified over an unmeasured
+        // pitch, wherever it is.
+        note+=' Note: at some pitches'+(hiCens?' (including above 2 kHz)':'')+' one ear ran past what this volume could play (the open dots), so a difference there could not be seen. A louder retry may bring them inside.';
       }
       if(!faHi && loCensAny) note+=' At some pitches you heard the <b>quietest</b> tone this test can play, so your true threshold there is better than the chart can show — those points are marked as beyond reach in the good direction, and only a quieter setting could pin them down.';
       if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
@@ -3032,7 +3039,6 @@
         note+=' <b>Volume check:</b> the 1 kHz reference did not repeat within '+worst+' dB between the start and the end of that ear. If the volume moved, every relative point moved with it — treat this curve as rough and redo with the knob untouched.'; }
       // headroom honesty: say when the window itself, not the ear, set the limit
       const anyCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>ag.ptsMeta[e][f].cens));
-      const anyHiCens=censDirs(false);
       if(anyCens && anyHiCens && ag.headroom!=null) note+=' Some points ran past what this volume could play (about '+ag.headroom+' dB of room above your 1 kHz reference) — those are the open dots, and a louder setting on a calm retry may bring them inside.';
       $('cvNote').innerHTML=note;
       // persist the false-alarm verdict WITH the curve (gates every later surface), plus the raw
