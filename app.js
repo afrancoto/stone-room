@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v76";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v77";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -1241,6 +1241,7 @@
   // locked, another app) or simple elapsed time means the knob or the headphones may have moved.
   // Then the next room asks ONE question — "still the same?" — with a full re-check one tap away.
   let chainOKAt=0, chainAway=false, hiddenAt=0;
+  let chainFault=null;          // a channel check the listener overrode — poisons per-ear claims
   document.addEventListener('visibilitychange', ()=>{
     if(document.hidden) hiddenAt=Date.now();
     else if(hiddenAt && Date.now()-hiddenAt>60000) chainAway=true;
@@ -1355,7 +1356,7 @@
   function calVolPass(which){
     if(which==='L'||which==='R'){ calVolLow(which); return; }
     calStop(); killStim(); $('calbar').classList.remove('play');
-    chainOKFor=device; chainOKAt=Date.now(); chainAway=false;    // sides + volume proven
+    chainOKFor=device; chainOKAt=Date.now(); chainAway=false; chainFault=null;    // sides + volume proven
     const done=cal&&cal.onPass; cal=null; if(done) done();
   }
   // fallback probe before calling a side quiet: the SAME faint level, one octave DOWN (500 Hz),
@@ -1398,7 +1399,7 @@
   }
   function calVolFinding(which, lowHeard){
     calStop(); killStim(); $('calbar').classList.remove('play');
-    chainOKFor=device; chainOKAt=Date.now(); chainAway=false;    // proven for the ear that can prove it
+    chainOKFor=device; chainOKAt=Date.now(); chainAway=false; chainFault=null;    // proven for the ear that can prove it
     const heardSide = which==='L'?'left':'right', weak = which==='L'?'right':'left';
     const gotF = cal.heardFs&&cal.heardFs.length ? (cal.heardFs[0]>=1000?(cal.heardFs[0]/1000)+' kHz':cal.heardFs[0]+' Hz') : null;
     $('calTitle').textContent = lowHeard ? 'A pitch-shaped difference — the curve maps it' : 'One quiet side — a finding, not a fault';
@@ -1421,7 +1422,12 @@
     const again=document.createElement('button'); again.className='choice alt'; again.innerHTML='Try again<small>re-check both sides</small>';
     again.onclick=()=>calChannel('L');
     const anyway=document.createElement('button'); anyway.className='choice alt'; anyway.innerHTML='Continue anyway<small>readings may be off</small>';
-    anyway.onclick=()=>{ chainOKFor=device; chainOKAt=Date.now(); chainAway=false; const done=cal&&cal.onPass; cal=null; if(done) done(); };
+    // REMEMBER the failure. Continuing past a failed channel check used to record nothing, so a
+    // mono fold produced a clean-looking per-ear curve (both ears hearing everything, no gap)
+    // and swapped channels produced a referral naming the WRONG ear — with no warning anywhere.
+    anyway.onclick=()=>{ chainOKFor=device; chainOKAt=Date.now(); chainAway=false;
+      chainFault=kind;                                     // 'swapped' | 'mono' | 'silent'
+      const done=cal&&cal.onPass; cal=null; if(done) done(); };
     box.appendChild(again); box.appendChild(anyway);
   }
   // THE gate lives here, not in the callers: every launch path (picker, device screen, profile
@@ -2768,30 +2774,44 @@
     let max=0, atF=0;
     if(sameScale){
       const rt=ag.pts.R||{}, lt=ag.pts.L||{}, mR=ag.ptsMeta.R||{}, mL=ag.ptsMeta.L||{};
-      const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10);
-      let n=0, ref1k=false, bMax=0, bAtF=0;
+      const pHi=(AG_ROOM.physHi!=null?AG_ROOM.physHi:-10), pLo=(AG_ROOM.physLo!=null?AG_ROOM.physLo:-94);
+      let n=0, ref1k=false, bMax=0, bAtF=0, bDir=null;
+      const railOf=(v)=> v>=pHi-3 ? 'hi' : (v<=pLo+3 ? 'lo' : null);
       Object.keys(lt).map(Number).forEach(f=>{
         if(lt[f]==null||rt[f]==null) return;
         const cR=!!(mR[f]&&mR[f].cens), cL=!!(mL[f]&&mL[f].cens);
-        if(cR&&cL) return;                                     // two bounds say nothing about their difference
+        const dirR=cR?railOf(rt[f]):null, dirL=cL?railOf(lt[f]):null;
+        if(cR&&cL){
+          // two pins at the SAME rail really do say nothing — but one ear on the floor and the
+          // other on the ceiling bounds the gap at the entire playable window
+          if(dirR&&dirL&&dirR!==dirL){
+            const dd = dirL==='hi' ? (pHi-pLo) : (pLo-pHi);
+            if(Math.abs(dd)>Math.abs(bMax)){ bMax=dd; bAtF=f; bDir=dirL==='hi'?'hi':'lo'; }
+          }
+          return;
+        }
         if(!cR&&!cL){
           n++; if(f===1000) ref1k=true;
           const d=lt[f]-rt[f];                                 // +ve = left needs more level = left worse
           if(Math.abs(d)>Math.abs(max)){ max=d; atF=f; }
           return;
         }
-        // Exactly ONE side is beyond reach. Discarding it threw away the strongest evidence the
-        // app can hold: a point pinned at the loud rail means that ear needs AT LEAST the rail,
-        // so the gap is at least (rail − the other ear). Dropping these made the very case this
-        // test exists for — an ear too impaired to measure — come out as "ears track closely".
-        const loudPin = cL ? lt[f]>=pHi-3 : rt[f]>=pHi-3;
-        if(!loudPin) return;                                   // a quiet-rail bound constrains the other way
-        const d = cL ? (pHi - rt[f]) : -(pHi - lt[f]);
-        if(Math.abs(d)>Math.abs(bMax)){ bMax=d; bAtF=f; }
+        // Exactly ONE side is beyond reach — evidence, not missing data. A LOUD-rail pin means
+        // that ear needs at least the ceiling, so the gap is at least (ceiling − the other ear).
+        // A QUIET-rail pin is the mirror image and just as strong: that ear heard our faintest
+        // tone, so its true threshold is at most the floor and the OTHER ear is worse by at
+        // least (the other ear − floor). Keeping only the loud half left the same
+        // false-reassurance hole this fix was written to close, pointing the other way.
+        const pin = cL ? dirL : dirR;
+        if(!pin) return;
+        const rail = pin==='hi' ? pHi : pLo;
+        const d = cL ? (rail - rt[f]) : -(rail - lt[f]);
+        if(Math.abs(d)>Math.abs(bMax)){ bMax=d; bAtF=f; bDir=pin; }
       });
       const useBound = Math.abs(bMax) > Math.abs(max);
       return { max: useBound?bMax:max, atF: useBound?bAtF:atF, basis:'abs',
-               n, ref1k, bounded: useBound, unreliable: n===0 && !useBound };
+               n, ref1k, bounded: useBound, boundDir: useBound?bDir:null,
+               unreliable: n===0 && !useBound };
     }
     // fallback: relative, but guarded — skip any pair touching a censored point or a censored ref
     const refCensR=(ag.ptsMeta&&ag.ptsMeta.R&&ag.ptsMeta.R[1000]&&ag.ptsMeta.R[1000].cens);
@@ -2799,7 +2819,12 @@
     if(refCensR||refCensL) return {max:0, atF:0, basis:'rel', unreliable:true};
     const rmap={}; R.forEach(p=>{ if(!p.cens&&!p.live) rmap[p.f]=p.rel; });
     L.forEach(p=>{ if(p.f>=2000 && !p.cens && !p.live && rmap[p.f]!=null){ const d=rmap[p.f]-p.rel; if(Math.abs(d)>Math.abs(max)){ max=d; atF=p.f; } } });
-    return {max, atF, basis:'rel'};
+    // This branch measures gap(f) MINUS gap(1 kHz) — a difference of differences, because each
+    // ear is referenced to its own 1 kHz. Its SIGN therefore does not identify which ear is
+    // worse: if the asymmetry is largest at 1 kHz, the sign flips and naming an ear would name
+    // the wrong one. Flag it so the copy describes a shape difference and never issues an
+    // ear-specific referral from it.
+    return {max, atF, basis:'rel', shapeOnly:true};
   }
   function agLiveDraw(){
     if(!ag) return;
@@ -2885,14 +2910,28 @@
       window.SR_FP.renderCurve($('cvcard'), { device, ears:{R,L} });
       // REVIEW: medical framing — screening only, never a diagnosis, never names a condition.
       let note;
-      if(faHi){
+      // a chain fault the listener chose to override makes the per-ear reading meaningless in a
+      // specific, nameable way — it must outrank every other verdict, including the referral
+      if(chainFault==='mono'){
+        note='The channel check said both ears were hearing the <b>same</b> signal (a mono blend), and you continued. On a mono chain the two “ears” here are the same sound, so this curve cannot show a left/right difference at all — whatever it draws. Turn off Mono audio / spatial audio, reconnect the headphones, and re-run.';
+      } else if(chainFault==='swapped'){
+        note='The channel check said your left and right are <b>reversed</b>, and you continued — so the ear labels on this curve are almost certainly the wrong way round. Fix the L/R and re-run before reading anything into which side is worse.';
+      } else if(chainFault==='silent'){
+        note='One side stayed silent at the channel check and you continued, so this run can’t tell "that side isn’t playing" from "that ear needs much more level". Reconnect the headphones and re-run to know which it was.';
+      } else if(faHi){
         note='A few silent rounds got tapped as “heard”, so the left/right read isn’t reliable this time — worth a calm retry in a quiet room. Shape is relative; the absolute level isn’t calibrated.';
       } else if(asym.unreliable){
         note='Your 1 kHz reference ran past what this volume could measure in one ear, so a trustworthy left/right comparison isn’t possible this time — turn the volume up a little and retry. Shape is relative; the absolute level isn’t calibrated.';
+      } else if(Math.abs(asym.max)>=15 && asym.shapeOnly){
+        // the relative fallback can't say WHICH ear — only that their shapes diverge
+        const kHz=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
+        note=`Your two ears differ in <b>shape</b> by about ${Math.abs(Math.round(asym.max))} dB around ${kHz}. The volume moved during this run, so the ears couldn’t be put on one scale — which means this can’t say <b>which</b> ear is the weaker one, only that they diverge. Redo with the knob untouched for a reading that can. Worth showing to an audiologist either way; this isn’t a diagnosis.`;
       } else if(Math.abs(asym.max)>=15){
         const worse=asym.max>0?'left':'right', kHz=asym.atF>=1000?(asym.atF/1000)+' kHz':asym.atF+' Hz';
         note=`Your <b>${worse} ear</b> needed ${asym.bounded?'<b>at least '+Math.abs(Math.round(asym.max))+' dB</b> more level than the other':'noticeably more level than the other'}${asym.atF>=2000?' from about '+kHz+' up':' at '+kHz}.`
-          +(asym.bounded?' “At least”, because that ear ran past the loudest this test can play — the true difference is bigger than the number.':'')
+          +(asym.bounded ? (asym.boundDir==='lo'
+              ? ' “At least”, because the other ear heard the quietest tone this test can play — its true threshold is better still, so the difference is bigger than the number.'
+              : ' “At least”, because that ear ran past the loudest this test can play — the true difference is bigger than the number.') : '')
           +' A left–right difference is the one thing a home test can legitimately flag — it’s worth showing to an audiologist. This isn’t a diagnosis, just a listening pattern on these headphones.';
       } else {
         // say WHICH comparison was possible, and never claim coverage we didn't have: "abs" only
@@ -2906,7 +2945,14 @@
       }
       // cap honesty: past a point a home test undershoots a large gap (crossover + output ceiling),
       // even with the masking rush — say so rather than let the drawn gap read as the whole story
-      const hiCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>+f>=2000 && ag.ptsMeta[e][f].cens));
+      // "beyond reach" has TWO directions and they need opposite advice: a point pinned at the
+      // ceiling wants a LOUDER retry, one pinned at the floor is already better than we can
+      // measure and wants a QUIETER one. Telling a floor-pinned listener to turn up is exactly
+      // backwards, and pushes the point further out of reach.
+      const censDirs=(lo)=>['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>{
+        const m=ag.ptsMeta[e][f]; return m&&m.cens&&(lo? m.censDir==='lo' : m.censDir!=='lo'); }));
+      const hiCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>+f>=2000 && ag.ptsMeta[e][f].cens && ag.ptsMeta[e][f].censDir!=='lo'));
+      const loCensAny=censDirs(true);
       if(!faHi && Math.abs(asym.max)>=15 && (hiCens || Math.abs(asym.max)>=30)){
         note+=' One more honesty note: a home test can only see so much of a gap — beyond its reach the quieter ear stops being measurable, so the real difference may be <b>larger</b> than drawn, not smaller.';
       } else if(!faHi && hiCens && Math.abs(asym.max)<15){
@@ -2914,13 +2960,15 @@
         // otherwise "ears track closely" stands unqualified over pitches nobody could measure
         note+=' Note: some pitches above 2 kHz ran past what this volume could play in one ear (the open dots), so a difference up there could not be seen. A louder retry may bring them inside.';
       }
+      if(!faHi && loCensAny) note+=' At some pitches you heard the <b>quietest</b> tone this test can play, so your true threshold there is better than the chart can show — those points are marked as beyond reach in the good direction, and only a quieter setting could pin them down.';
       if(refitR||refitL) note+=' Your silent-round tap rate ran high, so the curve was refitted using your measured guess rate.';
       if(cmR||cmL) note+=' Where the rush was playing, a small allowance (2–4 dB) was subtracted for the way noise in one ear nudges the other ear’s threshold — standard practice, and deliberately conservative.';
       if(ag.volDrift){ const worst=Math.max(...Object.values(ag.volDrift));
         note+=' <b>Volume check:</b> the 1 kHz reference read '+worst+' dB different at the end than at the start — the volume or the fit moved mid-test, and every relative point moved with it. Treat this curve as rough and redo with the knob untouched.'; }
       // headroom honesty: say when the window itself, not the ear, set the limit
       const anyCens=['R','L'].some(e=>Object.keys(ag.ptsMeta[e]||{}).some(f=>ag.ptsMeta[e][f].cens));
-      if(anyCens && ag.headroom!=null) note+=' Some points ran past what this volume could play (about '+ag.headroom+' dB of room above your 1 kHz reference) — those are the open dots, and a louder setting on a calm retry may bring them inside.';
+      const anyHiCens=censDirs(false);
+      if(anyCens && anyHiCens && ag.headroom!=null) note+=' Some points ran past what this volume could play (about '+ag.headroom+' dB of room above your 1 kHz reference) — those are the open dots, and a louder setting on a calm retry may bring them inside.';
       $('cvNote').innerHTML=note;
       // persist the false-alarm verdict WITH the curve (gates every later surface), plus the raw
       // [level, heard] trial log and the measured FA rates — the export carries the actual data
@@ -2928,7 +2976,7 @@
       // re-serving the asymmetry referral with the volume-drift / beyond-reach warnings stripped
       // off — the reading the app itself called untrustworthy, shown as trustworthy (render §6).
       await loadDB(); upsertCurve(device, {mode:'perear', ears:{R,L}, asym, faHi,
-        volDrift: ag.volDrift||null, headroom: (anyCens?ag.headroom:null), hiCens: !!hiCens,
+        volDrift: ag.volDrift||null, headroom: (anyCens?ag.headroom:null), hiCens: !!hiCens, chainFault:chainFault||null,
         refit: (refitR||refitL)?{R:refitR,L:refitL}:null,
         centralMask: (cmR||cmL)?{R:cmR,L:cmL}:null, asymBasis: asym.basis||null,
         log:{R:ag.log&&ag.log.R, L:ag.log&&ag.log.L},
@@ -3543,7 +3591,8 @@
     // the same gates the results screen applied. A run flagged for volume drift, an unreliable
     // (censored-reference) asymmetry, or a stale rel-basis reading must not resurface as advice
     // with its caveats stripped (render §6).
-    const asymTrustworthy = asym && !cv.faHi && !asym.unreliable && !cv.volDrift && Math.abs(asym.max)>=15;
+    const asymTrustworthy = asym && !cv.faHi && !asym.unreliable && !cv.volDrift && !cv.chainFault
+                            && !asym.shapeOnly && Math.abs(asym.max)>=15;
     // the other caveats must ride ALONG with the referral, not be replaced by it — an else-if
     // meant a flagged run showed the audiologist line with its qualifications silently dropped
     const extras=[
