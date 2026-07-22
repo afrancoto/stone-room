@@ -10,7 +10,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v84";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v85";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -2238,10 +2238,10 @@
       $('cvNote').innerHTML='Fitting the test to your volume… <span style="color:var(--muted)">no need to touch anything.</span>';
       choiceTimers.push(setTimeout(agAnchorPass,700)); };
     if(canRetry && worse<AG_ANCHOR_LO && (ag.calOffset||0)>-36){   // both ears sit too low in the window
-      ag.calOffset=(ag.calOffset||0)-12; anchorMaster(agLevel()); ag.autoRanged=true; retry(); return;
+      agSetOffset((ag.calOffset||0)-12); retry(); return;
     }
     if(canRetry && worse>AG_ANCHOR_HI && (ag.calOffset||0)<0){     // reclaim headroom we donated earlier
-      ag.calOffset=Math.min(0,(ag.calOffset||0)+12); anchorMaster(agLevel()); ag.autoRanged=true; retry(); return;
+      agSetOffset(Math.min(0,(ag.calOffset||0)+12)); retry(); return;
     }
     if(worse>AG_ANCHOR_HI){                                   // out of digital headroom → the knob
       agAnchorRetune(Math.round(worse-AG_ANCHOR_HI)); return;
@@ -2318,7 +2318,7 @@
       if(a<AG_ANCHOR_LO && want>-36) want=Math.max(-36, want-12);        // ear hears too well here → play quieter
       else if(a>AG_ANCHOR_HI && want<0) want=Math.min(0, want+12);        // needs more room above
       if(want!==(ag.calOffset||0)){
-        ag.calOffset=want; anchorMaster(agLevel()); ag.autoRanged=true;
+        agSetOffset(want);
         ag.apPts[ag.curEar]=null;                                         // its seeded anchor was measured at the old gain
       }
     }
@@ -2688,7 +2688,7 @@
       // AUTO-RANGE, silent: slide OUR OWN output down so their thresholds rise into the window.
       // Always-safe direction, and the anchor is re-measured at the new offset — so the entire
       // run shares ONE offset and every later point stays comparable to the anchor.
-      ag.calOffset=(ag.calOffset||0)-12; anchorMaster(agLevel());
+      agSetOffset((ag.calOffset||0)-12);
       ag.search.requeueAnchor();
       delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
       if(ag.log&&ag.log[ag.curEar]) delete ag.log[ag.curEar][1000];
@@ -2701,7 +2701,7 @@
       // reclaim headroom we donated earlier (often during the OTHER, better ear's auto-range)
       // before bothering the knob: raising our own gain back toward 0 is silent, exact, and
       // bounded by headroom we know we have. Same one-step re-measure contract as the down branch.
-      ag.calOffset=Math.min(0,(ag.calOffset||0)+12); anchorMaster(agLevel());
+      agSetOffset(Math.min(0,(ag.calOffset||0)+12));
       ag.search.requeueAnchor();
       delete ag.pts[ag.curEar][1000]; delete ag.ptsMeta[ag.curEar][1000];
       if(ag.log&&ag.log[ag.curEar]) delete ag.log[ag.curEar][1000];
@@ -2782,6 +2782,14 @@
     return !!(ag && ag.mode==='perear' && ag.earOffset
       && ag.earOffset.R!=null && ag.earOffset.L!=null
       && !ag.scaleDirty && !ag.volDrift);
+  }
+  // EVERY change to the output gain must also update the current ear's recorded offset. The
+  // offset was captured once when the ear started, but agPlaceWindow can auto-range MID-ear —
+  // so the record went stale by 12 or 24 dB and every cross-ear number (the gap, the referral,
+  // the drawn separation) was wrong by exactly that much. One setter, no way to forget.
+  function agSetOffset(v){
+    ag.calOffset=v; anchorMaster(agLevel()); ag.autoRanged=true;
+    if(ag.curEar){ ag.earOffset=ag.earOffset||{}; ag.earOffset[ag.curEar]=v; }
   }
   // a threshold on the common physical scale: parameter dBFS plus the output gain it was played
   // through (more negative calOffset = quieter output = the same parameter is physically quieter)
