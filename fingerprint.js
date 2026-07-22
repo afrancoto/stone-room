@@ -306,10 +306,40 @@ ${g}${mark}
         const N=64, us=[]; for(let i=0;i<N;i++) us.push(uLo+(uHi-uLo)*i/(N-1));
         const gp=gpSmooth(fit,us);
         if(gp){
-          const up=us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(gp[i].mean+gp[i].sd).toFixed(1)}`);
-          const dn=us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(gp[i].mean-gp[i].sd).toFixed(1)}`).reverse();
+          // ONE-SIDED BOUNDS. Censored points are excluded from the fit because they are not
+          // measurements — but they are still the strongest statement the data makes, and the
+          // unconstrained line walked straight through the side they forbid: dipping BELOW dots
+          // that mean "the truth is at least this good", rising ABOVE dots that mean "the truth
+          // is at least this bad". A loud-rail pin caps rel from above; a quiet-rail pin floors
+          // it from below. Clamp the mean, and clamp only the band edge facing the bound — the
+          // other edge stays free, so the shading opens toward where the truth actually lies.
+          const envelope=(quiet)=>{
+            const ps=c.filter(p=>p.cens&&!p.live&&(quiet ? p.censDir==='lo' : p.censDir!=='lo'))
+                      .map(p=>({u:Math.log10(p.f), v:p.rel})).sort((a,b)=>a.u-b.u);
+            if(!ps.length) return null;
+            const PAD=0.15;                       // ~half an octave of reach beyond the outermost bound
+            return uq=>{
+              if(uq<ps[0].u-PAD || uq>ps[ps.length-1].u+PAD) return null;
+              if(uq<=ps[0].u) return ps[0].v;
+              if(uq>=ps[ps.length-1].u) return ps[ps.length-1].v;
+              for(let i=1;i<ps.length;i++) if(uq<=ps[i].u){
+                const t=(uq-ps[i-1].u)/(ps[i].u-ps[i-1].u);
+                return ps[i-1].v+t*(ps[i].v-ps[i-1].v); }
+              return null; };
+          };
+          const capAbove=envelope(false), floorBelow=envelope(true);
+          const mean=us.map((uq,i)=>{ let m=gp[i].mean;
+            const a=capAbove&&capAbove(uq); if(a!=null) m=Math.min(m,a);
+            const b=floorBelow&&floorBelow(uq); if(b!=null) m=Math.max(m,b);
+            return m; });
+          const hiE=us.map((uq,i)=>{ let v=mean[i]+gp[i].sd;
+            const a=capAbove&&capAbove(uq); if(a!=null) v=Math.min(v,a); return v; });
+          const loE=us.map((uq,i)=>{ let v=mean[i]-gp[i].sd;
+            const b=floorBelow&&floorBelow(uq); if(b!=null) v=Math.max(v,b); return v; });
+          const up=us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(hiE[i]).toFixed(1)}`);
+          const dn=us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(loE[i]).toFixed(1)}`).reverse();
           s+=`<polygon points="${up.concat(dn).join(' ')}" fill="${stroke}" opacity="0.12"/>`;
-          s+=`<polyline points="${us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(gp[i].mean).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+          s+=`<polyline points="${us.map((uq,i)=>`${xFromU(uq).toFixed(1)},${y(mean[i]).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
         }
       }
       // fallback line when the GP can't run: still only MEASURED points. Drawing through `c`
