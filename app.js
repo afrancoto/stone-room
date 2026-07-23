@@ -11,7 +11,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v86";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v87";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -426,6 +426,22 @@
     const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=52*rvF;
     const og=ctx.createGain(); og.gain.value=.92; o.connect(og); og.connect(sh); o.start(when); o.stop(when+dur+.05);
   }
+  // How-to-Listen band drill: a sustained broadband chord (three sawtooths + a high shimmer, so
+  // EVERY band from bass to air has energy to lift), routed through ONE peaking EQ. eqGain=0 → the
+  // flat reference; eqGain≠0 → a ±eqGain dB bump one octave wide at eqF. Both intervals share the
+  // same drone, so the ONLY audible difference is the band — a clean, honest A/B on tonal balance.
+  function htlLoop(when, dur, eqF, eqGain){
+    const bus=ctx.createGain();
+    bus.gain.setValueAtTime(0,when); bus.gain.linearRampToValueAtTime(.26,when+.06);
+    bus.gain.setValueAtTime(.26,when+dur-.12); bus.gain.linearRampToValueAtTime(0,when+dur);
+    if(eqGain && eqF){ const pk=ctx.createBiquadFilter(); pk.type='peaking'; pk.frequency.value=eqF; pk.Q.value=1.8; pk.gain.value=eqGain;
+      bus.connect(pk); pk.connect(master); }
+    else bus.connect(master);
+    [110,165,220].forEach(f=>{ const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f;
+      const g=ctx.createGain(); g.gain.value=.32; o.connect(g); g.connect(bus); o.start(when); o.stop(when+dur+.05); });
+    const hs=ctx.createOscillator(); hs.type='triangle'; hs.frequency.value=9000;   // guarantees the Air band has something to lift
+    const hg=ctx.createGain(); hg.gain.value=.05; hs.connect(hg); hg.connect(bus); hs.start(when); hs.stop(when+dur+.05);
+  }
   function marker(t){
     const g=ctx.createGain(); g.gain.setValueAtTime(.06,t); g.gain.exponentialRampToValueAtTime(.0005,t+.04);
     g.connect(master);
@@ -598,6 +614,14 @@
      claim:'Slam: a drum hit arrives instantly, with edges — that’s driver control.',
      learn:'A real transient rises in under a millisecond. Reproducing that edge takes a light, stiff, well-damped driver — exactly what exotic cone materials are for.',
      notice:'Two drum hits — one strikes instantly, one eases in. <b>Tap the one that truly hit.</b>'},
+    {group:'htl',tag:'Tilt',title:'Spot the colour',tests:'hear a tonal bump',mode:'stair',
+     claim:'The first ear-training step: simply noticing when the tone has been nudged — the seed of every “bright” or “warm” judgement.',
+     learn:'Two versions of the same sound play; one has a single band lifted or dipped by a few dB. You pick the coloured one, and it hunts the smallest tilt you can still catch — the raw sensitivity that band-naming is built on.',
+     notice:'The same sound twice — one has a band nudged up or down. <b>Tap the coloured one.</b>'},
+    {group:'htl',tag:'Bands',title:'Name the lifted band',tests:'place the bump',mode:'htl',
+     claim:'The master skill: hearing exactly WHERE a headphone is lifted — the difference between “bright”, “warm”, “recessed” and “boxy”.',
+     learn:'This is Harman’s core listener-training drill, the one their engineers use. You hear the sound flat, then with one band lifted, and name the band; as you improve, the lift shrinks. Frequency-response colour is what most separates headphones, so this is the single most useful ear skill to build.',
+     notice:'Flat first, then with one band lifted. <b>Tap the band that rose.</b>'},
   ];
   const ROMANS=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX','XXI','XXII','XXIII','XXIV','XXV','XXVI','XXVII'];
   const DEVCOLORS=['#7BA79C','#E27A45','#D9A24B','#B7A6E3'];
@@ -645,6 +669,9 @@
         const t=k1===k0?t0:t0+(t1-t0)*(v-k0)/(k1-k0);
         return '~'+(t<1?t.toFixed(1):Math.round(t))+'% THD';},
       play:(lv,t,alt)=>rumbleTone(t, alt?lv:0)},
+    Tilt:{type:'X', q:'Which was coloured?', dur:1.9, answerAltered:true, start:6, floor:1, ceil:12, hard:.8, easy:1.4, log:false, betterHigh:false, anchors:[8,1.5], physLo:0.4, fmt:v=>'±'+v.toFixed(1)+' dB',
+      onTrial:()=>{ const b=HTL_BANDS[Math.floor(Math.random()*HTL_BANDS.length)]; htlTiltBand=b.f; htlTiltSign=Math.random()<.5?1:-1; },
+      play:(lv,t,alt)=>htlLoop(t, 1.85, htlTiltBand, alt?htlTiltSign*lv:0)},
     Grip:{type:'X', q:'Which was tighter?', dur:1.7, answerAltered:false, start:.15, floor:.02, ceil:.5, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[.35,.06], physLo:0.02, fmt:v=>'bloom '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>bassNote(t, alt, lv)},
     Presence:{type:'X', q:'Which was in the room?', dur:1.7, answerAltered:false, start:2.5, floor:.5, ceil:6, hard:.8, easy:1.35, log:false, betterHigh:false, anchors:[5,1], physLo:0.5, fmt:v=>v.toFixed(1)+' dB scoop',
@@ -1512,18 +1539,19 @@
   }
 
   function startChapter(){
-    guessLocked=false; st=null; sp=null; cnt=null; dig=null; bal=null; seal=null; $('choices').classList.remove('digitpad'); stopVoices();
+    guessLocked=false; st=null; sp=null; cnt=null; dig=null; bal=null; seal=null; htl=null; $('choices').classList.remove('digitpad'); stopVoices();
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
     setReplay(true); $('skipbtn').classList.add('on');
     const c=chap();
     const isStair=c.mode==='stair', isOrbit=c.mode==='orbit', isCount=c.mode==='count', isCurve=c.mode==='curve', isDigits=c.mode==='digits';
-    const isBalance=c.mode==='balance', isSeal=c.mode==='seal';
+    const isBalance=c.mode==='balance', isSeal=c.mode==='seal', isHTL=c.mode==='htl';
     const isField = c.mode==='locate'||c.mode==='sweep'||c.mode==='depth'||c.mode==='separate';
     $('fieldwrap').classList.toggle('hidden', !(isField));
     $('fieldwrapO').classList.toggle('hidden', !isOrbit);
-    $('choices').classList.toggle('on', isStair||isCount||isCurve||isDigits||isBalance||isSeal);
+    $('choices').classList.toggle('on', isStair||isCount||isCurve||isDigits||isBalance||isSeal||isHTL);
     if(isBalance){ $('status').textContent=''; setupBalance(c); return; }
     if(isSeal){ $('status').textContent=''; setupSeal(c); return; }
+    if(isHTL){ $('status').textContent=''; setupHTL(c); return; }
     // the hearing-curve room is a self-contained measurement on its own screen — offer one
     // button to launch it (Skip still available); the rest run inline here.
     if(isCurve){
@@ -1755,6 +1783,62 @@
     $('status').innerHTML=`Your seal: <span class="pts">${m.thr}</span> · +${m.pct}`;
     $('hint').textContent='';
     showLearn(); appendTier(tierLine(seal.tag,m.pct));
+    showResultBtns(false); advanceUI();
+  }
+
+  // ---------- How to Listen: band identification (the flagship ear-training drill) ----------
+  // Harman's core listener-training task. A flat reference plays, then the same sound with ONE band
+  // lifted; the listener names the band. Right → the boost shrinks (subtler); wrong → it grows. The
+  // reading is the smallest lift they can still place — the most transferable skill there is, since
+  // frequency-response colour is what most separates one headphone from another.
+  const HTL_BANDS=[{f:120,name:'Bass'},{f:500,name:'Low-mid'},{f:2000,name:'Presence'},{f:6000,name:'Treble'},{f:12000,name:'Air'}];
+  let htlTiltBand=1000, htlTiltSign=1;                       // shared with the Tilt stair (set in its onTrial)
+  let htl=null;
+  function setupHTL(c){
+    htl={c, tag:c.tag, gain:9, trial:0, minR:6, maxR:14, correct:0, streak:0, best:12, band:0, done:false, log:[]};
+    showPrecisionUI(); $('precision').querySelector('.plabel span').textContent='Progress';
+    htlTrial();
+  }
+  function htlPlay(){
+    choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+    setChoicesEnabled(false); setReplay(false); anchorMaster(0.8);
+    const t=ctx.currentTime+.12, dur=2.0, gap=.32;
+    htlLoop(t, dur, 0, 0);                                    // flat reference
+    htlLoop(t+dur+gap, dur, HTL_BANDS[htl.band].f, htl.gain); // one band lifted
+    choiceTimers.push(setTimeout(()=>{ setChoicesEnabled(true); setReplay(true); }, (0.12+2*dur+gap)*1000+90));
+  }
+  function htlTrial(){
+    htl.band=Math.floor(Math.random()*HTL_BANDS.length);
+    buildChoices(HTL_BANDS.map(b=>b.name), HTL_BANDS.map(b=>fHz(b.f)), htlPick);
+    $('status').innerHTML=`Trial ${htl.trial+1} <span style="color:var(--muted)">of ≤${htl.maxR}</span> · flat, then lifted — which band rose?`;
+    setPrecision(clamp(htl.trial/htl.maxR,0,1), htl.best<12?`±${htl.best.toFixed(1)} dB`:'warming up');
+    replayFn=htlPlay; htlPlay();
+  }
+  function htlPick(i){
+    if(!htl||htl.done) return;
+    setChoicesEnabled(false); setReplay(false); killStim();
+    const hit=i===htl.band;
+    [...$('choices').children].forEach((b,k)=>{ if(k===htl.band) b.classList.add('correct'); else if(k===i) b.classList.add('wrong'); });
+    htl.trial++; htl.log.push([Math.round(htl.gain*10)/10, hit?1:0]);
+    if(hit){ htl.correct++; htl.streak++; if(htl.streak>=2){ htl.best=Math.min(htl.best, htl.gain); htl.streak=0; htl.gain=Math.max(1.5, htl.gain*0.72); } }
+    else { htl.streak=0; htl.gain=Math.min(14, htl.gain*1.5); }
+    $('status').innerHTML = hit
+      ? `<span class="pts">Yes — ${HTL_BANDS[htl.band].name}.</span> <span style="color:var(--muted)">making it subtler…</span>`
+      : `<span style="color:var(--ember)">It was ${HTL_BANDS[htl.band].name}.</span> <span style="color:var(--muted)">a bigger lift next…</span>`;
+    const done = htl.trial>=htl.maxR || (htl.trial>=htl.minR && htl.correct>=4 && htl.best<=2.5);
+    if(done){ setTimeout(finishHTL, 950); return; }
+    setTimeout(()=>{ if(htl&&!htl.done) htlTrial(); }, 950);
+  }
+  function finishHTL(){
+    if(!htl||htl.done) return;
+    htl.done=true; guessLocked=true; clearTimers();
+    const g=htl.best<12?htl.best:htl.gain;
+    const pct=Math.round(clamp(1-(g-1.5)/8,0,1)*100);
+    const readout=`±${g.toFixed(1)} dB`;
+    recordRoom(pct, readout, {val:g, trials:htl.log});
+    $('status').innerHTML=`Your reading: <span class="pts">${readout}</span> · +${pct} <span style="color:var(--muted)">· smallest band-lift you placed</span>`;
+    setPrecision(1, readout);
+    showLearn(); appendTier(tierLine(htl.tag,pct));
     showResultBtns(false); advanceUI();
   }
 

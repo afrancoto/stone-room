@@ -42,6 +42,8 @@
     Grip:      { group:'tone',  name:'Bass grip',     fmt:v=>Math.round(v*100)+'% bloom' },
     Presence:  { group:'tone',  name:'Midrange',      fmt:v=>v.toFixed(1)+' dB dip' },
     Silk:      { group:'tone',  name:'Sibilance',     fmt:v=>'+'+Math.round(20*Math.log10((.05+v)/.05))+' dB' },
+    Tilt:      { group:'tone',  name:'Colour detection',fmt:v=>'±'+v.toFixed(1)+' dB' },
+    Bands:     { group:'tone',  name:'Band ID',        fmt:v=>'±'+v.toFixed(1)+' dB' },
     Snap:      { group:'time',  name:'Slam / attack', fmt:v=>Math.round(v*1000)+' ms' },
     Pulse:     { group:'time',  name:'Timing',        fmt:v=>Math.round(v)+' ms' },
     Shade:     { group:'time',  name:'Micro-dynamics',fmt:v=>v.toFixed(2)+' dB' },

@@ -261,6 +261,22 @@
       miss: ["Lifting it out a little.", "A clearer tone next.", "Making it stand prouder."],
       tiers: { reference: "Exceptional — you pull a tone out of noise that hides it from most people.", strong: "Strong — you follow a signal well into the noise.", fair: "Fair — the tone needs to stand clear of the noise before you catch it.", weak: "The noise has to drop away before the tone appears — worth retrying somewhere quiet." }
     },
+    Tilt: {
+      benchmark: "Trained ears flag a 1–2 dB band tilt on familiar material; most untrained listeners need 4–6 dB.",
+      science: "Before you can name a colour you have to notice it. One band of the sound is nudged up or down and you pick the altered version — the raw sensitivity to tonal change that every 'bright' or 'warm' verdict is built on. It sharpens fast with practice.",
+      models: "This is a skill, not a headphone — but a resolving, low-distortion pair makes small tilts easier to catch.",
+      hit: ["Caught it.", "You spotted the colour.", "That's the one."],
+      miss: ["Subtle — bigger next.", "A clearer tilt.", "Listen for the bump."],
+      tiers: { reference: "You flag a tilt smaller than most pros — a trained ear.", strong: "Strong; a couple of dB is enough for you.", fair: "You catch the obvious tilts, not the fine ones.", weak: "Coloured and flat still sound alike — keep training." }
+    },
+    Bands: {
+      benchmark: "Harman's trained listeners place a lifted octave band within ±1–2 dB; naming the band is harder than merely hearing the tilt.",
+      science: "This is the drill Harman built to train and select the listeners who voice their headphones. A flat reference plays, then the same sound with one band lifted; you name the band, and the boost shrinks as you improve. It teaches the vocabulary of frequency response by ear — the axis that most separates headphones.",
+      models: "A skill you carry to every headphone: once you can place a bump, review words like 'presence peak' or 'recessed mids' become things you can verify yourself.",
+      hit: ["Right band.", "You placed it.", "Nailed the region."],
+      miss: ["Close region.", "Listen where it rose.", "That band next time."],
+      tiers: { reference: "You place a small lift by name — a tuner's ear.", strong: "Strong; you name the region even when it's subtle.", fair: "You get the big lifts; neighbours still fool you.", weak: "The lift is audible but its home is a guess." }
+    },
     Hearing: {
       benchmark: "Young ears span ~20 Hz–20 kHz; the top end falls with age, and every headphone rolls off somewhere of its own.",
       science: "A browser has no absolute SPL reference, so the loudness isn't calibrated — but the SHAPE is real: the combined response of these headphones and your own ears, the same idea behind Samsung's Adapt Sound. Dips are bands this chain renders quieter; the high end also shows your own hearing's ceiling.",
