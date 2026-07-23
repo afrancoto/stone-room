@@ -5,16 +5,29 @@
 (function () {
   "use strict";
 
+  // Two top-level modes. GRADE = the few things a synthesized, mic-less test can honestly say
+  // about the transducer (frequency response, channel balance, seal, distortion). TRAIN = real
+  // perceptual skills — these measure your EAR, and that is the point: you learn the vocabulary
+  // by hearing it. Every group below declares which mode it belongs to.
+  const SECTIONS = {
+    grade: { name: 'Grade your headphones', sub: 'what the hardware actually does — honest & measurable' },
+    train: { name: 'Train your ears',       sub: 'learn what the words mean by hearing them' },
+  };
   const GROUPS = {
-    holo: { name: 'The Out-of-Head Illusion', sub: 'space & imaging' },
-    res:  { name: 'Hearing Everything', sub: 'resolution' },
-    tone: { name: 'Truth of Tone', sub: 'frequency & timbre' },
-    dyn:  { name: 'Speed & Dynamics', sub: 'time & level' },
+    // ---- GRADE ----
+    curve:    { section:'grade', name: 'Your response curve', sub: 'frequency & hearing, per ear' },
+    hardware: { section:'grade', name: 'The hardware',        sub: 'channels · seal · distortion' },
+    // ---- TRAIN ----
+    holo: { section:'train', name: 'Space & imaging', sub: 'the out-of-head illusion' },
+    res:  { section:'train', name: 'Resolution',      sub: 'hearing everything' },
+    tone: { section:'train', name: 'Tone & timbre',   sub: 'colour & texture' },
+    dyn:  { section:'train', name: 'Dynamics',        sub: 'time & level' },
+    htl:  { section:'train', name: 'Ear training',    sub: 'How-to-Listen drills' },
   };
 
   const INTRO = {
-    hook: "Measure your hearing. Train your ears. Know your headphones.",
-    line: "Twenty-six rooms, including a per-ear hearing curve and a speech-in-noise test. Run them one at a time — each measures one claim the reviews make — as your ears actually hear it through your pair — and saves the shape so you can compare.",
+    hook: "Grade your headphones. Train your ears.",
+    line: "Two modes. <b>Grade</b> measures the handful of things a headphone's hardware honestly reveals through your own ears — a per-ear response curve, channel balance, seal, and distortion. <b>Train</b> is an ear gym: the space, detail, tone and dynamics drills reviewers live by, built on Harman's listener-training method, so you learn what the words mean by hearing them.",
     what: "Each room plays a sound and asks one simple question. Answer, and it hunts your exact limit — telling you, in real numbers, where your headphones and your hearing actually land. You learn what the words mean by hearing them.",
     gap: "Other free tools do half the job: they train your ears with no number attached, or they publish lab readings of a unit that isn't on your head. This one measures what YOU hear through YOUR pair — ears and headphones as one chain — and saves it, so you can compare pairs and watch your own hearing over time.",
     tips: "Best in a quiet room, at a moderate volume, with any phone spatializer, Dolby Atmos and EQ switched off.",
@@ -143,6 +156,30 @@
       hit: ["Clean one — got it.", "You heard it hold.", "Stayed pure."],
       miss: ["Adding some grit.", "A clearer break.", "Pushing it harder."],
       tiers: { reference: "Reference composure — it never breaks a sweat for you.", strong: "Strong; you catch distortion as it creeps in.", fair: "Obvious clipping lands; subtle grain slips.", weak: "Clean and strained sound the same to you." }
+    },
+    Balance: {
+      benchmark: "Left and right drivers matched within about 1 dB keep a voice pinned centre — and a good pair holds that match across the whole spectrum, not just at one pitch.",
+      science: "This nulls the interaural level difference at each pitch: you tap the louder side until the tone sits even, and the offset that balances it is how far your two sides are off. It reads your ears AND the headphone together — a lean your per-ear curve doesn't explain is the headphone's channel matching.",
+      models: "The Sennheiser HD 600/650 and Focal Clear are known for tightly hand-matched pairs.",
+      hit: ["Even — got it.", "Balanced.", "Dead centre."],
+      miss: ["Leaning one way.", "A clearer offset.", "Nudging it over."],
+      tiers: { reference: "Even across every pitch — a rock-steady image.", strong: "Close; only the far extremes drift a hair.", fair: "An audible lean at one or two pitches.", weak: "One side runs ahead across the band — the image pulls off-centre." }
+    },
+    Seal: {
+      benchmark: "On closed-back and in-ear designs a good seal is worth more bass than any amount of money — a small leak can cost 10 dB of sub-bass.",
+      science: "Bass needs an airtight cavity between driver and eardrum. Glasses, hair, worn pads or a shallow tip break that seal and the low end leaks away. Pressing the cups or reseating the tips restores it — if the bass jumps, you were leaking, and every bass reading you take is only as good as your fit.",
+      models: "In-ears live or die on tip choice; over-ears depend on fresh, well-fitted pads.",
+      hit: ["Sealed.", "Airtight.", "Good fit."],
+      miss: ["Some leaking.", "Reseat and retry.", "A better fit helps."],
+      tiers: { reference: "Sealed tight — the bass you measure is the bass you get.", strong: "Nearly sealed; a touch more arrives with pressure.", fair: "A real leak — reseat before trusting the bass rooms.", weak: "Leaking badly — half your low end is escaping." }
+    },
+    Rumble: {
+      benchmark: "Bass distortion climbs fast at high volume as the cone runs out of travel; harsh harmonics turn audible well before a driver bottoms out.",
+      science: "The deep bass is where a driver strains hardest — diaphragm excursion is largest there, so a weak motor or over-driven cone adds buzzing overtones that were never in the note. This mixes a faint buzz into a low tone and hunts the smallest amount you can still catch; a genuinely rattling driver shows here too.",
+      models: "Planars (HiFiMan Susvara, Audeze) and large, well-damped dynamic drivers stay clean into loud, deep bass.",
+      hit: ["Clean one — got it.", "You caught the buzz.", "Stayed pure."],
+      miss: ["Adding some grit.", "A clearer buzz.", "A touch more drive."],
+      tiers: { reference: "You catch bass grunge the moment it appears.", strong: "Strong; obvious buzz is easy, faint buzz slips.", fair: "You hear gross distortion, not the subtle kind.", weak: "Clean and buzzing low notes sound alike here." }
     },
     Foundation: {
       benchmark: "A bass guitar's lowest string sits at about 41 Hz; below ~30 Hz you feel it more than hear it.",
@@ -325,5 +362,5 @@
          'These are cited as precedent and as benchmarks to be measured against. None of them is a validation of this app.'] },
   ];
 
-  window.SR_CONTENT = { GROUPS, INTRO, ROOM: C, DECODER, METHODS };
+  window.SR_CONTENT = { SECTIONS, GROUPS, INTRO, ROOM: C, DECODER, METHODS };
 })();

@@ -5,6 +5,7 @@
 (() => {
   "use strict";
   const CONTENT = window.SR_CONTENT;
+  const SECTIONS = CONTENT.SECTIONS;             // Grade vs Train — top-level modes; groups declare .section
   const GROUPS = CONTENT.GROUPS;
   const INTRO = CONTENT.INTRO;
   const RC = CONTENT.ROOM;                       // per-room content by tag
@@ -411,6 +412,20 @@
     [110,165,220].forEach(f=>{const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f*rvF;
       const og=ctx.createGain(); og.gain.value=.33; o.connect(og); og.connect(sh); o.start(when); o.stop(when+1.7);});
   }
+  // Bass cleanliness: a low tone (~52 Hz) driven through the SAME tanh soft-clip as composureChord,
+  // so drive→%THD reads on one honest scale. drive=0 → a pure sine; drive>0 adds the harmonics a
+  // strained cone would — heard as buzz on the note. A lowpass keeps the added energy low-mid
+  // (bass grunge), not hiss, matching a real over-excursion driver.
+  function rumbleTone(when, drive){
+    const sh=ctx.createWaveShaper(); sh.curve=makeDriveCurve(drive); sh.oversample='4x';
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=900;
+    const lvl=.6*driveTrim(drive), dur=1.6, ramp=.12;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0,when); g.gain.linearRampToValueAtTime(lvl,when+ramp);
+    g.gain.setValueAtTime(lvl,when+dur-ramp); g.gain.linearRampToValueAtTime(0,when+dur);
+    sh.connect(lp); lp.connect(g); g.connect(master);
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=52*rvF;
+    const og=ctx.createGain(); og.gain.value=.92; o.connect(og); og.connect(sh); o.start(when); o.stop(when+dur+.05);
+  }
   function marker(t){
     const g=ctx.createGain(); g.gain.setValueAtTime(.06,t); g.gain.exponentialRampToValueAtTime(.0005,t+.04);
     g.connect(master);
@@ -515,10 +530,6 @@
      claim:'A great headphone paints instruments across a stage — you can point at each one.',
      learn:'Your brain places sound by comparing microsecond timing and level differences between your ears. Clean drivers keep those cues intact; sloppy ones blur the map.',
      notice:'One sound sits on the arc ahead. <b>Tap where you hear it</b> — one tap, no dragging. It tightens as you close in.'},
-    {group:'holo',tag:'Motion',title:'Track the mover',tests:'imaging precision',mode:'sweep',
-     claim:'Pinpoint imaging: when a sound moves, you can follow it like watching it.',
-     learn:'Smooth motion means the inter-ear cues update without smearing. A blurry transducer turns a moving point into a travelling cloud.',
-     notice:'A sound glides across the stage, then stops. <b>Tap where it landed.</b>'},
     {group:'holo',tag:'Centre',title:'Lock the vocalist',tests:'channel matching',mode:'stair',
      claim:'A perfectly matched pair nails the voice dead centre — zero drift.',
      learn:'A centre image only forms when left and right drivers match within about 1 dB. Any mismatch drags the vocalist off their stool. B&W hand-match pairs for exactly this.',
@@ -531,18 +542,6 @@
      claim:'Layering: a good mix has a front row and a back row, and you can seat everyone.',
      learn:'Distance is decoded from cues that move together: how loud a sound arrives, and how much room reverb rides along with it — closer is louder and drier.',
      notice:'A sound plays near or far. <b>Tap the inner ring for near, the outer for far</b> — aimed at its direction.'},
-    {group:'holo',tag:'Flyby',title:'How close did it pass?',tests:'distance rendering',mode:'stair',
-     claim:'Distance is rendered, not implied — near and far are different physical things.',
-     learn:'A pass distance is read from the loudness swell — how sharply it rises and falls as it crosses your stage. The pitch bend sells the motion; the swell carries the answer.',
-     notice:'Two vehicles cross your stage, bending pitch as they pass. <b>Tap the one that passed closer.</b>'},
-    {group:'holo',tag:'Echo',title:'Hear the walls',tests:'spatial cues',mode:'stair',
-     claim:'Good transducers preserve the room’s reflections — you can hear the walls.',
-     learn:'Your brain times the gap from click to reflection: roughly 6 ms per metre of wall distance, there and back. You were literally echolocating.',
-     notice:'A click, then its echo — twice. A longer gap means a farther wall. <b>Tap the further wall.</b>'},
-    {group:'holo',tag:'Duet',title:'Wall to wall',tests:'stereo width',mode:'stair',
-     claim:'Width: the mix stretches ear to ear and past your shoulders.',
-     learn:'Width is decorrelation — small deliberate differences between channels. Strong channel separation in the headphone keeps them from collapsing back toward mono.',
-     notice:'The same chord twice — one wide, one narrow. <b>Tap the wider one.</b>'},
     {group:'res',tag:'Separation',title:'Pick one voice out',tests:'instrument separation',mode:'separate',
      claim:'Each instrument keeps its own pocket of space — nothing smears together.',
      learn:'Separation is position plus timbre staying stable per source. When drivers distort, sources bleed into each other and the mix turns to porridge.',
@@ -555,18 +554,6 @@
      claim:'You hear things in familiar albums you never knew were there.',
      learn:'Low-level detail rides 20–30 dB beneath the music. Low driver distortion and noise keep it audible instead of buried — that’s "detail retrieval".',
      notice:'A warm pad plays twice; one hides a faint tick. <b>Tap the one with the tick.</b>'},
-    {group:'res',tag:'Silence',title:'The black background',tests:'noise floor',mode:'stair',
-     claim:'Between the notes: true black. No hiss, no veil, just nothing.',
-     learn:'"Black background" is a low noise floor — nothing added beneath quiet passages. You just resolved near-silence, which is exactly what the phrase means.',
-     notice:'A note, then silence — twice. One silence hides a faint hiss. <b>Tap the one that hid it.</b>'},
-    {group:'res',tag:'Digits',title:'Three digits in the noise',tests:'speech in noise',mode:'digits',
-     claim:'The everyday test: following a voice while noise tries to bury it.',
-     learn:'Three spoken digits play inside babble made from the same voice, and the measured number is the signal-to-noise ratio where you still catch all three. Speech and noise ride the same chain at the same instant, so this reading barely cares that nothing is calibrated — it is the sturdiest number in the whole app.',
-     notice:'Noise, with three digits spoken inside it. <b>Tap the three digits you heard, in order.</b>'},
-    {group:'res',tag:'Noise',title:'In the noise',tests:'signal in noise',mode:'stair',
-     claim:'Clarity: a signal stays findable even when noise is trying to bury it.',
-     learn:'Your ear analyses sound in narrow bands, and a tone becomes audible once it rises far enough above the noise inside its own band. Because the tone and the noise travel the same path at the same moment, this reading barely moves when you change the volume — it is the one measurement here that hardly cares about calibration.',
-     notice:'Two bursts of noise — one hides a steady tone inside it. <b>Tap the burst that held the tone.</b>'},
     {group:'res',tag:'Grain',title:'Spot the impostor',tests:'timbre resolution',mode:'stair',
      claim:'Timbre is texture — and you can hear when a note’s texture is even slightly off.',
      learn:'Timbre lives in the balance of overtones. The impostor carried one stray partial at ~2.8× the fundamental — the sound of texture being subtly wrong.',
@@ -575,14 +562,22 @@
      claim:'Notes don’t stop — they fade into a space, and you can hear the size of it.',
      learn:'A reverb tail falls some 60 dB into silence. Resolving where it ends — and how big the room was — is the classic test of low-level linearity.',
      notice:'The same pluck in two rooms. <b>Tap the bigger room</b> — it rings on longer.'},
-    {group:'res',tag:'Composure',title:'Loud stays clean',tests:'low distortion',mode:'stair',
+    {group:'hardware',tag:'Composure',title:'Loud stays clean',tests:'low distortion',mode:'stair',
      claim:'Push it hard and it never hardens — composure under pressure.',
      learn:'Overdrive a bad driver and it clips: harmonics appear that were never in the music, heard as hardness or glare. Composure means loud and clean are the same thing.',
      notice:'The same big chord twice — one hardens and buzzes. <b>Tap the one that stayed clean.</b>'},
-    {group:'tone',tag:'Foundation',title:'The floor beneath',tests:'sub-bass extension',mode:'stair',
-     claim:'Real extension: bass you feel in your jaw, below what most gear can even produce.',
-     learn:'Below ~40 Hz most gear rolls off and you only hear overtones. This room hunts your exact floor: the lowest frequency this chain — headphone plus your ears — still delivers.',
-     notice:'Two intervals; one hides a low tone. <b>Tap the one that held it.</b> Each catch drives it deeper. Moderate volume.'},
+    {group:'hardware',tag:'Balance',title:'Even on both sides',tests:'channel balance',mode:'balance',
+     claim:'A well-built pair puts the same tone in each ear, so the image sits still and the colour stays honest.',
+     learn:'Two drivers can match at one pitch and drift apart at others — sliding the voice off-centre and tilting the tone. This sweeps several pitches and finds where your two sides stop agreeing. It reads your ears AND the headphone together; a lean here that your per-ear curve doesn’t explain is the headphone.',
+     notice:'The same tone in both ears at once. <b>Tap the side that sounds louder — or “Even”.</b> It repeats across several pitches.'},
+    {group:'hardware',tag:'Seal',title:'Check your seal',tests:'seal & fit',mode:'seal',
+     claim:'On any closed or in-ear pair the seal makes the bass. A tiny leak and the low end drains away — same headphone, half the bass.',
+     learn:'Bass depends on an airtight fit far more than on price: glasses, hair, worn pads or a shallow tip can rob everything below ~200 Hz. Harman found poor fit is a top reason two listeners disagree about the very same headphone.',
+     notice:'A low tone is playing. Listen — then <b>press the earcups gently against your head</b> (or reseat the tips) and listen again.'},
+    {group:'hardware',tag:'Rumble',title:'Loud bass, still clean',tests:'bass distortion',mode:'stair',
+     claim:'Push the bass hard and a good driver stays a pure tone; a strained one buzzes and rattles.',
+     learn:'Drivers distort most in the deep bass at volume — the cone runs out of travel and adds harsh overtones that were never in the note. This mixes a faint buzz into a low tone and hunts the smallest buzz you can still catch; a genuinely rattling or bottomed-out driver shows here too.',
+     notice:'The same low note twice — one carries a faint buzz. <b>Tap the clean one.</b> Moderate volume; don’t crank it.'},
     {group:'tone',tag:'Grip',title:'Taut, not flabby',tests:'bass control',mode:'stair',
      claim:'Bass with grip: taut and textured, never a shapeless boom.',
      learn:'Loose bass is an envelope problem: the cone keeps moving after the note should stop. Grip is a fast start AND a fast stop — extension’s stricter sibling.',
@@ -591,15 +586,11 @@
      claim:'Honest mids put the singer in the room; scooped mids put them behind glass.',
      learn:'Voices live at 1–3 kHz. Cut that band and a singer steps backward and loses body — the "veiled" sound. Honest mids are why some gear feels intimate.',
      notice:'The same voice twice — one hollowed out, one full. <b>Tap the one in the room with you.</b>'},
-    {group:'tone',tag:'Air',title:'Room to breathe',tests:'treble extension',mode:'stair',
-     claim:'Air: the openness above the music, the shimmer that cheap gear shaves off.',
-     learn:'The top octave (8 kHz and up) carries shimmer, space and "air". Roll it off and music breathes less — even when you can’t name what went missing.',
-     notice:'Two intervals; one holds a faint high shimmer. <b>Tap the one that held it.</b> It climbs higher each catch.'},
     {group:'tone',tag:'Silk',title:'Smooth, never sharp',tests:'sibilance control',mode:'stair',
      claim:'Treble with silk: all the sparkle, none of the needle in the "s".',
      learn:'Sibilance is an energy spike near 6–8 kHz that turns an "s" into a stab. Smooth treble keeps the energy without the pain — the hardest tuning balance there is.',
      notice:'A voice-like phrase ending in "ss" — twice. <b>Tap the one whose "s" stabbed.</b>'},
-    {group:'tone',tag:'Hearing',title:'Your hearing curve',tests:'hz × db response',mode:'curve',
+    {group:'curve',tag:'Hearing',title:'Your hearing curve',tests:'hz × db response',mode:'curve',
      claim:'Your ears and these headphones share one frequency response — and you can measure its shape.',
      learn:'This is the idea behind Samsung’s Adapt Sound: at nine pitches from deep bass to high treble it finds the quietest tone you can hear, then plots the shape relative to 1 kHz. Dips are bands this pair — or your own ears, up high — render quieter.',
      notice:'Nine pitches, low to high. For each, <b>tap the interval that held the faint tone.</b> Set volume on the 1 kHz tone first.'},
@@ -607,14 +598,6 @@
      claim:'Slam: a drum hit arrives instantly, with edges — that’s driver control.',
      learn:'A real transient rises in under a millisecond. Reproducing that edge takes a light, stiff, well-damped driver — exactly what exotic cone materials are for.',
      notice:'Two drum hits — one strikes instantly, one eases in. <b>Tap the one that truly hit.</b>'},
-    {group:'dyn',tag:'Pulse',title:'The tight groove',tests:'timing · prat',mode:'stair',
-     claim:'Pace, rhythm and timing: the groove locks, and nothing drags.',
-     learn:'Humans detect timing errors down to ~10 ms. "PRaT" is gear preserving every attack edge so the groove stays locked instead of shuffling.',
-     notice:'Two short grooves; in one, a beat lands late. <b>Tap the tight groove.</b>'},
-    {group:'dyn',tag:'Shade',title:'Loud and louder',tests:'micro-dynamics',mode:'stair',
-     claim:'Micro-dynamics: the difference between loud and slightly louder is where expression lives.',
-     learn:'A performer’s expression is 1–2 dB shadings between notes. Any compression in the chain flattens those gradations into sameness.',
-     notice:'The same note twice, at slightly different levels. <b>Tap the louder one.</b>'},
   ];
   const ROMANS=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX','XXI','XXII','XXIII','XXIV','XXV','XXVI','XXVII'];
   const DEVCOLORS=['#7BA79C','#E27A45','#D9A24B','#B7A6E3'];
@@ -655,6 +638,13 @@
         const t=k1===k0?t0:t0+(t1-t0)*(v-k0)/(k1-k0);
         return '~'+(t<1?t.toFixed(1):Math.round(t))+'% THD';},
       play:(lv,t,alt)=>composureChord(t, alt?lv:0)},
+    Rumble:{type:'X', q:'Which stayed clean?', dur:1.7, answerAltered:false, start:4.5, floor:.5, ceil:9, hard:.75, easy:1.5, log:true, betterHigh:false, anchors:[5,.8], physLo:0.15,
+      fmt:v=>{const T=[[0.15,0.19],[0.3,0.73],[0.5,1.96],[0.8,4.61],[1.2,8.92],[2,17.3],[3,25.0],[4.5,31.7],[6,35.2],[9,38.3]];
+        let i=0; while(i<T.length-1&&T[i+1][0]<v)i++;
+        const [k0,t0]=T[i],[k1,t1]=T[Math.min(i+1,T.length-1)];
+        const t=k1===k0?t0:t0+(t1-t0)*(v-k0)/(k1-k0);
+        return '~'+(t<1?t.toFixed(1):Math.round(t))+'% THD';},
+      play:(lv,t,alt)=>rumbleTone(t, alt?lv:0)},
     Grip:{type:'X', q:'Which was tighter?', dur:1.7, answerAltered:false, start:.15, floor:.02, ceil:.5, hard:.8, easy:1.4, log:true, betterHigh:false, anchors:[.35,.06], physLo:0.02, fmt:v=>'bloom '+Math.round(v*100)+'%',
       play:(lv,t,alt)=>bassNote(t, alt, lv)},
     Presence:{type:'X', q:'Which was in the room?', dur:1.7, answerAltered:false, start:2.5, floor:.5, ceil:6, hard:.8, easy:1.35, log:false, betterHigh:false, anchors:[5,1], physLo:0.5, fmt:v=>v.toFixed(1)+' dB scoop',
@@ -730,7 +720,7 @@
   let choiceTimers=[], orbitInt=null;
   // curated default tour (~11 non-redundant rooms across all four domains) — keeps the set
   // short. Every other room stays available on the select screen, just off by default.
-  const DEFAULT_ROOMS = new Set(['Stage','Orbit','Depth','Crowd','Whisper','Digits','Grain','Foundation','Air','Presence','Snap','Shade']);   // Digits replaces Noise in the default tour (same principle, everyday percept)
+  const DEFAULT_ROOMS = new Set(['Hearing','Balance','Seal','Stage','Orbit','Crowd','Whisper','Grain','Presence','Snap']);   // a Grade core + a spread of Train drills; all valid post-reorg tags
   let selected = CH.map(c=>DEFAULT_ROOMS.has(c.tag));
   let device='';
   let db={devices:{}}, storageOK=false, cmpVisible={};
@@ -1183,12 +1173,17 @@
   }
 
   function buildSelect(){
-    const wrap=$('selscroll'); wrap.innerHTML='';
+    const wrap=$('selscroll'); wrap.innerHTML=''; let curSec=null;
     Object.keys(GROUPS).forEach(gk=>{
       const g=GROUPS[gk];
+      const idxs=CH.map((c,i)=>c.group===gk?i:-1).filter(i=>i>=0);
+      if(!idxs.length) return;                          // skip an empty group (e.g. htl before it is filled)
+      if(g.section!==curSec){ curSec=g.section; const S=SECTIONS[curSec]||{name:curSec,sub:''};
+        const sh=document.createElement('div'); sh.className='secthead';
+        sh.innerHTML=`<div class="secname">${S.name}</div><div class="secsub">${S.sub}</div>`;
+        wrap.appendChild(sh); }
       const sec=document.createElement('div'); sec.className='ggroup';
       const head=document.createElement('div'); head.className='ghead';
-      const idxs=CH.map((c,i)=>c.group===gk?i:-1).filter(i=>i>=0);
       const gEst=idxs.reduce((a,i)=>{const e=estRoom(CH[i]); a.q+=e.q; a.f+=e.f; return a;},{q:0,f:0});
       head.innerHTML=`<span><span class="gname">${g.name}</span><span class="gsub">${g.sub} · ${fmtRange(gEst)}</span></span>`;
       const tog=document.createElement('button');
@@ -1517,15 +1512,18 @@
   }
 
   function startChapter(){
-    guessLocked=false; st=null; sp=null; cnt=null; dig=null; $('choices').classList.remove('digitpad'); stopVoices();
+    guessLocked=false; st=null; sp=null; cnt=null; dig=null; bal=null; seal=null; $('choices').classList.remove('digitpad'); stopVoices();
     ['guess','truthg','link','guessO','truthgO','linkO'].forEach(id=>$(id).classList.remove('on'));
     setReplay(true); $('skipbtn').classList.add('on');
     const c=chap();
     const isStair=c.mode==='stair', isOrbit=c.mode==='orbit', isCount=c.mode==='count', isCurve=c.mode==='curve', isDigits=c.mode==='digits';
+    const isBalance=c.mode==='balance', isSeal=c.mode==='seal';
     const isField = c.mode==='locate'||c.mode==='sweep'||c.mode==='depth'||c.mode==='separate';
     $('fieldwrap').classList.toggle('hidden', !(isField));
     $('fieldwrapO').classList.toggle('hidden', !isOrbit);
-    $('choices').classList.toggle('on', isStair||isCount||isCurve||isDigits);
+    $('choices').classList.toggle('on', isStair||isCount||isCurve||isDigits||isBalance||isSeal);
+    if(isBalance){ $('status').textContent=''; setupBalance(c); return; }
+    if(isSeal){ $('status').textContent=''; setupSeal(c); return; }
     // the hearing-curve room is a self-contained measurement on its own screen — offer one
     // button to launch it (Skip still available); the rest run inline here.
     if(isCurve){
@@ -1658,6 +1656,107 @@
     return Math.round(clamp(p,0,1)*100);
   };
   const bandStr=(A,lo,hi)=>{ const a=Math.min(lo,hi),b=Math.max(lo,hi); return `${A.fmt(a)}–${A.fmt(b)}`; };
+
+  // ---------- Balance: swept L/R channel balance (method of adjustment) ----------
+  // At each pitch the listener nulls the interaural level difference: they tap the louder side and
+  // the tone's ILD steps toward "even". The offset that sounds even is the Point of Subjective
+  // Equality — the imbalance to cancel. It reads EARS + HEADPHONE together (the room copy says so
+  // plainly and points to the per-ear curve as the cross-check); a purely relative louder/quieter
+  // judgement is the honest most a mic-less test can do.
+  let bal=null;
+  const BAL_FREQS=[250,1000,3000,6000,10000];
+  const fHz=f=>f>=1000?(f/1000)+' kHz':f+' Hz';
+  function setupBalance(c){
+    bal={c, tag:c.tag, fi:0, ild:0, step:2, lastDir:0, results:[], done:false};
+    showPrecisionUI(); $('precision').querySelector('.plabel span').textContent='Progress';
+    balTrial();
+  }
+  function balPlay(){
+    choiceTimers.forEach(t=>clearTimeout(t)); choiceTimers=[];
+    setChoicesEnabled(false); setReplay(false); anchorMaster(0.85);  // fixed level — no roving; ILD is the variable
+    const f=BAL_FREQS[bal.fi], t=ctx.currentTime+.15, dur=1.2, base=-20;
+    detTone(f, t, dur, base - bal.ild/2, -1);                       // left ear
+    detTone(f, t, dur, base + bal.ild/2, +1);                       // right ear (ild>0 → right louder)
+    choiceTimers.push(setTimeout(()=>{ setChoicesEnabled(true); setReplay(true); }, (0.15+dur)*1000+80));
+  }
+  function balTrial(){
+    const f=BAL_FREQS[bal.fi];
+    $('status').innerHTML=`Pitch ${bal.fi+1} of ${BAL_FREQS.length} <span style="color:var(--muted)">· ${fHz(f)}</span>`;
+    setPrecision(bal.fi/BAL_FREQS.length, `pitch ${bal.fi+1}/${BAL_FREQS.length}`);
+    buildChoices(['Left louder','Even','Right louder'],['boost the right','balanced','boost the left'],balPick);
+    replayFn=balPlay; balPlay();
+  }
+  function balPick(i){
+    if(!bal||bal.done) return;
+    bal.step0=(bal.step0||0)+1;
+    if(i===1 || bal.step0>=6){                                      // "Even" reached (or budget spent)
+      bal.results.push({f:BAL_FREQS[bal.fi], imb:bal.ild});
+      bal.fi++; bal.ild=0; bal.step=2; bal.lastDir=0; bal.step0=0;
+      if(bal.fi>=BAL_FREQS.length){ finishBalance(); return; }
+      balTrial(); return;
+    }
+    const dir = i===0 ? +1 : -1;                                    // Left louder → right too quiet → raise ild
+    if(bal.lastDir && dir!==bal.lastDir) bal.step=Math.max(1, bal.step*0.6);   // shrink after a reversal
+    bal.lastDir=dir;
+    bal.ild = clamp(bal.ild + dir*bal.step, -12, 12);
+    balPlay();
+  }
+  function finishBalance(){
+    bal.done=true; guessLocked=true; clearTimers();
+    let worst={f:0,imb:0};
+    bal.results.forEach(r=>{ if(Math.abs(r.imb)>Math.abs(worst.imb)) worst=r; });
+    const mag=Math.abs(worst.imb);
+    const side = mag<0.6 ? 'even' : (worst.imb>0 ? 'left' : 'right');
+    const readout = side==='even' ? 'even (<0.6 dB)' : `${mag.toFixed(1)} dB ${side} @ ${fHz(worst.f)}`;
+    const pct = Math.round(clamp(1-(mag-0.5)/5, 0, 1)*100);
+    recordRoom(pct, readout, {val:mag, trials:bal.results.map(r=>[r.f, Math.round(r.imb*10)/10])});
+    $('status').innerHTML=`Your reading: <span class="pts">${readout}</span> · +${pct}`;
+    setPrecision(1, readout);
+    showLearn(); appendTier(tierLine(bal.tag,pct));
+    showResultBtns(false); advanceUI();
+  }
+
+  // ---------- Seal: guided before/after fit check ----------
+  // Not a threshold — a diagnostic. A low chord loops; the listener presses the cups (or reseats
+  // tips) and reports whether the bass jumped. A big jump = a leak that was draining the low end.
+  let seal=null;
+  function setupSeal(c){
+    seal={c, tag:c.tag, phase:0, done:false};
+    $('precision').classList.remove('on'); setReplay(true);
+    sealStep();
+  }
+  function sealTone(){
+    sealStop();
+    const loop=()=>{ if(!seal||seal.done) return; const t=ctx.currentTime+.02; anchorMaster(0.9);
+      subTone(60, t, 1.05, .5); subTone(90, t, 1.05, .3);
+      seal._timer=setTimeout(loop, 1150); };
+    loop();
+  }
+  function sealStop(){ if(seal&&seal._timer){ clearTimeout(seal._timer); seal._timer=null; } clearTimers(); }
+  function sealStep(){
+    if(seal.phase===0){
+      $('status').innerHTML='Step 1 — <b>wear them normally.</b> A low tone is looping — note how much bass you get.';
+      $('hint').textContent='Get a feel for the bass, then continue.';
+      buildChoices(['Continue →'],['I have the bass level'],()=>{ seal.phase=1; sealStep(); });
+      replayFn=sealTone; sealTone();
+    } else {
+      $('status').innerHTML='Step 2 — <b>press the earcups firmly to your head</b> (or reseat the tips) and keep pressing.';
+      $('hint').textContent='Did the bass change while you pressed?';
+      buildChoices(['Much fuller','A little fuller','No change'],['big bass jump','slightly more','same as before'],sealPick);
+      replayFn=sealTone; sealTone();
+    }
+  }
+  function sealPick(i){
+    if(!seal||seal.done) return;
+    seal.done=true; sealStop(); guessLocked=true;
+    const map=[{pct:25,thr:'leaking — reseat',v:2},{pct:60,thr:'minor leak',v:1},{pct:96,thr:'well sealed',v:0}];
+    const m=map[i];
+    recordRoom(m.pct, m.thr, {val:m.v});
+    $('status').innerHTML=`Your seal: <span class="pts">${m.thr}</span> · +${m.pct}`;
+    $('hint').textContent='';
+    showLearn(); appendTier(tierLine(seal.tag,m.pct));
+    showResultBtns(false); advanceUI();
+  }
 
   // ---------- adaptive count (Crowd) ----------
   function setupCount(c){
@@ -3527,10 +3626,11 @@
     renderCard(dev);
     $('saved').textContent = storageOK ? `saved · ${device}` + (deviceNames().length>1 ? ' · compare available' : '')
       : 'storage unavailable — results kept for this session only';
-    const bd=$('breakdown'); bd.innerHTML='';
+    const bd=$('breakdown'); bd.innerHTML=''; let curSec=null;
     Object.keys(GROUPS).forEach(gk=>{
       const idxs=order.filter(i=>CH[i].group===gk && chPct[i]!=null);   // skipped rooms don't show
       if(!idxs.length) return;
+      const g=GROUPS[gk]; if(g.section!==curSec){ curSec=g.section; const S=SECTIONS[curSec]||{name:curSec}; const sh=document.createElement('div'); sh.className='bsec'; sh.textContent=S.name; bd.appendChild(sh); }
       const h=document.createElement('div'); h.className='bghead'; h.textContent=GROUPS[gk].name; bd.appendChild(h);
       idxs.forEach(i=>{
         const c=CH[i], p=chPct[i], val=roomThr[c.tag]||`${p}%`;
@@ -3634,10 +3734,11 @@
       bar.innerHTML = tot!=null ? `<div class="track"><div class="fill" style="width:${tot}%;background:${col}"></div></div><span class="pct"><b>${tot}%</b></span>` : `<div class="track"></div><span class="pct">—</span>`;
       trow.appendChild(bar);
     });
-    box.appendChild(trow);
+    box.appendChild(trow); let curSec=null;
     Object.keys(GROUPS).forEach(gk=>{
       const rooms=CH.filter(c=>c.group===gk).filter(c=>active.some(n=>{const v=db.devices[n].rooms[c.tag]; return v!=null && (typeof v==='number'||v.pct!=null);}));
       if(!rooms.length) return;
+      const g=GROUPS[gk]; if(g.section!==curSec){ curSec=g.section; const S=SECTIONS[curSec]||{name:curSec}; const sh=document.createElement('div'); sh.className='bsec'; sh.textContent=S.name; box.appendChild(sh); }
       const h=document.createElement('div'); h.className='bghead'; h.textContent=GROUPS[gk].name; box.appendChild(h);
       rooms.forEach(c=>{
         const row=document.createElement('div'); row.className='cmprow';
@@ -3767,9 +3868,11 @@
     $('pvempty').style.display=(data||hasCurve)?'none':'block';
     const list=$('pvrooms'); list.innerHTML='';
     const FPMETA=(window.SR_FP&&window.SR_FP.META)||{};   // one vocabulary: the list uses the card's names
+    let curSec=null;
     Object.keys(GROUPS).forEach(gk=>{
       const rooms=CH.map((c,i)=>({c,i})).filter(x=>x.c.group===gk);
       if(!rooms.length) return;
+      const g=GROUPS[gk]; if(g.section!==curSec){ curSec=g.section; const S=SECTIONS[curSec]||{name:curSec}; const sh=document.createElement('div'); sh.className='bsec'; sh.textContent=S.name; list.appendChild(sh); }
       const h=document.createElement('div'); h.className='bghead'; h.textContent=GROUPS[gk].name; list.appendChild(h);
       rooms.forEach(({c,i})=>{
         const v=dev.rooms&&dev.rooms[c.tag];

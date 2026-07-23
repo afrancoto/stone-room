@@ -31,7 +31,12 @@
     Digits:    { group:'detail',name:'Speech in noise',fmt:v=>'SRT '+(v>0?'+':'')+Math.round(v)+' dB' },
     Grain:     { group:'detail',name:'Timbre purity', fmt:v=>Math.round(v*100)+'% partial' },
     Halls:     { group:'detail',name:'Decay / rooms', fmt:v=>Math.round(v*100)+'% Δ' },
-    Composure: { group:'detail',name:'Composure',     fmt:v=>{const T=[[0.15,0.19],[0.5,1.96],[1.2,8.92],[2,17.3],[3,25.0],[4.5,31.7],[9,38.3]];
+    Composure: { group:'hardware',name:'Composure',    fmt:v=>{const T=[[0.15,0.19],[0.5,1.96],[1.2,8.92],[2,17.3],[3,25.0],[4.5,31.7],[9,38.3]];
+      let i=0; while(i<T.length-1&&T[i+1][0]<v)i++; const [k0,t0]=T[i],[k1,t1]=T[Math.min(i+1,T.length-1)];
+      const t=k1===k0?t0:t0+(t1-t0)*(v-k0)/(k1-k0); return '~'+(t<1?t.toFixed(1):Math.round(t))+'% THD';} },
+    Balance:   { group:'hardware',name:'Channel balance',fmt:v=>v<0.6?'even':v.toFixed(1)+' dB lean' },
+    Seal:      { group:'hardware',name:'Seal / fit',    fmt:v=>['well sealed','minor leak','leaking'][v]||'—' },
+    Rumble:    { group:'hardware',name:'Bass cleanliness',fmt:v=>{const T=[[0.15,0.19],[0.5,1.96],[1.2,8.92],[2,17.3],[3,25.0],[4.5,31.7],[9,38.3]];
       let i=0; while(i<T.length-1&&T[i+1][0]<v)i++; const [k0,t0]=T[i],[k1,t1]=T[Math.min(i+1,T.length-1)];
       const t=k1===k0?t0:t0+(t1-t0)*(v-k0)/(k1-k0); return '~'+(t<1?t.toFixed(1):Math.round(t))+'% THD';} },
     Grip:      { group:'tone',  name:'Bass grip',     fmt:v=>Math.round(v*100)+'% bloom' },
@@ -42,6 +47,7 @@
     Shade:     { group:'time',  name:'Micro-dynamics',fmt:v=>v.toFixed(2)+' dB' },
   };
   const GROUPS = [
+    ['hardware','Hardware & channels'],
     ['space','Space & imaging'],
     ['detail','Detail & resolution'],
     ['tone','Tone & frequency'],
