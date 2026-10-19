@@ -18,8 +18,8 @@ git add -A && git commit -m "…" && git push
 ```
 
 Pages redeploys automatically. Because a service worker caches the app, bump `CACHE` in
-`sw.js` (e.g. `stone-room-v3`) whenever you change the JS/CSS so returning visitors pull the
-new version instead of the cached one.
+`sw.js` (e.g. `stone-room-v89`) whenever you change the JS/CSS so returning visitors pull the
+new version instead of the cached one. Keep `APP_VERSION` at the top of `app.js` in sync with it.
 
 ---
 
@@ -59,7 +59,7 @@ The manifest, icons and service worker that make this work are already in the re
 ## Deep links (share one room)
 
 Add `#<room>` to the URL to drop straight into a single room, e.g.
-`…/stone-room/#foundation`, `#air`, `#shade`, `#orbit`, `#silk`. The end screen's **Share**
+`…/stone-room/#hearing`, `#stage`, `#balance`, `#orbit`, `#silk`. The end screen's **Share**
 button builds the right link automatically, and **Copy results** produces a paste-ready
 text summary with your measurements.
 

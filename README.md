@@ -1,12 +1,12 @@
 # Stone Room — a listening lab
 
 A free, installable web app that does two things at once: **measures what you hear through
-the headphones you own** and **trains your ears**. Twenty-six short rooms each put one
+the headphones you own** and **trains your ears**. Twenty short rooms each put one
 audiophile claim to the test — soundstage, detail, sub-bass, treble air, sibilance, timing,
 micro-dynamics — plus a **per-ear hearing + headphone curve** (pulsed yes/no detection with
 contralateral masking and silent catch trials). Most rooms run an **adaptive Bayesian
 track** — two-interval forced choice for the A/B rooms, yes/no detection for the curve —
-that hunts your exact limit and reports it in real **Hz and dB**; the five pointing rooms
+that hunts your exact limit and reports it in real **Hz and dB**; the pointing rooms
 and the crowd-counting room instead walk a fixed difficulty ladder and score your accuracy.
 Everything is saved per pair so you can set one headphone against another. Absolute
 level is uncalibrated (browser, no SPL reference); shapes and differences are the honest output.
@@ -30,6 +30,9 @@ saves it for pair-vs-pair comparison. See `RESEARCH.md`.
 | `styles.css` | Full-viewport responsive design |
 | `content.js` | Room copy, verified benchmarks, science, real-model references, feedback pools |
 | `adaptive.js` | Ψ-marginal Bayesian threshold estimator (the smart measurement core) |
+| `ag-search.js` | Hearing-curve (audiogram) search: which frequency to measure next and when a reading is done |
+| `fingerprint.js` | The listening fingerprint card and curve charts, with PNG export |
+| `card-font.js` | Embedded font for the PNG card export, loaded only when exporting |
 | `app.js` | Audio synthesis (WebAudio), the adaptive rooms, scoring, storage, compare |
 | `manifest.webmanifest`, `sw.js`, `icons/` | PWA — installable + offline |
 
