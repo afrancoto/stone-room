@@ -11,7 +11,7 @@
   const RC = CONTENT.ROOM;                       // per-room content by tag
 
   // ---- configuration you may edit before publishing ----
-  const APP_VERSION = "v87";                          // keep in sync with the CACHE name in sw.js
+  const APP_VERSION = "v88";                          // keep in sync with the CACHE name in sw.js
   const CONFIG = {
     COFFEE_URL: "https://www.paypal.me/YOURNAME",   // ← set your PayPal.me / Buy-Me-a-Coffee link
     SHARE_TITLE: "Stone Room — a listening lab"
@@ -947,16 +947,24 @@
   }
   function importText(text){
     let inc; try{ inc=JSON.parse(text); }catch(e){ return {error:'not valid JSON'}; }
-    const incDevices = inc.device ? { [inc.device.name||'Imported']: inc.device } : inc.devices;
-    if(!incDevices || typeof incDevices!=='object') return {error:'not a Stone Room export'};
+    if(!inc || typeof inc!=='object') return {error:'not a Stone Room export'};   // "null" / a bare number used to throw inside the FileReader callback
+    const incDevices = (inc.device && typeof inc.device==='object') ? { [inc.device.name||'Imported']: inc.device } : inc.devices;
+    if(!incDevices || typeof incDevices!=='object' || Array.isArray(incDevices)) return {error:'not a Stone Room export'};
     if(inc.schema && inc.schema>SCHEMA) return {error:'from a newer version'};
     const norm = migrate({schema:inc.schema||2, devices:JSON.parse(JSON.stringify(incDevices))});
-    const byId={}; Object.keys(db.devices).forEach(n=>{ if(db.devices[n].id) byId[db.devices[n].id]=n; });
+    const byId=Object.create(null); Object.keys(db.devices).forEach(n=>{ if(db.devices[n].id) byId[db.devices[n].id]=n; });
     const sum={added:0, merged:0, readings:0};
+    const optStr = v => v==null ? v : String(v);
     Object.keys(norm.devices).forEach(iname=>{
       const ip=norm.devices[iname];
       ip.name = sanitizeStr(ip.name||iname);
-      (ip.history||[]).forEach(h=>{ if(h.rooms){ Object.keys(h.rooms).forEach(t=>{ h.rooms[t]=sanitizeReading(h.rooms[t]); }); } });
+      // a hand-edited or foreign file must not persist values that crash every later load: the history
+      // sorts call .localeCompare/.slice on `at`, and a null history entry threw on `h.rooms`
+      ip.id=optStr(ip.id); ip.createdAt=optStr(ip.createdAt); ip.date=optStr(ip.date);
+      ip.history=(ip.history||[]).filter(h=>h && typeof h==='object' && !Array.isArray(h));
+      ip.history.forEach(h=>{ if(h.at!=null) h.at=String(h.at); if(h.runId!=null) h.runId=String(h.runId);
+        if(h.rooms && (typeof h.rooms!=='object' || Array.isArray(h.rooms))) h.rooms={}; });
+      ip.history.forEach(h=>{ if(h.rooms){ Object.keys(h.rooms).forEach(t=>{ h.rooms[t]=sanitizeReading(h.rooms[t]); }); } });
       if(ip.rooms){ Object.keys(ip.rooms).forEach(t=>{ ip.rooms[t]=sanitizeReading(ip.rooms[t]); }); }
       const localName = ip.id && byId[ip.id];
       if(!localName){
