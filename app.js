@@ -1084,6 +1084,7 @@
     $('pf-import').addEventListener('click',()=>$('pf-file').click());
     $('pf-file').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader();
       rd.onload=()=>{ const res=importText(String(rd.result)); if(res.error) flashSaved(res.error); else { flashSaved(res.added+' added · '+res.merged+' merged'); buildProfiles(); } $('pf-file').value=''; };
+      rd.onerror=()=>{ flashSaved('could not read that file'); $('pf-file').value=''; };   // without it a failed read was silent and the same file could not be re-picked
       rd.readAsText(f); });
     $('resumebtn').addEventListener('click',()=>{ const run=loadRun(); if(run) restoreRun(run); });
     $('freshbtn').addEventListener('click',()=>{ clearRun(); $('resumebar').setAttribute('hidden',''); });
